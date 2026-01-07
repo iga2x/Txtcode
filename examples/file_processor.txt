@@ -1,0 +1,30 @@
+# File processing example in Txt-code
+
+define → process_file → (filename)
+  store → content → read_file(filename)
+  store → lines → str_split(content, "\n")
+  store → count → array_len(lines)
+  
+  print → "File: " + filename
+  print → "Lines: " + count
+  
+  return → lines
+end
+
+define → count_words → (text)
+  store → words → str_split(text, " ")
+  return → array_len(words)
+end
+
+# Process a file
+store → filename → "data.txt"
+if → file_exists(filename)
+  store → lines → process_file(filename)
+  for → line in lines
+    store → word_count → count_words(line)
+    print → "Line has " + word_count + " words"
+  end
+else
+  print → "File not found: " + filename
+end
+

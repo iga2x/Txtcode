@@ -1,0 +1,32 @@
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.txtc
+*.txtc.encrypted
+*.exe
+*.wasm
+
+# Package management
+packages/
+Txtcode.lock
+
+# Documentation build
+docs/_build/
+
+# Test artifacts
+*.test
+test_output/
+
+# OS
+.DS_Store
+Thumbs.db
+

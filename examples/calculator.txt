@@ -1,0 +1,31 @@
+# Simple calculator in Txt-code
+
+define → add → (a, b)
+  return → a + b
+end
+
+define → subtract → (a, b)
+  return → a - b
+end
+
+define → multiply → (a, b)
+  return → a * b
+end
+
+define → divide → (a, b)
+  return → a / b
+end
+
+# Use the functions
+store → result1 → add(10, 5)
+print → "10 + 5 = " + result1
+
+store → result2 → subtract(10, 5)
+print → "10 - 5 = " + result2
+
+store → result3 → multiply(10, 5)
+print → "10 * 5 = " + result3
+
+store → result4 → divide(10, 5)
+print → "10 / 5 = " + result4
+

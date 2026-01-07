@@ -1,0 +1,55 @@
+# Test Program for Txt-code
+
+store -> x -> 10
+store -> y -> 5
+store -> name: string -> "Txt-code"
+
+print -> "=== Test Program ==="
+print -> "Name:", name
+print -> "x =", x
+print -> "y =", y
+
+store -> sum -> x + y
+store -> product -> x * y
+store -> difference -> x - y
+store -> quotient -> x / y
+
+print -> "x + y =", sum
+print -> "x * y =", product
+print -> "x - y =", difference
+print -> "x / y =", quotient
+
+define -> greet -> (person: string)
+  store -> msg -> "Hello, " + person
+  return -> msg
+end
+
+store -> greeting -> greet(name)
+print -> greeting
+
+if -> x > y
+  print -> "x is greater than y"
+else
+  print -> "y is greater than or equal to x"
+end
+
+store -> counter -> 0
+while -> counter < 5
+  print -> "Counter:", counter
+  store -> counter -> counter + 1
+end
+
+store -> numbers -> [1, 2, 3, 4, 5]
+for -> num in numbers
+  print -> "Number:", num
+end
+
+define -> calculate -> (a: int, b: int) -> int
+  store -> result -> a * b
+  return -> result
+end
+
+store -> calc_result -> calculate(7, 3)
+print -> "calculate(7,3) =", calc_result
+
+print -> "=== Test Complete ==="

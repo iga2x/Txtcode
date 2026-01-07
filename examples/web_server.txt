@@ -1,0 +1,26 @@
+# Simple web server example (conceptual)
+
+define → handle_request → (method, path, headers, body)
+  match → path
+    case → "/"
+      return → {"status": 200, "body": "Hello, World!"}
+    case → "/api/data"
+      return → {"status": 200, "body": "{\"data\": [1, 2, 3]}"}
+    case → _
+      return → {"status": 404, "body": "Not Found"}
+  end
+end
+
+# Server loop (conceptual)
+# In a full implementation, this would use the networking library
+store → server → http_server("0.0.0.0", 8080)
+
+print → "Server started on port 8080"
+
+# Main loop would handle requests
+# while → true
+#   store → request → server.accept()
+#   store → response → handle_request(request.method, request.path, request.headers, request.body)
+#   server.send(response)
+# end
+
