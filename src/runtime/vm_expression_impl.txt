@@ -1,0 +1,110 @@
+// Implement ExpressionVM trait for VirtualMachine  
+impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
+    fn get_variable(&self, name: &str) -> Option<Value> {
+        VirtualMachine::get_variable(self, name)
+    }
+    
+    fn set_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError> {
+        VirtualMachine::set_variable(self, name, value)
+    }
+    
+    fn push_scope(&mut self) {
+        VirtualMachine::push_scope(self)
+    }
+    
+    fn pop_scope(&mut self) {
+        VirtualMachine::pop_scope(self)
+    }
+    
+    fn create_error(&self, message: String) -> RuntimeError {
+        VirtualMachine::create_error(self, message)
+    }
+    
+    fn check_permission_with_audit(&mut self, resource: &crate::runtime::permissions::PermissionResource, scope: Option<&str>) -> Result<(), RuntimeError> {
+        VirtualMachine::check_permission_with_audit(self, resource, scope)
+    }
+    
+    fn check_rate_limit(&mut self, action: &str) -> Result<(), RuntimeError> {
+        VirtualMachine::check_rate_limit(self, action)
+    }
+    
+    fn map_stdlib_to_action(&self, name: &str, args: &[Value]) -> Option<(String, String)> {
+        VirtualMachine::map_stdlib_to_action(self, name, args)
+    }
+    
+    fn check_intent(&self, function_name: &str, action: &str, resource: &str) -> Result<(), RuntimeError> {
+        VirtualMachine::check_intent(self, function_name, action, resource)
+    }
+    
+    fn call_stack_current_frame(&self) -> Option<&crate::runtime::core::CallFrame> {
+        self.call_stack.current_frame()
+    }
+    
+    fn call_stack_push(&mut self, frame: crate::runtime::core::CallFrame) {
+        self.call_stack.push(frame)
+    }
+    
+    fn call_stack_pop(&mut self) {
+        self.call_stack.pop()
+    }
+    
+    fn audit_trail_log_action(&mut self, action: String, resource: String, context: Option<String>, result: crate::runtime::audit::AuditResult, ai_metadata: Option<&crate::runtime::audit::AIMetadata>) {
+        let _ = self.audit_trail.log_action(action, resource, context.as_deref(), result, ai_metadata);
+    }
+    
+    fn ai_metadata(&self) -> &crate::runtime::audit::AIMetadata {
+        &self.ai_metadata
+    }
+    
+    fn struct_defs(&self) -> &HashMap<String, Vec<(crate::typecheck::types::Type)>> {
+        &self.struct_defs
+    }
+    
+    fn enum_defs(&self) -> &HashMap<String, Vec<(String, Option<Expression>)>> {
+        &self.enum_defs
+    }
+    
+    fn gc_register_allocation(&mut self, value: &Value) {
+        self.gc.register_allocation(value)
+    }
+    
+    fn debug(&self) -> bool {
+        self.debug
+    }
+    
+    fn verbose(&self) -> bool {
+        self.verbose
+    }
+    
+    fn exec_allowed(&self) -> Option<bool> {
+        self.exec_allowed
+    }
+    
+    fn execute_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError> {
+        VirtualMachine::execute_statement(self, stmt)
+    }
+    
+    fn extract_free_variables(body: &Expression, param_names: &HashSet<String>) -> HashSet<String> {
+        use crate::runtime::vm::helpers;
+        helpers::VirtualMachine::extract_free_variables(body, param_names)
+    }
+    
+    fn capture_environment(&self, var_names: &HashSet<String>) -> HashMap<String, Value> {
+        use crate::runtime::vm::helpers;
+        helpers::VirtualMachine::capture_environment(self, var_names)
+    }
+    
+    fn handle_capability_function(&mut self, name: &str, args: &[Value]) -> Result<Option<Value>, RuntimeError> {
+        use crate::stdlib::CapabilityLib;
+        match CapabilityLib::call_function(name, args, Some(self)) {
+            Ok(result) => Ok(Some(result)),
+            Err(e) => Err(e),
+        }
+    }
+    
+    fn call_stdlib_function(&mut self, name: &str, args: &[Value]) -> Result<Value, RuntimeError> {
+        use crate::stdlib::StdLib;
+        StdLib::call_function(name, args, self.exec_allowed.unwrap_or(false), Some(self))
+    }
+}
+

@@ -1,4 +1,4 @@
-use crate::runtime::vm::Value;
+use crate::runtime::core::Value;
 use std::collections::{HashMap, HashSet};
 
 /// Mark-and-sweep garbage collector
@@ -28,8 +28,8 @@ impl GarbageCollector {
         }
     }
 
-    /// Collect garbage from stack and globals
-    pub fn collect(&mut self, stack: &Vec<Value>, globals: &HashMap<String, Value>) {
+    /// Collect garbage from stack, globals, and scopes
+    pub fn collect(&mut self, stack: &Vec<Value>, globals: &HashMap<String, Value>, scopes: &Vec<HashMap<String, Value>>) {
         self.allocations_since_gc += 1;
         
         // Only collect if threshold reached
@@ -50,6 +50,13 @@ impl GarbageCollector {
         // Mark all global variables
         for value in globals.values() {
             self.mark_value(value);
+        }
+        
+        // Mark all values in local scopes
+        for scope in scopes.iter() {
+            for value in scope.values() {
+                self.mark_value(value);
+            }
         }
 
         // Sweep phase - would free unmarked objects
@@ -89,9 +96,24 @@ impl GarbageCollector {
                     self.mark_value(val);
                 }
             }
-            Value::Function { .. } => {
-                // Functions might have closures - mark them
-                // (Simplified for now)
+            Value::Set(set) => {
+                for elem in set {
+                    self.mark_value(elem);
+                }
+            }
+            Value::Function(_, _, _, captured_env) => {
+                // Mark captured environment in closures
+                for val in captured_env.values() {
+                    self.mark_value(val);
+                }
+            }
+            Value::Struct(_, fields) => {
+                for val in fields.values() {
+                    self.mark_value(val);
+                }
+            }
+            Value::Enum(_, _) => {
+                // Enum values are simple, no nested values
             }
             _ => {
                 // Primitive types don't need marking
@@ -115,9 +137,9 @@ impl GarbageCollector {
     }
 
     /// Force a full garbage collection
-    pub fn force_collect(&mut self, stack: &Vec<Value>, globals: &HashMap<String, Value>) {
+    pub fn force_collect(&mut self, stack: &Vec<Value>, globals: &HashMap<String, Value>, scopes: &Vec<HashMap<String, Value>>) {
         self.allocations_since_gc = self.collection_threshold;
-        self.collect(stack, globals);
+        self.collect(stack, globals, scopes);
     }
 }
 

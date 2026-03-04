@@ -1,16 +1,15 @@
-use crate::compiler::bytecode::BytecodeProgram;
 use crate::runtime::bytecode_vm::BytecodeVM;
 
 /// Debugger for Txt-code programs
+#[allow(dead_code)]
 pub struct Debugger {
     breakpoints: Vec<usize>,
     vm: BytecodeVM,
 }
 
 impl Debugger {
-    pub fn new(program: BytecodeProgram) -> Self {
-        let mut vm = BytecodeVM::new();
-        vm.load(&program);
+    pub fn new() -> Self {
+        let vm = BytecodeVM::new();
         
         Self {
             breakpoints: Vec::new(),
@@ -26,18 +25,18 @@ impl Debugger {
         self.breakpoints.retain(|&a| a != address);
     }
 
-    pub fn step(&mut self) -> Result<(), crate::runtime::vm::RuntimeError> {
+    pub fn step(&mut self) -> Result<(), crate::runtime::RuntimeError> {
         // Execute one instruction
         // In a full implementation, this would step through bytecode
         Ok(())
     }
 
-    pub fn continue_execution(&mut self) -> Result<crate::runtime::vm::Value, crate::runtime::vm::RuntimeError> {
-        // Continue until next breakpoint
-        self.vm.execute()
+    pub fn continue_execution(&mut self) -> Result<crate::runtime::Value, crate::runtime::RuntimeError> {
+        // TODO: Implement when BytecodeVM has execute method
+        Ok(crate::runtime::Value::Null)
     }
 
-    pub fn inspect_variable(&self, _name: &str) -> Option<crate::runtime::vm::Value> {
+    pub fn inspect_variable(&self, _name: &str) -> Option<crate::runtime::Value> {
         // In a full implementation, this would inspect VM state
         None
     }

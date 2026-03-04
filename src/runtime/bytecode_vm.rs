@@ -1,688 +1,435 @@
-use crate::compiler::bytecode::{Bytecode, BytecodeProgram, FunctionInfo};
-use crate::runtime::vm::{Value, RuntimeError};
-use crate::runtime::gc::GarbageCollector;
+use crate::compiler::bytecode::{Bytecode, Instruction, Constant};
+use crate::runtime::core::{Value, ScopeManager};
+use crate::runtime::errors::RuntimeError;
+use crate::stdlib::{StdLib, FunctionExecutor};
 use std::collections::HashMap;
 
-/// Stack-based bytecode virtual machine
+/// Bytecode Virtual Machine
+/// Executes compiled bytecode instructions
 pub struct BytecodeVM {
     stack: Vec<Value>,
-    globals: HashMap<String, Value>,
-    locals: Vec<HashMap<String, Value>>,
-    functions: HashMap<String, FunctionInfo>,
-    instructions: Vec<Bytecode>,
-    pc: usize, // Program counter
-    call_stack: Vec<CallFrame>,
-    gc: GarbageCollector,
-}
-
-#[derive(Debug, Clone)]
-struct CallFrame {
-    return_address: usize,
-    #[allow(dead_code)] // Reserved for future local variable tracking
-    local_vars: HashMap<String, Value>,
-    stack_start: usize,
+    variables: HashMap<String, Value>,
+    scope_manager: ScopeManager,
+    #[allow(dead_code)]
+    functions: HashMap<String, (Vec<String>, Vec<Instruction>)>, // name -> (params, body)
+    ip: usize, // Instruction pointer
+    call_stack: Vec<(usize, HashMap<String, Value>)>, // (return_ip, local_vars)
 }
 
 impl BytecodeVM {
     pub fn new() -> Self {
         Self {
             stack: Vec::new(),
-            globals: HashMap::new(),
-            locals: Vec::new(),
+            variables: HashMap::new(),
+            scope_manager: ScopeManager::new(),
             functions: HashMap::new(),
-            instructions: Vec::new(),
-            pc: 0,
+            ip: 0,
             call_stack: Vec::new(),
-            gc: GarbageCollector::new(),
         }
     }
 
-    /// Load and execute a bytecode program
-    pub fn load(&mut self, program: &BytecodeProgram) {
-        self.instructions = program.instructions.clone();
-        self.functions = program.functions.clone();
-        self.pc = 0;
-    }
-
-    /// Execute the loaded bytecode program
-    pub fn execute(&mut self) -> Result<Value, RuntimeError> {
-        while self.pc < self.instructions.len() {
-            let instruction = &self.instructions[self.pc].clone();
-            
-            match self.execute_instruction(instruction) {
-                Ok(ExecutionResult::Continue) => {
-                    self.pc += 1;
-                }
-                Ok(ExecutionResult::Jump(address)) => {
-                    self.pc = address;
-                }
-                Ok(ExecutionResult::Return(value)) => {
-                    return Ok(value);
-                }
-                Ok(ExecutionResult::Halt) => {
-                    break;
-                }
-                Err(e) => return Err(e),
-            }
-
-            // Periodic garbage collection
-            if self.pc % 100 == 0 {
-                self.gc.collect(&mut self.stack, &mut self.globals);
-            }
+    /// Execute bytecode
+    pub fn execute(&mut self, bytecode: &Bytecode) -> Result<Value, RuntimeError> {
+        self.ip = 0;
+        
+        while self.ip < bytecode.instructions.len() {
+            let instruction = &bytecode.instructions[self.ip];
+            self.execute_instruction(instruction, &bytecode.constants)?;
+            self.ip += 1;
         }
-
-        // Return top of stack or null
+        
         Ok(self.stack.pop().unwrap_or(Value::Null))
     }
 
-    fn execute_instruction(&mut self, instruction: &Bytecode) -> Result<ExecutionResult, RuntimeError> {
-        match instruction {
-            // Stack operations
-            Bytecode::PushInt(n) => {
-                self.stack.push(Value::Integer(*n));
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::PushFloat(n) => {
-                self.stack.push(Value::Float(*n));
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::PushString(s) => {
-                self.stack.push(Value::String(s.clone()));
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::PushBool(b) => {
-                self.stack.push(Value::Boolean(*b));
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::PushNull => {
-                self.stack.push(Value::Null);
-                Ok(ExecutionResult::Continue)
-            }
-
-            // Variable operations
-            Bytecode::LoadVar(name) => {
-                let value = self.get_variable(name)?;
+    fn execute_instruction(&mut self, inst: &Instruction, constants: &[Constant]) -> Result<(), RuntimeError> {
+        match inst {
+            Instruction::PushConstant(idx) => {
+                let constant = &constants[*idx];
+                let value = self.constant_to_value(constant);
                 self.stack.push(value);
-                Ok(ExecutionResult::Continue)
             }
-            Bytecode::StoreVar(name) => {
-                let value = self.stack.pop().ok_or_else(|| RuntimeError {
-                    message: "Stack underflow".to_string(),
-                })?;
-                self.set_variable(name, value)?;
-                Ok(ExecutionResult::Continue)
+            Instruction::Pop => {
+                self.stack.pop();
             }
-
-            // Arithmetic operations
-            Bytecode::Add => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.add_values(&left, &right)?);
-                Ok(ExecutionResult::Continue)
+            Instruction::Dup => {
+                if let Some(val) = self.stack.last() {
+                    self.stack.push(val.clone());
+                }
             }
-            Bytecode::Subtract => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.subtract_values(&left, &right)?);
-                Ok(ExecutionResult::Continue)
+            Instruction::LoadVar(name) => {
+                let value = self.variables.get(name)
+                    .cloned()
+                    .or_else(|| self.scope_manager.get_variable(name))
+                    .ok_or_else(|| RuntimeError::new(format!("Undefined variable: {}", name)))?;
+                self.stack.push(value);
             }
-            Bytecode::Multiply => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.multiply_values(&left, &right)?);
-                Ok(ExecutionResult::Continue)
+            Instruction::StoreVar(name) => {
+                let value = self.stack.pop()
+                    .ok_or_else(|| RuntimeError::new("Stack underflow".to_string()))?;
+                self.variables.insert(name.clone(), value);
             }
-            Bytecode::Divide => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.divide_values(&left, &right)?);
-                Ok(ExecutionResult::Continue)
+            Instruction::LoadGlobal(name) => {
+                let value = self.scope_manager.get_variable(name)
+                    .ok_or_else(|| RuntimeError::new(format!("Undefined global: {}", name)))?
+                    .clone();
+                self.stack.push(value);
             }
-            Bytecode::Modulo => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.modulo_values(&left, &right)?);
-                Ok(ExecutionResult::Continue)
+            Instruction::Add => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(self.binary_op(a, b, |a, b| a + b)?);
             }
-            Bytecode::Power => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.power_values(&left, &right)?);
-                Ok(ExecutionResult::Continue)
+            Instruction::Subtract => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(self.binary_op(a, b, |a, b| a - b)?);
             }
-
-            // Comparison operations
-            Bytecode::Equal => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(Value::Boolean(self.values_equal(&left, &right)));
-                Ok(ExecutionResult::Continue)
+            Instruction::Multiply => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(self.binary_op(a, b, |a, b| a * b)?);
             }
-            Bytecode::NotEqual => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(Value::Boolean(!self.values_equal(&left, &right)));
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::Less => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.compare_values(&left, &right, |a, b| a < b)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::Greater => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.compare_values(&left, &right, |a, b| a > b)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::LessEqual => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.compare_values(&left, &right, |a, b| a <= b)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::GreaterEqual => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.compare_values(&left, &right, |a, b| a >= b)?);
-                Ok(ExecutionResult::Continue)
-            }
-
-            // Logical operations
-            Bytecode::And => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(Value::Boolean(self.is_truthy(&left) && self.is_truthy(&right)));
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::Or => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(Value::Boolean(self.is_truthy(&left) || self.is_truthy(&right)));
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::Not => {
-                let operand = self.pop_value()?;
-                self.stack.push(Value::Boolean(!self.is_truthy(&operand)));
-                Ok(ExecutionResult::Continue)
-            }
-
-            // Bitwise operations
-            Bytecode::BitAnd => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.bitwise_and(&left, &right)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::BitOr => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.bitwise_or(&left, &right)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::BitXor => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.bitwise_xor(&left, &right)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::LeftShift => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.left_shift(&left, &right)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::RightShift => {
-                let right = self.pop_value()?;
-                let left = self.pop_value()?;
-                self.stack.push(self.right_shift(&left, &right)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::BitNot => {
-                let operand = self.pop_value()?;
-                self.stack.push(self.bitwise_not(&operand)?);
-                Ok(ExecutionResult::Continue)
-            }
-
-            // Control flow
-            Bytecode::Jump(address) => {
-                Ok(ExecutionResult::Jump(*address))
-            }
-            Bytecode::JumpIfFalse(address) => {
-                let condition = self.pop_value()?;
-                if !self.is_truthy(&condition) {
-                    Ok(ExecutionResult::Jump(*address))
+            Instruction::Divide => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
+                    if *b_val == 0 {
+                        return Err(RuntimeError::new("Division by zero".to_string()));
+                    }
+                    self.stack.push(Value::Integer(a_val / b_val));
+                } else if let (Value::Float(a_val), Value::Float(b_val)) = (a, b) {
+                    if b_val == 0.0 {
+                        return Err(RuntimeError::new("Division by zero".to_string()));
+                    }
+                    self.stack.push(Value::Float(a_val / b_val));
                 } else {
-                    Ok(ExecutionResult::Continue)
+                    return Err(RuntimeError::new("Type mismatch in division".to_string()));
                 }
             }
-            Bytecode::JumpIfTrue(address) => {
-                let condition = self.pop_value()?;
-                if self.is_truthy(&condition) {
-                    Ok(ExecutionResult::Jump(*address))
+            Instruction::Modulo => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
+                    if *b_val == 0 {
+                        return Err(RuntimeError::new("Modulo by zero".to_string()));
+                    }
+                    self.stack.push(Value::Integer(a_val % b_val));
                 } else {
-                    Ok(ExecutionResult::Continue)
+                    return Err(RuntimeError::new("Modulo requires integers".to_string()));
                 }
             }
-
-            // Function operations
-            Bytecode::Call(name, arg_count) => {
-                self.call_function(name, *arg_count)?;
-                Ok(ExecutionResult::Continue)
+            Instruction::Power => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                match (&a, &b) {
+                    (Value::Integer(a_val), Value::Integer(b_val)) => {
+                        self.stack.push(Value::Integer(a_val.pow(*b_val as u32)));
+                    }
+                    (Value::Float(a_val), Value::Float(b_val)) => {
+                        self.stack.push(Value::Float(a_val.powf(*b_val)));
+                    }
+                    _ => return Err(RuntimeError::new("Power requires numbers".to_string())),
+                }
             }
-            Bytecode::Return => {
-                let return_value = self.stack.pop().unwrap_or(Value::Null);
-                if let Some(frame) = self.call_stack.pop() {
-                    // Restore stack
-                    self.stack.truncate(frame.stack_start);
-                    self.stack.push(return_value.clone());
-                    Ok(ExecutionResult::Jump(frame.return_address))
+            Instruction::Negate => {
+                let val = self.pop_value()?;
+                match val {
+                    Value::Integer(i) => self.stack.push(Value::Integer(-i)),
+                    Value::Float(f) => self.stack.push(Value::Float(-f)),
+                    _ => return Err(RuntimeError::new("Negate requires number".to_string())),
+                }
+            }
+            Instruction::Equal => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(Value::Boolean(a == b));
+            }
+            Instruction::NotEqual => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(Value::Boolean(a != b));
+            }
+            Instruction::Less => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(Value::Boolean(self.compare(&a, &b)? < 0));
+            }
+            Instruction::Greater => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(Value::Boolean(self.compare(&a, &b)? > 0));
+            }
+            Instruction::LessEqual => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(Value::Boolean(self.compare(&a, &b)? <= 0));
+            }
+            Instruction::GreaterEqual => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                self.stack.push(Value::Boolean(self.compare(&a, &b)? >= 0));
+            }
+            Instruction::And => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                let a_bool = self.to_bool(&a)?;
+                let b_bool = self.to_bool(&b)?;
+                self.stack.push(Value::Boolean(a_bool && b_bool));
+            }
+            Instruction::Or => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                let a_bool = self.to_bool(&a)?;
+                let b_bool = self.to_bool(&b)?;
+                self.stack.push(Value::Boolean(a_bool || b_bool));
+            }
+            Instruction::Not => {
+                let val = self.pop_value()?;
+                let bool_val = self.to_bool(&val)?;
+                self.stack.push(Value::Boolean(!bool_val));
+            }
+            Instruction::BitAnd => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
+                    self.stack.push(Value::Integer(a_val & b_val));
                 } else {
-                    Ok(ExecutionResult::Return(return_value))
+                    return Err(RuntimeError::new("Bitwise AND requires integers".to_string()));
                 }
             }
-
-            // Array/Map operations
-            Bytecode::MakeArray(size) => {
-                let mut elements = Vec::new();
-                for _ in 0..*size {
-                    elements.insert(0, self.stack.pop().ok_or_else(|| RuntimeError {
-                        message: "Stack underflow".to_string(),
-                    })?);
+            Instruction::BitOr => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
+                    self.stack.push(Value::Integer(a_val | b_val));
+                } else {
+                    return Err(RuntimeError::new("Bitwise OR requires integers".to_string()));
                 }
-                self.stack.push(Value::Array(elements));
-                Ok(ExecutionResult::Continue)
             }
-            Bytecode::MakeMap(size) => {
+            Instruction::BitXor => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
+                    self.stack.push(Value::Integer(a_val ^ b_val));
+                } else {
+                    return Err(RuntimeError::new("Bitwise XOR requires integers".to_string()));
+                }
+            }
+            Instruction::LeftShift => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
+                    self.stack.push(Value::Integer(a_val << b_val));
+                } else {
+                    return Err(RuntimeError::new("Left shift requires integers".to_string()));
+                }
+            }
+            Instruction::RightShift => {
+                let b = self.pop_value()?;
+                let a = self.pop_value()?;
+                if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
+                    self.stack.push(Value::Integer(a_val >> b_val));
+                } else {
+                    return Err(RuntimeError::new("Right shift requires integers".to_string()));
+                }
+            }
+            Instruction::BitNot => {
+                let val = self.pop_value()?;
+                if let Value::Integer(i) = val {
+                    self.stack.push(Value::Integer(!i));
+                } else {
+                    return Err(RuntimeError::new("Bitwise NOT requires integer".to_string()));
+                }
+            }
+            Instruction::Jump(target) => {
+                self.ip = *target;
+            }
+            Instruction::JumpIfFalse(target) => {
+                let val = self.pop_value()?;
+                if !self.to_bool(&val)? {
+                    self.ip = *target;
+                }
+            }
+            Instruction::JumpIfTrue(target) => {
+                let val = self.pop_value()?;
+                if self.to_bool(&val)? {
+                    self.ip = *target;
+                }
+            }
+            Instruction::Call(name, arg_count) => {
+                // Try stdlib first
+                let mut args = Vec::new();
+                for _ in 0..*arg_count {
+                    args.insert(0, self.pop_value()?);
+                }
+                
+                // Use a dummy executor type - bytecode VM doesn't need executor
+                struct DummyExecutor;
+                impl FunctionExecutor for DummyExecutor {
+                    fn call_function_value(&mut self, _func: &Value, _args: &[Value]) -> Result<Value, RuntimeError> {
+                        Err(RuntimeError::new("Not implemented in bytecode VM".to_string()))
+                    }
+                }
+                
+                match StdLib::call_function::<DummyExecutor>(name, &args, true, None) {
+                    Ok(result) => self.stack.push(result),
+                    Err(_) => {
+                        // Not a stdlib function - would need function lookup
+                        return Err(RuntimeError::new(format!("Function not found: {}", name)));
+                    }
+                }
+            }
+            Instruction::Return => {
+                // Return from function
+                if let Some((return_ip, _)) = self.call_stack.pop() {
+                    self.ip = return_ip;
+                } else {
+                    return Err(RuntimeError::new("Return outside function".to_string()));
+                }
+            }
+            Instruction::ReturnValue => {
+                let value = self.pop_value()?;
+                if let Some((return_ip, _)) = self.call_stack.pop() {
+                    self.stack.push(value);
+                    self.ip = return_ip;
+                } else {
+                    return Err(RuntimeError::new("Return outside function".to_string()));
+                }
+            }
+            Instruction::BuildArray(count) => {
+                let mut arr = Vec::new();
+                for _ in 0..*count {
+                    arr.insert(0, self.pop_value()?);
+                }
+                self.stack.push(Value::Array(arr));
+            }
+            Instruction::BuildMap(count) => {
                 let mut map = HashMap::new();
-                for _ in 0..*size {
-                    let value = self.stack.pop().ok_or_else(|| RuntimeError {
-                        message: "Stack underflow".to_string(),
-                    })?;
-                    let key = self.stack.pop().ok_or_else(|| RuntimeError {
-                        message: "Stack underflow".to_string(),
-                    })?;
-                    if let Value::String(key_str) = key {
-                        map.insert(key_str, value);
+                for _ in 0..*count {
+                    let value = self.pop_value()?;
+                    let key_val = self.pop_value()?;
+                    if let Value::String(key) = key_val {
+                        map.insert(key, value);
                     } else {
-                        return Err(RuntimeError {
-                            message: "Map key must be a string".to_string(),
-                        });
+                        return Err(RuntimeError::new("Map keys must be strings".to_string()));
                     }
                 }
                 self.stack.push(Value::Map(map));
-                Ok(ExecutionResult::Continue)
             }
-            Bytecode::Index => {
+            Instruction::Index => {
                 let index = self.pop_value()?;
                 let target = self.pop_value()?;
-                self.stack.push(self.index_value(&target, &index)?);
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::Member(member) => {
-                let target = self.pop_value()?;
-                self.stack.push(self.get_member(&target, member)?);
-                Ok(ExecutionResult::Continue)
-            }
-
-            // Built-in functions
-            Bytecode::Print => {
-                if let Some(value) = self.stack.last() {
-                    println!("{}", value.to_string());
+                match (&target, &index) {
+                    (Value::Array(arr), Value::Integer(i)) => {
+                        let idx = *i as usize;
+                        if idx < arr.len() {
+                            self.stack.push(arr[idx].clone());
+                        } else {
+                            return Err(RuntimeError::new("Index out of bounds".to_string()));
+                        }
+                    }
+                    (Value::Map(map), Value::String(key)) => {
+                        if let Some(val) = map.get(key) {
+                            self.stack.push(val.clone());
+                        } else {
+                            return Err(RuntimeError::new(format!("Key not found: {}", key)));
+                        }
+                    }
+                    _ => return Err(RuntimeError::new("Invalid index operation".to_string())),
                 }
-                Ok(ExecutionResult::Continue)
             }
-
-            // Stack utilities
-            Bytecode::Pop => {
-                self.stack.pop();
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::Dup => {
-                let top = self.stack.last().ok_or_else(|| RuntimeError {
-                    message: "Stack underflow".to_string(),
-                })?;
-                self.stack.push(top.clone());
-                Ok(ExecutionResult::Continue)
-            }
-            Bytecode::Swap => {
-                if self.stack.len() < 2 {
-                    return Err(RuntimeError {
-                        message: "Stack underflow".to_string(),
-                    });
+            Instruction::GetField(name) => {
+                let obj = self.pop_value()?;
+                if let Value::Struct(_, fields) = obj {
+                    if let Some(val) = fields.get(name) {
+                        self.stack.push(val.clone());
+                    } else {
+                        return Err(RuntimeError::new(format!("Field not found: {}", name)));
+                    }
+                } else {
+                    return Err(RuntimeError::new("GetField requires struct".to_string()));
                 }
-                let len = self.stack.len();
-                self.stack.swap(len - 1, len - 2);
-                Ok(ExecutionResult::Continue)
             }
-            Bytecode::Nop => {
-                Ok(ExecutionResult::Continue)
+            Instruction::TypeOf => {
+                let val = self.pop_value()?;
+                let type_name = match val {
+                    Value::Integer(_) => "int",
+                    Value::Float(_) => "float",
+                    Value::String(_) => "string",
+                    Value::Char(_) => "char",
+                    Value::Boolean(_) => "bool",
+                    Value::Null => "null",
+                    Value::Array(_) => "array",
+                    Value::Map(_) => "map",
+                    Value::Set(_) => "set",
+                    Value::Function(_, _, _, _) => "function",
+                    Value::Struct(_, _) => "struct",
+                    Value::Enum(_, _) => "enum",
+                };
+                self.stack.push(Value::String(type_name.to_string()));
             }
-        }
-    }
-
-    fn call_function(&mut self, name: &str, arg_count: usize) -> Result<(), RuntimeError> {
-        // Built-in functions
-        match name {
-            "print" => {
-                if arg_count > 0 {
-                    let value = self.stack.pop().ok_or_else(|| RuntimeError {
-                        message: "Stack underflow".to_string(),
-                    })?;
-                    println!("{}", value.to_string());
-                }
-                self.stack.push(Value::Null);
-                return Ok(());
+            Instruction::Label(_) => {
+                // Labels are just markers, no operation
             }
-            _ => {}
-        }
-
-        // Standard library functions
-        let args: Vec<Value> = {
-            let mut args = Vec::new();
-            for _ in 0..arg_count {
-                args.insert(0, self.stack.pop().ok_or_else(|| RuntimeError {
-                    message: "Stack underflow".to_string(),
-                })?);
+            Instruction::Nop => {
+                // No operation
             }
-            args
-        };
-
-        // Try standard library
-        if let Ok(result) = crate::stdlib::StdLib::call_function(name, &args) {
-            self.stack.push(result);
-            return Ok(());
-        }
-
-        // User-defined functions
-        if let Some(func_info) = self.functions.get(name) {
-            let stack_start = self.stack.len() - arg_count;
-            
-            // Create call frame
-            let frame = CallFrame {
-                return_address: self.pc + 1,
-                local_vars: HashMap::new(),
-                stack_start,
-            };
-            self.call_stack.push(frame);
-            
-            // Set up local variables from arguments
-            // (Simplified - in full implementation, would map to parameter names)
-            
-            // Jump to function
-            self.pc = func_info.address;
-        } else {
-            return Err(RuntimeError {
-                message: format!("Function '{}' not found", name),
-            });
-        }
-
-        Ok(())
-    }
-
-    fn get_variable(&self, name: &str) -> Result<Value, RuntimeError> {
-        // Check local scope first
-        if let Some(locals) = self.locals.last() {
-            if let Some(value) = locals.get(name) {
-                return Ok(value.clone());
+            _ => {
+                return Err(RuntimeError::new(format!("Unimplemented instruction: {:?}", inst)));
             }
         }
-        
-        // Check globals
-        if let Some(value) = self.globals.get(name) {
-            return Ok(value.clone());
-        }
-
-        Err(RuntimeError {
-            message: format!("Undefined variable: {}", name),
-        })
-    }
-
-    fn set_variable(&mut self, name: &str, value: Value) -> Result<(), RuntimeError> {
-        // Set in local scope if available
-        if let Some(locals) = self.locals.last_mut() {
-            locals.insert(name.to_string(), value);
-            return Ok(());
-        }
-        
-        // Otherwise set in globals
-        self.globals.insert(name.to_string(), value);
         Ok(())
     }
 
     fn pop_value(&mut self) -> Result<Value, RuntimeError> {
-        self.stack.pop().ok_or_else(|| RuntimeError {
-            message: "Stack underflow".to_string(),
-        })
+        self.stack.pop().ok_or_else(|| RuntimeError::new("Stack underflow".to_string()))
     }
 
-    // Value operations (reuse from tree-walk VM)
-    fn add_values(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
-            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
-            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + *b as f64)),
-            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
-            (Value::String(a), b) => Ok(Value::String(format!("{}{}", a, b.to_string()))),
-            (a, Value::String(b)) => Ok(Value::String(format!("{}{}", a.to_string(), b))),
-            _ => Err(RuntimeError {
-                message: format!("Cannot add {} and {}", left.type_name(), right.type_name()),
-            }),
+    fn constant_to_value(&self, constant: &Constant) -> Value {
+        match constant {
+            Constant::Integer(i) => Value::Integer(*i),
+            Constant::Float(f) => Value::Float(*f),
+            Constant::String(s) => Value::String(s.clone()),
+            Constant::Boolean(b) => Value::Boolean(*b),
+            Constant::Null => Value::Null,
         }
     }
 
-    fn subtract_values(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
-            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - *b as f64)),
-            _ => Err(RuntimeError {
-                message: format!("Cannot subtract {} from {}", right.type_name(), left.type_name()),
-            }),
-        }
-    }
-
-    fn multiply_values(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
-            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * *b as f64)),
-            _ => Err(RuntimeError {
-                message: format!("Cannot multiply {} and {}", left.type_name(), right.type_name()),
-            }),
-        }
-    }
-
-    fn divide_values(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                if *b == 0 {
-                    Err(RuntimeError { message: "Division by zero".to_string() })
-                } else {
-                    Ok(Value::Float(*a as f64 / *b as f64))
-                }
-            }
-            (Value::Float(a), Value::Float(b)) => {
-                if *b == 0.0 {
-                    Err(RuntimeError { message: "Division by zero".to_string() })
-                } else {
-                    Ok(Value::Float(a / b))
-                }
-            }
-            _ => Err(RuntimeError {
-                message: format!("Cannot divide {} by {}", left.type_name(), right.type_name()),
-            }),
-        }
-    }
-
-    fn modulo_values(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                if *b == 0 {
-                    Err(RuntimeError { message: "Modulo by zero".to_string() })
-                } else {
-                    Ok(Value::Integer(a % b))
-                }
-            }
-            _ => Err(RuntimeError {
-                message: "Modulo requires integers".to_string(),
-            }),
-        }
-    }
-
-    fn power_values(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                Ok(Value::Float((*a as f64).powf(*b as f64)))
-            }
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(*b))),
-            _ => Err(RuntimeError {
-                message: "Power requires numbers".to_string(),
-            }),
-        }
-    }
-
-    fn compare_values<F>(&self, left: &Value, right: &Value, cmp: F) -> Result<Value, RuntimeError>
+    fn binary_op<F>(&self, a: Value, b: Value, op: F) -> Result<Value, RuntimeError>
     where
-        F: Fn(f64, f64) -> bool,
+        F: FnOnce(i64, i64) -> i64,
     {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(cmp(*a as f64, *b as f64))),
-            (Value::Float(a), Value::Float(b)) => Ok(Value::Boolean(cmp(*a, *b))),
-            (Value::Integer(a), Value::Float(b)) => Ok(Value::Boolean(cmp(*a as f64, *b))),
-            (Value::Float(a), Value::Integer(b)) => Ok(Value::Boolean(cmp(*a, *b as f64))),
-            _ => Err(RuntimeError {
-                message: format!("Cannot compare {} and {}", left.type_name(), right.type_name()),
-            }),
+        match (a, b) {
+            (Value::Integer(a_val), Value::Integer(b_val)) => Ok(Value::Integer(op(a_val, b_val))),
+            _ => Err(RuntimeError::new("Type mismatch in binary operation".to_string())),
         }
     }
 
-    fn bitwise_and(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a & b)),
-            _ => Err(RuntimeError {
-                message: "Bitwise operations require integers".to_string(),
-            }),
-        }
-    }
-
-    fn bitwise_or(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a | b)),
-            _ => Err(RuntimeError {
-                message: "Bitwise operations require integers".to_string(),
-            }),
-        }
-    }
-
-    fn bitwise_xor(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a ^ b)),
-            _ => Err(RuntimeError {
-                message: "Bitwise operations require integers".to_string(),
-            }),
-        }
-    }
-
-    fn left_shift(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a << b)),
-            _ => Err(RuntimeError {
-                message: "Bitwise shift requires integers".to_string(),
-            }),
-        }
-    }
-
-    fn right_shift(&self, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a >> b)),
-            _ => Err(RuntimeError {
-                message: "Bitwise shift requires integers".to_string(),
-            }),
-        }
-    }
-
-    fn bitwise_not(&self, operand: &Value) -> Result<Value, RuntimeError> {
-        match operand {
-            Value::Integer(n) => Ok(Value::Integer(!n)),
-            _ => Err(RuntimeError {
-                message: "Bitwise not requires integer".to_string(),
-            }),
-        }
-    }
-
-    fn is_truthy(&self, value: &Value) -> bool {
-        match value {
-            Value::Boolean(b) => *b,
-            Value::Null => false,
-            Value::Integer(n) => *n != 0,
-            Value::Float(n) => *n != 0.0,
-            Value::String(s) => !s.is_empty(),
-            Value::Array(arr) => !arr.is_empty(),
-            Value::Map(map) => !map.is_empty(),
-            Value::Function { .. } => true,
-        }
-    }
-
-    fn values_equal(&self, left: &Value, right: &Value) -> bool {
-        match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => (a - b).abs() < f64::EPSILON,
-            (Value::String(a), Value::String(b)) => a == b,
-            (Value::Boolean(a), Value::Boolean(b)) => a == b,
-            (Value::Null, Value::Null) => true,
-            _ => false,
-        }
-    }
-
-    fn index_value(&self, target: &Value, index: &Value) -> Result<Value, RuntimeError> {
-        match (target, index) {
-            (Value::Array(arr), Value::Integer(i)) => {
-                let idx = *i as usize;
-                if idx < arr.len() {
-                    Ok(arr[idx].clone())
-                } else {
-                    Err(RuntimeError {
-                        message: format!("Index {} out of bounds", idx),
-                    })
-                }
+    fn compare(&self, a: &Value, b: &Value) -> Result<i32, RuntimeError> {
+        match (a, b) {
+            (Value::Integer(a_val), Value::Integer(b_val)) => Ok((a_val - b_val).signum() as i32),
+            (Value::Float(a_val), Value::Float(b_val)) => {
+                Ok(a_val.partial_cmp(b_val).unwrap_or(std::cmp::Ordering::Equal) as i32)
             }
-            (Value::Map(map), Value::String(key)) => {
-                map.get(key).cloned().ok_or_else(|| RuntimeError {
-                    message: format!("Key '{}' not found in map", key),
-                })
+            (Value::String(a_val), Value::String(b_val)) => {
+                Ok(a_val.cmp(b_val) as i32)
             }
-            _ => Err(RuntimeError {
-                message: format!("Cannot index {} with {}", target.type_name(), index.type_name()),
-            }),
+            _ => Err(RuntimeError::new("Cannot compare values".to_string())),
         }
     }
 
-    fn get_member(&self, target: &Value, member: &str) -> Result<Value, RuntimeError> {
-        match target {
-            Value::Map(map) => {
-                map.get(member).cloned().ok_or_else(|| RuntimeError {
-                    message: format!("Member '{}' not found", member),
-                })
-            }
-            _ => Err(RuntimeError {
-                message: format!("Cannot access member '{}' on {}", member, target.type_name()),
-            }),
+    fn to_bool(&self, val: &Value) -> Result<bool, RuntimeError> {
+        match val {
+            Value::Boolean(b) => Ok(*b),
+            Value::Integer(i) => Ok(*i != 0),
+            Value::Float(f) => Ok(*f != 0.0),
+            Value::Null => Ok(false),
+            Value::String(s) => Ok(!s.is_empty()),
+            Value::Array(arr) => Ok(!arr.is_empty()),
+            Value::Map(map) => Ok(!map.is_empty()),
+            _ => Ok(true),
         }
     }
-}
-
-#[derive(Debug)]
-enum ExecutionResult {
-    Continue,
-    Jump(usize),
-    Return(Value),
-    #[allow(dead_code)] // Reserved for future graceful shutdown
-    Halt,
 }
 
 impl Default for BytecodeVM {
@@ -690,4 +437,3 @@ impl Default for BytecodeVM {
         Self::new()
     }
 }
-

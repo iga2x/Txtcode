@@ -2,9 +2,9 @@
 name = "txtcode"
 version = "0.1.0"
 edition = "2021"
-authors = ["Txt-code Team"]
+authors = ["MD POOR"]
 description = "Txt-code: A simple, memorable, security-focused programming language"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/txtcode/txtcode"
 
 [dependencies]
@@ -24,9 +24,11 @@ toml = "0.8"
 # Cryptography (for security features)
 aes-gcm = "0.10"
 sha2 = "0.10"
+md5 = "0.7"
 rand = "0.8"
 ring = "0.17"
 hex = "0.4"
+base64 = "0.21"
 
 # Math
 libm = "0.2"
@@ -48,6 +50,19 @@ rustyline = "14.0"
 
 # Lazy static
 lazy_static = "1.4"
+
+# Directory utilities (for ~/.txtcode/ paths)
+dirs = "5.0"
+
+# Date/time utilities (for logging)
+chrono = "0.4"
+
+# Regular expressions
+regex = "1.10"
+
+# System calls (Unix)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # LLVM (for native code generation) - optional
 # llvm-sys = "170"

@@ -2,6 +2,13 @@ use crate::parser::ast::*;
 use crate::compiler::bytecode::Bytecode;
 
 /// Code optimizer
+/// 
+/// **SIMPLIFIED**: Optimizer focuses on essential optimizations only:
+/// - Constant folding (evaluate constant expressions at compile time)
+/// - Dead code elimination (remove unreachable code)
+/// 
+/// Aggressive optimizations (function inlining, loop optimization, constant propagation)
+/// are removed to keep the codebase focused on cyber orchestration use cases.
 pub struct Optimizer {
     optimization_level: OptimizationLevel,
 }
@@ -9,8 +16,8 @@ pub struct Optimizer {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OptimizationLevel {
     None,
-    Basic,
-    Aggressive,
+    Basic,  // Constant folding + dead code elimination
+    // Aggressive removed - not needed for cyber orchestration use case
 }
 
 impl Optimizer {
@@ -28,27 +35,21 @@ impl Optimizer {
                 self.constant_folding(program);
                 self.dead_code_elimination(program);
             }
-            OptimizationLevel::Aggressive => {
-                self.constant_folding(program);
-                self.dead_code_elimination(program);
-                self.inline_functions(program);
-                self.loop_optimization(program);
-            }
         }
     }
 
     /// Optimize bytecode
-    pub fn optimize_bytecode(&self, bytecode: &mut Vec<Bytecode>) {
+    pub fn optimize_bytecode(&self, bytecode: &Bytecode) -> Result<Bytecode, String> {
+        let mut optimized = bytecode.clone();
+        
         match self.optimization_level {
             OptimizationLevel::None => {}
             OptimizationLevel::Basic => {
-                self.peephole_optimization(bytecode);
-            }
-            OptimizationLevel::Aggressive => {
-                self.peephole_optimization(bytecode);
-                self.constant_propagation_bytecode(bytecode);
+                self.peephole_optimization(&mut optimized);
             }
         }
+        
+        Ok(optimized)
     }
 
     /// Constant folding - evaluate constant expressions at compile time
@@ -62,6 +63,15 @@ impl Optimizer {
         match statement {
             Statement::Assignment { value, .. } => {
                 *value = self.fold_constants_expression(value);
+            }
+            Statement::CompoundAssignment { value, .. } => {
+                *value = self.fold_constants_expression(value);
+            }
+            Statement::Assert { condition, message, .. } => {
+                *condition = self.fold_constants_expression(condition);
+                if let Some(msg) = message {
+                    *msg = self.fold_constants_expression(msg);
+                }
             }
             Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
                 *condition = self.fold_constants_expression(condition);
@@ -85,6 +95,12 @@ impl Optimizer {
                 for stmt in body {
                     self.fold_constants_statement(stmt);
                 }
+            }
+            Statement::DoWhile { body, condition, .. } => {
+                for stmt in body {
+                    self.fold_constants_statement(stmt);
+                }
+                *condition = self.fold_constants_expression(condition);
             }
             Statement::For { iterable, body, .. } => {
                 *iterable = self.fold_constants_expression(iterable);
@@ -225,6 +241,9 @@ impl Optimizer {
             Statement::While { body, .. } => {
                 self.remove_after_return(body);
             }
+            Statement::DoWhile { body, .. } => {
+                self.remove_after_return(body);
+            }
             Statement::For { body, .. } => {
                 self.remove_after_return(body);
             }
@@ -249,82 +268,23 @@ impl Optimizer {
         }
     }
 
-    /// Function inlining (aggressive optimization)
-    fn inline_functions(&self, _program: &mut Program) {
-        // Function inlining would be implemented here
-        // This is a complex optimization that requires careful analysis
-    }
-
-    /// Loop optimization
-    fn loop_optimization(&self, program: &mut Program) {
-        for statement in &mut program.statements {
-            self.optimize_loop(statement);
-        }
-    }
-
-    fn optimize_loop(&self, statement: &mut Statement) {
-        match statement {
-            Statement::While { condition, body: _body, .. } => {
-                // Check if condition is always true/false
-                if let Expression::Literal(Literal::Boolean(false)) = condition {
-                    // Loop never executes - remove it
-                    *statement = Statement::Expression(Expression::Literal(Literal::Null));
-                }
-            }
-            Statement::Repeat { count, .. } => {
-                // Check if count is 0 or negative
-                if let Expression::Literal(Literal::Integer(n)) = count {
-                    if *n <= 0 {
-                        *statement = Statement::Expression(Expression::Literal(Literal::Null));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
+    // Function inlining and loop optimization removed - not needed for cyber orchestration
+    // Keep optimizer focused on essential optimizations only
 
     /// Peephole optimization on bytecode
-    fn peephole_optimization(&self, bytecode: &mut Vec<Bytecode>) {
-        let mut i = 0;
-        while i < bytecode.len().saturating_sub(1) {
-            // Remove redundant operations
-            match (&bytecode[i], &bytecode[i + 1]) {
-                (Bytecode::PushInt(0), Bytecode::Add) => {
-                    // 0 + x = x
-                    bytecode.remove(i);
-                    bytecode.remove(i);
-                    continue;
-                }
-                (Bytecode::PushInt(0), Bytecode::Subtract) => {
-                    // x - 0 = x, but we need to swap
-                    bytecode.remove(i);
-                    bytecode.remove(i);
-                    continue;
-                }
-                (Bytecode::PushInt(1), Bytecode::Multiply) => {
-                    // 1 * x = x
-                    bytecode.remove(i);
-                    bytecode.remove(i);
-                    continue;
-                }
-                (Bytecode::PushInt(0), Bytecode::Multiply) => {
-                    // 0 * x = 0
-                    bytecode.remove(i);
-                    bytecode.remove(i);
-                    bytecode.insert(i, Bytecode::PushInt(0));
-                    continue;
-                }
-                _ => {}
-            }
-            i += 1;
-        }
+    fn peephole_optimization(&self, bytecode: &mut Bytecode) {
+        use crate::compiler::bytecode::Instruction;
+        
+        // Remove consecutive Nop instructions
+        bytecode.instructions.retain(|inst| !matches!(inst, Instruction::Nop));
+        
+        // Optimize: PushConstant 0; Add -> (no change needed, handled at runtime)
+        // Optimize: PushConstant 1; Multiply -> (no change needed)
+        // More peephole optimizations can be added here
     }
 
-    /// Constant propagation in bytecode
-    fn constant_propagation_bytecode(&self, _bytecode: &mut Vec<Bytecode>) {
-        // Constant propagation would track constant values through bytecode
-        // This is a more advanced optimization
-    }
+    // Constant propagation removed - not needed for cyber orchestration
+    // Keep optimizer focused on essential optimizations only
 }
 
 impl Default for Optimizer {

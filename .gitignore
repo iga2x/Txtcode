@@ -30,3 +30,53 @@ test_output/
 .DS_Store
 Thumbs.db
 
+
+# Release binaries (distributed separately)
+release/
+
+# Testzone artifacts
+testzone/target/
+testzone/*.txt
+testzone/*.tc
+
+# Cursor IDE
+.cursor/
+
+# Extra markdown reports (generated docs)
+ANALYSIS_REPORT.md
+ARROW_COMPATIBILITY.md
+ASYNC_AWAIT_*.md
+AUDIT_TRAIL_*.md
+BULLETPROOF_*.md
+CHANGELOG.md
+COMPATIBILITY_*.md
+COMPLETED_*.md
+COMPLETION_REPORT.md
+COPY_SUMMARY.md
+DEVELOPMENT_*.md
+FEATURE_*.md
+FILES_LIST.txt
+FINAL_*.md
+FIXES_*.md
+FROZEN_*.md
+HEADER_TEMPLATE.txt
+HYBRID_*.md
+IMPLEMENTATION_*.md
+INTENT_*.md
+LANGUAGE_*.md
+LICENSE
+MIGRATION_*.md
+NEW_FEATURES.md
+NON-GOALS.md
+PERMISSION_*.md
+PHASE*.md
+POLICY_*.md
+STEP*.md
+STDLIB_*.md
+SYNTAX_*.md
+TEST_*.md
+VM_REFACTORING*.md
+Txtcode.toml
+run_all_tests.sh
+test_results.md
+test_script_verification.sh

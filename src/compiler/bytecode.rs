@@ -1,501 +1,401 @@
 use crate::parser::ast::*;
-use crate::runtime::vm::Value;
-use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 
-/// Bytecode instruction set
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum Bytecode {
+/// Bytecode representation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Bytecode {
+    pub instructions: Vec<Instruction>,
+    pub constants: Vec<Constant>,
+}
+
+/// Constant pool for bytecode
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Constant {
+    Integer(i64),
+    Float(f64),
+    String(String),
+    Boolean(bool),
+    Null,
+}
+
+impl std::hash::Hash for Constant {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Constant::Integer(i) => {
+                state.write_u8(0);
+                i.hash(state);
+            }
+            Constant::Float(f) => {
+                state.write_u8(1);
+                // Hash float as bits to avoid NaN issues
+                f.to_bits().hash(state);
+            }
+            Constant::String(s) => {
+                state.write_u8(2);
+                s.hash(state);
+            }
+            Constant::Boolean(b) => {
+                state.write_u8(3);
+                b.hash(state);
+            }
+            Constant::Null => {
+                state.write_u8(4);
+            }
+        }
+    }
+}
+
+impl std::cmp::Eq for Constant {}
+
+impl std::cmp::PartialEq for Constant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Constant::Integer(a), Constant::Integer(b)) => a == b,
+            (Constant::Float(a), Constant::Float(b)) => {
+                // Handle NaN and infinity
+                if a.is_nan() && b.is_nan() {
+                    true
+                } else {
+                    a == b
+                }
+            }
+            (Constant::String(a), Constant::String(b)) => a == b,
+            (Constant::Boolean(a), Constant::Boolean(b)) => a == b,
+            (Constant::Null, Constant::Null) => true,
+            _ => false,
+        }
+    }
+}
+
+/// Bytecode instructions
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Instruction {
     // Stack operations
-    PushInt(i64),
-    PushFloat(f64),
-    PushString(String),
-    PushBool(bool),
-    PushNull,
+    PushConstant(usize),  // Push constant from constant pool
+    Pop,                   // Pop top of stack
+    Dup,                   // Duplicate top of stack
     
     // Variable operations
-    LoadVar(String),
-    StoreVar(String),
+    LoadVar(String),       // Load variable onto stack
+    StoreVar(String),      // Store top of stack to variable
+    LoadGlobal(String),    // Load global variable
     
     // Arithmetic operations
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Modulo,
-    Power,
+    Add,                   // Pop two values, push sum
+    Subtract,              // Pop two values, push difference
+    Multiply,              // Pop two values, push product
+    Divide,                // Pop two values, push quotient
+    Modulo,                // Pop two values, push remainder
+    Power,                 // Pop two values, push power
+    Negate,                // Pop value, push negated
     
     // Comparison operations
-    Equal,
-    NotEqual,
-    Less,
-    Greater,
-    LessEqual,
-    GreaterEqual,
+    Equal,                 // Pop two values, push equality
+    NotEqual,              // Pop two values, push inequality
+    Less,                  // Pop two values, push less than
+    Greater,               // Pop two values, push greater than
+    LessEqual,             // Pop two values, push less or equal
+    GreaterEqual,          // Pop two values, push greater or equal
     
     // Logical operations
-    And,
-    Or,
-    Not,
+    And,                   // Pop two values, push AND
+    Or,                    // Pop two values, push OR
+    Not,                   // Pop value, push NOT
     
     // Bitwise operations
-    BitAnd,
-    BitOr,
-    BitXor,
-    LeftShift,
-    RightShift,
-    BitNot,
+    BitAnd,                // Pop two values, push bitwise AND
+    BitOr,                 // Pop two values, push bitwise OR
+    BitXor,                // Pop two values, push bitwise XOR
+    LeftShift,             // Pop two values, push left shift
+    RightShift,            // Pop two values, push right shift
+    BitNot,                // Pop value, push bitwise NOT
     
     // Control flow
-    Jump(usize),              // Unconditional jump
-    JumpIfFalse(usize),       // Jump if top of stack is false
-    JumpIfTrue(usize),        // Jump if top of stack is true
+    Jump(usize),           // Unconditional jump to instruction index
+    JumpIfFalse(usize),    // Pop value, jump if false
+    JumpIfTrue(usize),     // Pop value, jump if true
     
     // Function operations
-    Call(String, usize),      // Call function with n arguments
-    Return,
+    Call(String, usize),   // Call function with name and arg count
+    Return,                // Return from function
+    ReturnValue,           // Pop value and return it
     
     // Array/Map operations
-    MakeArray(usize),         // Create array with n elements
-    MakeMap(usize),           // Create map with n key-value pairs
-    Index,                    // Index operation (array[index] or map[key])
-    Member(String),           // Member access (object.member)
+    BuildArray(usize),     // Pop N values, build array
+    BuildMap(usize),       // Pop 2N values (key-value pairs), build map
+    Index,                 // Pop index/key and object, push indexed value
+    SetIndex,              // Pop value, index/key, and object, set indexed value
     
-    // Built-in functions
-    Print,
+    // Object operations
+    GetField(String),      // Pop object, push field value
+    SetField(String),      // Pop value and object, set field
     
-    // Special
-    Pop,                      // Pop top of stack
-    Dup,                      // Duplicate top of stack
-    Swap,                     // Swap top two stack elements
-    Nop,                      // No operation
-}
-
-/// Compiled bytecode program
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct BytecodeProgram {
-    pub instructions: Vec<Bytecode>,
-    pub constants: Vec<Value>,
-    pub functions: HashMap<String, FunctionInfo>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct FunctionInfo {
-    pub address: usize,
-    pub param_count: usize,
-    pub local_count: usize,
+    // Type operations
+    TypeOf,                // Pop value, push type string
+    
+    // Control flow helpers
+    Label(usize),          // Label for jump targets
+    
+    // No operation
+    Nop,
 }
 
 /// Bytecode compiler
 pub struct BytecodeCompiler {
-    instructions: Vec<Bytecode>,
-    constants: Vec<Value>,
-    functions: HashMap<String, FunctionInfo>,
-    label_counter: usize,
-    labels: HashMap<String, usize>,
-    patch_list: Vec<(usize, String)>, // (instruction_index, label_name)
+    constants: Vec<Constant>,
+    constant_map: std::collections::HashMap<Constant, usize>,
 }
 
 impl BytecodeCompiler {
     pub fn new() -> Self {
         Self {
-            instructions: Vec::new(),
             constants: Vec::new(),
-            functions: HashMap::new(),
-            label_counter: 0,
-            labels: HashMap::new(),
-            patch_list: Vec::new(),
+            constant_map: std::collections::HashMap::new(),
         }
     }
 
-    /// Compile AST program to bytecode
-    pub fn compile(&mut self, program: &Program) -> BytecodeProgram {
-        self.instructions.clear();
-        self.constants.clear();
-        self.functions.clear();
-        self.label_counter = 0;
-        self.labels.clear();
-        self.patch_list.clear();
-
-        // First pass: collect function definitions
+    /// Compile a program to bytecode
+    pub fn compile(&mut self, program: &Program) -> Bytecode {
+        let mut instructions = Vec::new();
+        
         for statement in &program.statements {
-            if let Statement::FunctionDef { name, params, .. } = statement {
-                let label = format!("func_{}", name);
-                self.labels.insert(label.clone(), self.instructions.len());
-                self.functions.insert(name.clone(), FunctionInfo {
-                    address: self.instructions.len(),
-                    param_count: params.len(),
-                    local_count: 0,
-                });
-            }
+            self.compile_statement(statement, &mut instructions);
         }
-
-        // Second pass: compile statements
-        for statement in &program.statements {
-            self.compile_statement(statement);
-        }
-
-        // Patch jump addresses
-        self.patch_jumps();
-
-        BytecodeProgram {
-            instructions: self.instructions.clone(),
+        
+        Bytecode {
+            instructions,
             constants: self.constants.clone(),
-            functions: self.functions.clone(),
         }
     }
 
-    fn compile_statement(&mut self, statement: &Statement) {
-        match statement {
-            Statement::Expression(expr) => {
-                self.compile_expression(expr);
-                self.emit(Bytecode::Pop); // Discard expression result
+    fn compile_statement(&mut self, stmt: &Statement, instructions: &mut Vec<Instruction>) {
+        match stmt {
+            Statement::Assignment { pattern, value, .. } => {
+                self.compile_expression(value, instructions);
+                // For now, handle simple identifier patterns
+                match pattern {
+                    Pattern::Identifier(name) => {
+                        instructions.push(Instruction::StoreVar(name.clone()));
+                    }
+                    Pattern::Array(_) | Pattern::Struct { .. } | Pattern::Constructor { .. } | Pattern::Ignore => {
+                        // Complex patterns are handled at runtime
+                        // For now, just pop the value (it will be handled by runtime)
+                        instructions.push(Instruction::Pop);
+                    }
+                }
             }
-            Statement::Assignment { name, value, .. } => {
-                self.compile_expression(value);
-                self.emit(Bytecode::StoreVar(name.clone()));
-            }
-            Statement::FunctionDef { name: _name, params: _params, body: _body, .. } => {
-                // Function definition - skip for now, already collected in first pass
-                // In a full implementation, we'd compile the function body here
+            Statement::FunctionDef { name: _name, params: _params, body, .. } => {
+                // Function definitions are stored separately
+                // For now, just compile the body
+                for body_stmt in body {
+                    self.compile_statement(body_stmt, instructions);
+                }
             }
             Statement::Return { value, .. } => {
                 if let Some(expr) = value {
-                    self.compile_expression(expr);
+                    self.compile_expression(expr, instructions);
+                    instructions.push(Instruction::ReturnValue);
                 } else {
-                    self.emit(Bytecode::PushNull);
+                    instructions.push(Instruction::Return);
                 }
-                self.emit(Bytecode::Return);
             }
-            Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
-                self.compile_expression(condition);
-                
-                let else_label = self.new_label();
-                let end_label = self.new_label();
-                
-                // Jump to else if condition is false
-                self.emit_jump(Bytecode::JumpIfFalse(0), else_label.clone());
+            Statement::Expression(expr) => {
+                self.compile_expression(expr, instructions);
+                instructions.push(Instruction::Pop); // Discard result
+            }
+            Statement::If { condition, then_branch, else_branch, .. } => {
+                self.compile_expression(condition, instructions);
+                let jump_if_false_idx = instructions.len();
+                instructions.push(Instruction::Nop); // Placeholder for jump
                 
                 // Compile then branch
                 for stmt in then_branch {
-                    self.compile_statement(stmt);
+                    self.compile_statement(stmt, instructions);
                 }
                 
-                // Jump to end after then branch
-                self.emit_jump(Bytecode::Jump(0), end_label.clone());
+                let jump_to_end_idx = instructions.len();
+                instructions.push(Instruction::Nop); // Placeholder for jump
                 
-                // Emit else label
-                self.emit_label(else_label.clone());
-                
-                // Compile elseif branches
-                for (elseif_cond, elseif_body) in else_if_branches {
-                    self.compile_expression(elseif_cond);
-                    let next_else_label = self.new_label();
-                    self.emit_jump(Bytecode::JumpIfFalse(0), next_else_label.clone());
-                    
-                    for stmt in elseif_body {
-                        self.compile_statement(stmt);
-                    }
-                    
-                    self.emit_jump(Bytecode::Jump(0), end_label.clone());
-                    self.emit_label(next_else_label);
-                }
-                
-                // Compile else branch
-                if let Some(else_body) = else_branch {
-                    for stmt in else_body {
-                        self.compile_statement(stmt);
+                // Update jump_if_false to jump to else or end
+                let else_start = instructions.len();
+                if let Some(else_branch) = else_branch {
+                    for stmt in else_branch {
+                        self.compile_statement(stmt, instructions);
                     }
                 }
+                let end_idx = instructions.len();
                 
-                // Emit end label
-                self.emit_label(end_label);
+                // Update jumps
+                instructions[jump_if_false_idx] = Instruction::JumpIfFalse(else_start);
+                instructions[jump_to_end_idx] = Instruction::Jump(end_idx);
             }
             Statement::While { condition, body, .. } => {
-                let loop_label = self.new_label();
-                let end_label = self.new_label();
+                let loop_start = instructions.len();
+                self.compile_expression(condition, instructions);
+                let jump_if_false_idx = instructions.len();
+                instructions.push(Instruction::Nop); // Placeholder
                 
-                // Emit loop start
-                self.emit_label(loop_label.clone());
-                
-                // Compile condition
-                self.compile_expression(condition);
-                self.emit_jump(Bytecode::JumpIfFalse(0), end_label.clone());
-                
-                // Compile body
                 for stmt in body {
-                    self.compile_statement(stmt);
+                    self.compile_statement(stmt, instructions);
+                }
+                instructions.push(Instruction::Jump(loop_start));
+                
+                let end_idx = instructions.len();
+                instructions[jump_if_false_idx] = Instruction::JumpIfFalse(end_idx);
+            }
+            Statement::DoWhile { body, condition, .. } => {
+                let loop_start = instructions.len();
+                
+                // Execute body first
+                for stmt in body {
+                    self.compile_statement(stmt, instructions);
                 }
                 
-                // Jump back to loop start
-                self.emit_jump(Bytecode::Jump(0), loop_label.clone());
+                // Check condition at end
+                self.compile_expression(condition, instructions);
+                let jump_if_true_idx = instructions.len();
+                instructions.push(Instruction::Nop); // Placeholder
                 
-                // Emit end label
-                self.emit_label(end_label);
+                let _end_idx = instructions.len();
+                // Jump back to start if condition is true
+                instructions[jump_if_true_idx] = Instruction::JumpIfTrue(loop_start);
             }
             Statement::For { variable: _variable, iterable, body, .. } => {
-                // Compile iterable
-                self.compile_expression(iterable);
-                
-                // For loop implementation would require iterator support
+                self.compile_expression(iterable, instructions);
+                // For loop implementation would need iterator support
                 // Simplified version for now
-                let loop_label = self.new_label();
-                let end_label = self.new_label();
-                
-                self.emit_label(loop_label.clone());
-                // Iterator logic would go here
-                self.emit_jump(Bytecode::Jump(0), end_label.clone());
-                
                 for stmt in body {
-                    self.compile_statement(stmt);
+                    self.compile_statement(stmt, instructions);
                 }
-                
-                self.emit_jump(Bytecode::Jump(0), loop_label.clone());
-                self.emit_label(end_label);
-            }
-            Statement::Repeat { count, body, .. } => {
-                // Compile count
-                self.compile_expression(count);
-                
-                let loop_label = self.new_label();
-                let end_label = self.new_label();
-                
-                // Store counter
-                let counter_var = format!("_repeat_counter_{}", self.label_counter);
-                self.emit(Bytecode::StoreVar(counter_var.clone()));
-                
-                // Loop start
-                self.emit_label(loop_label.clone());
-                
-                // Load counter and check if > 0
-                self.emit(Bytecode::LoadVar(counter_var.clone()));
-                self.emit(Bytecode::PushInt(0));
-                self.emit(Bytecode::LessEqual);
-                self.emit_jump(Bytecode::JumpIfTrue(0), end_label.clone());
-                
-                // Decrement counter
-                self.emit(Bytecode::LoadVar(counter_var.clone()));
-                self.emit(Bytecode::PushInt(1));
-                self.emit(Bytecode::Subtract);
-                self.emit(Bytecode::StoreVar(counter_var.clone()));
-                
-                // Compile body
-                for stmt in body {
-                    self.compile_statement(stmt);
-                }
-                
-                // Jump back to loop
-                self.emit_jump(Bytecode::Jump(0), loop_label.clone());
-                
-                // End label
-                self.emit_label(end_label);
-            }
-            Statement::Match { value, cases, default, .. } => {
-                self.compile_expression(value);
-                
-                let end_label = self.new_label();
-                let mut case_labels = Vec::new();
-                
-                // Compile each case
-                for case in cases {
-                    let case_label = self.new_label();
-                    case_labels.push(case_label.clone());
-                    
-                    // Match pattern (simplified - would need pattern matching logic)
-                    self.emit(Bytecode::Dup); // Keep value on stack
-                    // Pattern matching would go here
-                    
-                    // Check guard if present
-                    if let Some(guard) = &case.guard {
-                        self.compile_expression(guard);
-                        let next_case = self.new_label();
-                        self.emit_jump(Bytecode::JumpIfFalse(0), next_case.clone());
-                        
-                        // Compile case body
-                        for stmt in &case.body {
-                            self.compile_statement(stmt);
-                        }
-                        
-                        self.emit_jump(Bytecode::Jump(0), end_label.clone());
-                        self.emit_label(next_case);
-                    } else {
-                        // Compile case body
-                        for stmt in &case.body {
-                            self.compile_statement(stmt);
-                        }
-                        self.emit_jump(Bytecode::Jump(0), end_label.clone());
-                    }
-                    
-                    self.emit_label(case_label);
-                }
-                
-                // Default case
-                if let Some(default_body) = default {
-                    for stmt in default_body {
-                        self.compile_statement(stmt);
-                    }
-                }
-                
-                self.emit_label(end_label);
             }
             Statement::Break { .. } => {
-                // Break would need to jump to end of loop
-                // Simplified for now
-                self.emit(Bytecode::Nop);
+                // Break needs loop context - simplified for now
+                instructions.push(Instruction::Nop);
             }
             Statement::Continue { .. } => {
-                // Continue would need to jump to start of loop
-                // Simplified for now
-                self.emit(Bytecode::Nop);
+                // Continue needs loop context - simplified for now
+                instructions.push(Instruction::Nop);
             }
-            Statement::Try { body, catch, .. } => {
-                // Exception handling would require exception mechanism
-                // Simplified: just compile body
-                for stmt in body {
-                    self.compile_statement(stmt);
-                }
-                if let Some((_, catch_body)) = catch {
-                    // Catch block would be compiled here
-                    for stmt in catch_body {
-                        self.compile_statement(stmt);
-                    }
-                }
-            }
-            Statement::Import { .. } => {
-                // Import handling
-                self.emit(Bytecode::Nop);
+            _ => {
+                // Other statements - placeholder
+                instructions.push(Instruction::Nop);
             }
         }
     }
 
-    fn compile_expression(&mut self, expr: &Expression) {
+    fn compile_expression(&mut self, expr: &Expression, instructions: &mut Vec<Instruction>) {
         match expr {
             Expression::Literal(lit) => {
-                match lit {
-                    Literal::Integer(n) => self.emit(Bytecode::PushInt(*n)),
-                    Literal::Float(n) => self.emit(Bytecode::PushFloat(*n)),
-                    Literal::String(s) => self.emit(Bytecode::PushString(s.clone())),
-                    Literal::Boolean(b) => self.emit(Bytecode::PushBool(*b)),
-                    Literal::Null => self.emit(Bytecode::PushNull),
-                }
+                let const_idx = self.add_constant(lit);
+                instructions.push(Instruction::PushConstant(const_idx));
             }
             Expression::Identifier(name) => {
-                self.emit(Bytecode::LoadVar(name.clone()));
+                instructions.push(Instruction::LoadVar(name.clone()));
             }
             Expression::BinaryOp { left, op, right, .. } => {
-                self.compile_expression(left);
-                self.compile_expression(right);
-                
-                match op {
-                    BinaryOperator::Add => self.emit(Bytecode::Add),
-                    BinaryOperator::Subtract => self.emit(Bytecode::Subtract),
-                    BinaryOperator::Multiply => self.emit(Bytecode::Multiply),
-                    BinaryOperator::Divide => self.emit(Bytecode::Divide),
-                    BinaryOperator::Modulo => self.emit(Bytecode::Modulo),
-                    BinaryOperator::Power => self.emit(Bytecode::Power),
-                    BinaryOperator::Equal => self.emit(Bytecode::Equal),
-                    BinaryOperator::NotEqual => self.emit(Bytecode::NotEqual),
-                    BinaryOperator::Less => self.emit(Bytecode::Less),
-                    BinaryOperator::Greater => self.emit(Bytecode::Greater),
-                    BinaryOperator::LessEqual => self.emit(Bytecode::LessEqual),
-                    BinaryOperator::GreaterEqual => self.emit(Bytecode::GreaterEqual),
-                    BinaryOperator::And => self.emit(Bytecode::And),
-                    BinaryOperator::Or => self.emit(Bytecode::Or),
-                    BinaryOperator::BitAnd => self.emit(Bytecode::BitAnd),
-                    BinaryOperator::BitOr => self.emit(Bytecode::BitOr),
-                    BinaryOperator::BitXor => self.emit(Bytecode::BitXor),
-                    BinaryOperator::LeftShift => self.emit(Bytecode::LeftShift),
-                    BinaryOperator::RightShift => self.emit(Bytecode::RightShift),
-                    BinaryOperator::Arrow => {
-                        // Arrow operator for function calls
-                        // Would need special handling
-                        self.emit(Bytecode::Nop);
-                    }
-                }
+                self.compile_expression(left, instructions);
+                self.compile_expression(right, instructions);
+                instructions.push(match op {
+                    BinaryOperator::Add => Instruction::Add,
+                    BinaryOperator::Subtract => Instruction::Subtract,
+                    BinaryOperator::Multiply => Instruction::Multiply,
+                    BinaryOperator::Divide => Instruction::Divide,
+                    BinaryOperator::Modulo => Instruction::Modulo,
+                    BinaryOperator::Power => Instruction::Power,
+                    BinaryOperator::Equal => Instruction::Equal,
+                    BinaryOperator::NotEqual => Instruction::NotEqual,
+                    BinaryOperator::Less => Instruction::Less,
+                    BinaryOperator::Greater => Instruction::Greater,
+                    BinaryOperator::LessEqual => Instruction::LessEqual,
+                    BinaryOperator::GreaterEqual => Instruction::GreaterEqual,
+                    BinaryOperator::And => Instruction::And,
+                    BinaryOperator::Or => Instruction::Or,
+                    BinaryOperator::BitwiseAnd => Instruction::BitAnd,
+                    BinaryOperator::BitwiseOr => Instruction::BitOr,
+                    BinaryOperator::BitwiseXor => Instruction::BitXor,
+                    BinaryOperator::LeftShift => Instruction::LeftShift,
+                    BinaryOperator::RightShift => Instruction::RightShift,
+                    BinaryOperator::NullCoalesce => Instruction::Nop, // TODO: Implement null coalesce in bytecode
+                });
             }
             Expression::UnaryOp { op, operand, .. } => {
-                self.compile_expression(operand);
-                
-                match op {
-                    UnaryOperator::Not => self.emit(Bytecode::Not),
-                    UnaryOperator::Minus => {
-                        self.emit(Bytecode::PushInt(0));
-                        self.emit(Bytecode::Swap);
-                        self.emit(Bytecode::Subtract);
-                    }
-                    UnaryOperator::BitNot => self.emit(Bytecode::BitNot),
-                }
+                self.compile_expression(operand, instructions);
+                instructions.push(match op {
+                    UnaryOperator::Not => Instruction::Not,
+                    UnaryOperator::Minus => Instruction::Negate,
+                    UnaryOperator::BitNot => Instruction::BitNot,
+                    UnaryOperator::Increment => Instruction::Nop, // TODO: Implement increment in bytecode
+                    UnaryOperator::Decrement => Instruction::Nop, // TODO: Implement decrement in bytecode
+                });
             }
             Expression::FunctionCall { name, arguments, .. } => {
-                // Compile arguments in reverse order
-                for arg in arguments.iter().rev() {
-                    self.compile_expression(arg);
+                for arg in arguments {
+                    self.compile_expression(arg, instructions);
                 }
-                
-                // Call function
-                self.emit(Bytecode::Call(name.clone(), arguments.len()));
+                instructions.push(Instruction::Call(name.clone(), arguments.len()));
             }
             Expression::Array { elements, .. } => {
-                // Compile elements
                 for elem in elements {
-                    self.compile_expression(elem);
+                    self.compile_expression(elem, instructions);
                 }
-                self.emit(Bytecode::MakeArray(elements.len()));
+                instructions.push(Instruction::BuildArray(elements.len()));
             }
             Expression::Map { entries, .. } => {
-                // Compile key-value pairs
                 for (key, value) in entries {
-                    self.emit(Bytecode::PushString(key.clone()));
-                    self.compile_expression(value);
+                    self.compile_expression(key, instructions);
+                    self.compile_expression(value, instructions);
                 }
-                self.emit(Bytecode::MakeMap(entries.len()));
+                instructions.push(Instruction::BuildMap(entries.len()));
             }
             Expression::Index { target, index, .. } => {
-                self.compile_expression(target);
-                self.compile_expression(index);
-                self.emit(Bytecode::Index);
+                self.compile_expression(target, instructions);
+                self.compile_expression(index, instructions);
+                instructions.push(Instruction::Index);
             }
-            Expression::Member { target, member, .. } => {
-                self.compile_expression(target);
-                self.emit(Bytecode::Member(member.clone()));
+            Expression::Member { target, name, .. } => {
+                self.compile_expression(target, instructions);
+                instructions.push(Instruction::GetField(name.clone()));
             }
-            Expression::Lambda { params: _params, body: _body, .. } => {
-                // Lambda compilation would create a closure
-                // Simplified for now
-                self.emit(Bytecode::PushNull);
+            Expression::OptionalMember { target, name: _name, .. } => {
+                self.compile_expression(target, instructions);
+                instructions.push(Instruction::Nop); // TODO: Implement optional member in bytecode
+            }
+            Expression::OptionalCall { target, arguments, .. } => {
+                self.compile_expression(target, instructions);
+                for arg in arguments {
+                    self.compile_expression(arg, instructions);
+                }
+                instructions.push(Instruction::Nop); // TODO: Implement optional call in bytecode
+            }
+            Expression::OptionalIndex { target, index, .. } => {
+                self.compile_expression(target, instructions);
+                self.compile_expression(index, instructions);
+                instructions.push(Instruction::Nop); // TODO: Implement optional index in bytecode
+            }
+            _ => {
+                // Other expressions - placeholder
+                instructions.push(Instruction::Nop);
             }
         }
     }
 
-    fn emit(&mut self, instruction: Bytecode) {
-        self.instructions.push(instruction);
-    }
-
-    fn new_label(&mut self) -> String {
-        let label = format!("L{}", self.label_counter);
-        self.label_counter += 1;
-        label
-    }
-
-    fn emit_label(&mut self, label: String) {
-        self.labels.insert(label.clone(), self.instructions.len());
-    }
-
-    fn emit_jump(&mut self, instruction: Bytecode, label: String) {
-        let index = self.instructions.len();
-        self.instructions.push(instruction);
-        self.patch_list.push((index, label));
-    }
-
-    fn patch_jumps(&mut self) {
-        for (index, label) in &self.patch_list {
-            if let Some(target) = self.labels.get(label) {
-                match &mut self.instructions[*index] {
-                    Bytecode::Jump(addr) => *addr = *target,
-                    Bytecode::JumpIfFalse(addr) => *addr = *target,
-                    Bytecode::JumpIfTrue(addr) => *addr = *target,
-                    _ => {}
-                }
-            }
+    fn add_constant(&mut self, lit: &Literal) -> usize {
+        let constant = match lit {
+            Literal::Integer(i) => Constant::Integer(*i),
+            Literal::Float(f) => Constant::Float(*f),
+            Literal::String(s) => Constant::String(s.clone()),
+            Literal::Boolean(b) => Constant::Boolean(*b),
+            Literal::Char(c) => Constant::String(c.to_string()),
+            Literal::Null => Constant::Null,
+        };
+        
+        if let Some(&idx) = self.constant_map.get(&constant) {
+            idx
+        } else {
+            let idx = self.constants.len();
+            self.constants.push(constant.clone());
+            self.constant_map.insert(constant, idx);
+            idx
         }
     }
 }

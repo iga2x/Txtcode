@@ -1,13 +1,21 @@
 use crate::parser::ast::*;
 
 /// Native code generator (LLVM-based)
-/// This is a placeholder for LLVM integration
+/// 
+/// **FROZEN**: Native compilation is frozen in v0.x. Txtcode focuses on interpreted
+/// execution for cyber orchestration. Native compilation may be reconsidered in future
+/// versions if there's a specific need, but it's not a priority for the pentest/automation
+/// use case.
+/// 
+/// See NON-GOALS.md for what Txtcode is NOT designed to do.
+#[deprecated(note = "Native compilation is frozen. Use bytecode VM for interpreted execution.")]
 pub struct NativeCodeGenerator {
     target_triple: String,
     #[allow(dead_code)] // Reserved for future optimization level control
     optimization_level: u8,
 }
 
+#[allow(deprecated)]
 impl NativeCodeGenerator {
     pub fn new() -> Self {
         Self {
@@ -101,6 +109,7 @@ impl NativeCodeGenerator {
     }
 }
 
+#[allow(deprecated)]
 impl Default for NativeCodeGenerator {
     fn default() -> Self {
         Self::new()

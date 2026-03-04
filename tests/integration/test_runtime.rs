@@ -13,7 +13,7 @@ fn test_runtime_arithmetic() {
     
     let result = vm.interpret(&program).unwrap();
     // Result would be the last expression value
-    assert!(matches!(result, txtcode::runtime::vm::Value::Integer(_) | txtcode::runtime::vm::Value::Null));
+    assert!(matches!(result, txtcode::runtime::Value::Integer(_) | txtcode::runtime::Value::Null));
 }
 
 #[test]

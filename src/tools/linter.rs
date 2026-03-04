@@ -48,12 +48,12 @@ impl Linter {
         // Type checking
         if linter.check_types {
             let mut type_checker = TypeChecker::new();
-            if let Err(type_errors) = type_checker.check_program(&program) {
-                for error in type_errors {
+            if let Err(error_messages) = type_checker.check(&program) {
+                for error_message in error_messages {
                     issues.push(LintIssue {
-                        line: error.span.line,
-                        column: error.span.column,
-                        message: error.message,
+                        line: 1,
+                        column: 1,
+                        message: error_message,
                         severity: Severity::Error,
                     });
                 }

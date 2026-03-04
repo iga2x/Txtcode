@@ -1,10 +1,18 @@
 use crate::parser::ast::*;
 
 /// WebAssembly code generator
+/// 
+/// **FROZEN**: WASM compilation is frozen in v0.x. Txtcode focuses on interpreted
+/// execution for cyber orchestration. WASM compilation may be reconsidered in future
+/// versions, but it's not a priority for the pentest/automation use case.
+/// 
+/// See NON-GOALS.md for what Txtcode is NOT designed to do.
+#[deprecated(note = "WASM compilation is frozen. Use bytecode VM for interpreted execution.")]
 pub struct WasmGenerator {
     module_name: String,
 }
 
+#[allow(deprecated)]
 impl WasmGenerator {
     pub fn new() -> Self {
         Self {
@@ -74,6 +82,7 @@ impl WasmGenerator {
     }
 }
 
+#[allow(deprecated)]
 impl Default for WasmGenerator {
     fn default() -> Self {
         Self::new()

@@ -1,530 +1,670 @@
-use super::token::{Token, TokenKind, Span};
-use super::keywords::get_keyword;
+use crate::lexer::token::{Token, TokenKind};
+use crate::lexer::keywords::is_keyword;
 
-#[derive(Debug)]
+/// Lexer for tokenizing Txt-code source code
 pub struct Lexer {
-    input: Vec<char>,
+    source: String,
     position: usize,
     line: usize,
     column: usize,
 }
 
-#[derive(Debug, Clone)]
-pub struct LexError {
-    pub message: String,
-    pub span: Span,
-}
-
-impl std::fmt::Display for LexError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} at line {}, column {}", self.message, self.span.line, self.span.column)
-    }
-}
-
-impl std::error::Error for LexError {}
-
 impl Lexer {
-    pub fn new(input: String) -> Self {
+    pub fn new(source: String) -> Self {
         Self {
-            input: input.chars().collect(),
+            source,
             position: 0,
             line: 1,
             column: 1,
         }
     }
 
-    pub fn tokenize(&mut self) -> Result<Vec<Token>, LexError> {
+    pub fn tokenize(&mut self) -> Result<Vec<Token>, String> {
         let mut tokens = Vec::new();
-
-        while let Some(token) = self.next_token()? {
-            match token.kind {
-                TokenKind::Whitespace | TokenKind::Comment(_) | TokenKind::MultiLineComment(_) => {
-                    // Skip whitespace and comments
-                }
-                TokenKind::Eof => {
+        
+        while self.position < self.source.len() {
+            if let Some(token) = self.next_token()? {
+                if token.kind != TokenKind::Whitespace && token.kind != TokenKind::Comment {
                     tokens.push(token);
-                    break;
                 }
-                _ => tokens.push(token),
+            } else {
+                break;
             }
         }
-
+        
+        tokens.push(Token::new(TokenKind::Eof, String::new(), (self.line, self.column)));
         Ok(tokens)
     }
 
-    fn next_token(&mut self) -> Result<Option<Token>, LexError> {
-        if self.position >= self.input.len() {
-            return Ok(Some(Token::new(
-                TokenKind::Eof,
-                self.current_span(0),
-            )));
+    fn next_token(&mut self) -> Result<Option<Token>, String> {
+        if self.position >= self.source.len() {
+            return Ok(None);
         }
 
-        let ch = self.input[self.position];
-
-        let start_pos = self.position;
+        let _start_pos = self.position;
         let start_line = self.line;
         let start_col = self.column;
+        
+        // Get character at current byte position
+        // Since we're using byte positions, we need to get the char that starts at this byte
+        let ch = if self.position < self.source.len() {
+            // Get the character starting at this byte position
+            let remaining = &self.source[self.position..];
+            remaining.chars().next()
+        } else {
+            None
+        };
+        
+        let ch = match ch {
+            Some(c) => c,
+            None => return Ok(None),
+        };
 
-        let kind = match ch {
-            // Single character operators
-            '+' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::PlusEqual
-                } else {
-                    TokenKind::Plus
-                }
-            },
-            '-' => {
-                // Check for arrow operator (->)
-                if self.peek() == Some('>') {
-                    self.advance();
-                    TokenKind::Arrow
-                } else if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::MinusEqual
-                } else {
-                    TokenKind::Minus
-                }
-            },
-            '*' => {
-                if self.peek() == Some('*') {
-                    self.advance();
-                    if self.peek() == Some('=') {
-                        self.advance();
-                        TokenKind::PowerEqual
-                    } else {
-                        TokenKind::Power
-                    }
-                } else if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::StarEqual
-                } else {
-                    TokenKind::Star
-                }
-            }
-            '/' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::SlashEqual
-                } else {
-                    TokenKind::Slash
-                }
-            },
-            '%' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::PercentEqual
-                } else {
-                    TokenKind::Percent
-                }
-            },
-            '=' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::Equal
-                } else {
-                    TokenKind::Assign
-                }
-            }
-            '!' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::NotEqual
-                } else {
-                    TokenKind::Exclamation
-                }
-            }
-            '<' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::LessEqual
-                } else if self.peek() == Some('<') {
-                    self.advance();
-                    TokenKind::LeftShift
-                } else {
-                    TokenKind::Less
-                }
-            }
-            '>' => {
-                if self.peek() == Some('=') {
-                    self.advance();
-                    TokenKind::GreaterEqual
-                } else if self.peek() == Some('>') {
-                    self.advance();
-                    TokenKind::RightShift
-                } else {
-                    TokenKind::Greater
-                }
-            }
-            '&' => TokenKind::BitAnd,
-            '|' => TokenKind::BitOr,
-            '^' => TokenKind::BitXor,
-            '~' => TokenKind::BitNot,
-
-            // Punctuation
-            '(' => TokenKind::LeftParen,
-            ')' => TokenKind::RightParen,
-            '[' => TokenKind::LeftBracket,
-            ']' => TokenKind::RightBracket,
-            '{' => TokenKind::LeftBrace,
-            '}' => TokenKind::RightBrace,
-            ',' => TokenKind::Comma,
-            ':' => TokenKind::Colon,
-            ';' => TokenKind::Semicolon,
-            '.' => TokenKind::Dot,
-            '?' => TokenKind::Question,
-
-            // Comments
-            '#' => {
-                if self.peek() == Some('#') {
-                    self.advance();
-                    self.read_multiline_comment()?
-                } else {
-                    self.read_single_comment()?
-                }
-            }
-
-            // Strings
-            '"' | '\'' => self.read_string(ch)?,
-
-            // Numbers
-            '0'..='9' => {
-                // Don't advance yet, read_number will handle it
-                self.read_number()?
-            }
-
-            // Identifiers and keywords
-            'a'..='z' | 'A'..='Z' | '_' => {
-                // Don't advance yet, read_identifier will handle it
-                self.read_identifier()?
-            }
-
+        let token = match ch {
             // Whitespace
             ' ' | '\t' => {
                 self.skip_whitespace();
                 return self.next_token();
             }
-
-            // Newlines (with line continuation support)
-            '\n' => {
-                // Check if previous non-whitespace character was a backslash (line continuation)
-                let mut check_pos = self.position;
-                while check_pos > 0 {
-                    check_pos -= 1;
-                    let prev_ch = self.input[check_pos];
-                    if prev_ch == '\\' {
-                        // Line continuation - skip the newline and continue
-                        self.line += 1;
-                        self.column = 1;
-                        self.advance(); // consume newline
-                        // Skip whitespace on the next line
-                        self.skip_whitespace();
-                        return self.next_token();
-                    } else if prev_ch != ' ' && prev_ch != '\t' {
-                        // Not a line continuation
-                        break;
-                    }
-                }
-                self.line += 1;
-                self.column = 1;
-                TokenKind::Newline
+            '\n' | '\r' => {
+                self.advance();
+                Token::new(TokenKind::Newline, String::from(ch), (start_line, start_col))
             }
-            '\r' => {
-                // Check if previous non-whitespace character was a backslash (line continuation)
-                let mut check_pos = self.position;
-                while check_pos > 0 {
-                    check_pos -= 1;
-                    let prev_ch = self.input[check_pos];
-                    if prev_ch == '\\' {
-                        // Line continuation - skip the newline and continue
-                        if self.peek() == Some('\n') {
-                            self.advance();
-                        }
-                        self.line += 1;
-                        self.column = 1;
-                        self.advance(); // consume \r
-                        // Skip whitespace on the next line
-                        self.skip_whitespace();
-                        return self.next_token();
-                    } else if prev_ch != ' ' && prev_ch != '\t' {
-                        // Not a line continuation
-                        break;
-                    }
+            // Comments
+            '#' => {
+                self.skip_comment();
+                return self.next_token();
+            }
+            // Operators
+            '+' => {
+                // Check for increment operator (++)
+                if self.peek() == Some('+') {
+                    self.advance(); // Advance past first '+'
+                    self.advance(); // Advance past second '+'
+                    Token::new(TokenKind::Increment, "++".to_string(), (start_line, start_col))
+                } else {
+                    self.advance(); // Advance past '+'
+                    Token::new(TokenKind::Plus, String::from(ch), (start_line, start_col))
                 }
-                if self.peek() == Some('\n') {
+            }
+            '-' => {
+                // Check for arrow operator (->) first
+                if self.peek() == Some('>') {
+                    self.advance(); // Advance past '-'
+                    self.advance(); // Advance past '>'
+                    Token::new(TokenKind::Arrow, "->".to_string(), (start_line, start_col))
+                } else if self.peek() == Some('-') {
+                    // Check for decrement operator (--)
+                    self.advance(); // Advance past first '-'
+                    self.advance(); // Advance past second '-'
+                    Token::new(TokenKind::Decrement, "--".to_string(), (start_line, start_col))
+                } else {
+                    self.advance(); // Advance past '-'
+                    Token::new(TokenKind::Minus, String::from(ch), (start_line, start_col))
+                }
+            }
+            '→' => {
+                // Unicode arrow operator (→) - equivalent to ->
+                // advance() already handles Unicode correctly
+                self.advance();
+                Token::new(TokenKind::Arrow, "→".to_string(), (start_line, start_col))
+            }
+            '*' => {
+                // Check next character before advancing
+                if self.peek() == Some('*') {
+                    self.advance(); // Advance past first '*'
+                    self.advance(); // Advance past second '*'
+                    Token::new(TokenKind::Power, "**".to_string(), (start_line, start_col))
+                } else {
+                    self.advance(); // Advance past '*'
+                    Token::new(TokenKind::Star, String::from(ch), (start_line, start_col))
+                }
+            }
+            '/' => {
+                self.advance();
+                Token::new(TokenKind::Slash, String::from(ch), (start_line, start_col))
+            }
+            '%' => {
+                self.advance();
+                Token::new(TokenKind::Percent, String::from(ch), (start_line, start_col))
+            }
+            '<' => {
+                // Check next character before advancing
+                if self.peek() == Some('<') {
+                    self.advance(); // Advance past '<'
+                    self.advance(); // Advance past second '<'
+                    Token::new(TokenKind::LeftShift, "<<".to_string(), (start_line, start_col))
+                } else if self.peek() == Some('=') {
+                    self.advance(); // Advance past '<'
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::LessEqual, "<=".to_string(), (start_line, start_col))
+                } else {
+                    self.advance(); // Advance past '<'
+                    Token::new(TokenKind::Less, String::from(ch), (start_line, start_col))
+                }
+            }
+            '>' => {
+                // Check next character before advancing
+                if self.peek() == Some('>') {
+                    self.advance(); // Advance past '>'
+                    self.advance(); // Advance past second '>'
+                    Token::new(TokenKind::RightShift, ">>".to_string(), (start_line, start_col))
+                } else if self.peek() == Some('=') {
+                    self.advance(); // Advance past '>'
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::GreaterEqual, ">=".to_string(), (start_line, start_col))
+                } else {
+                    self.advance(); // Advance past '>'
+                    Token::new(TokenKind::Greater, String::from(ch), (start_line, start_col))
+                }
+            }
+            '=' => {
+                // Check next character before advancing
+                if self.peek() == Some('=') {
+                    self.advance(); // Advance past '='
+                    self.advance(); // Advance past second '='
+                    Token::new(TokenKind::Equal, "==".to_string(), (start_line, start_col))
+                } else {
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::Assignment, String::from(ch), (start_line, start_col))
+                }
+            }
+            '!' => {
+                // Check next character before advancing
+                if self.peek() == Some('=') {
+                    self.advance(); // Advance past '!'
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::NotEqual, "!=".to_string(), (start_line, start_col))
+                } else {
+                    return Err(format!("Unexpected character: {}", ch));
+                }
+            }
+            '?' => {
+                // Check for null coalesce (??) or optional chain (?.)
+                if self.peek() == Some('?') {
+                    self.advance(); // Advance past first '?'
+                    self.advance(); // Advance past second '?'
+                    Token::new(TokenKind::NullCoalesce, "??".to_string(), (start_line, start_col))
+                } else if self.peek() == Some('.') {
+                    self.advance(); // Advance past '?'
+                    self.advance(); // Advance past '.'
+                    Token::new(TokenKind::OptionalChain, "?.".to_string(), (start_line, start_col))
+                } else {
+                    return Err(format!("Unexpected character: {} (use ?? for null coalesce or ?. for optional chaining)", ch));
+                }
+            }
+            '&' => {
+                self.advance();
+                let next = self.source[self.position..].chars().next();
+                if next == Some('&') {
                     self.advance();
+                    Token::new(TokenKind::And, "&&".to_string(), (start_line, start_col))
+                } else {
+                    Token::new(TokenKind::BitAnd, String::from(ch), (start_line, start_col))
                 }
-                self.line += 1;
-                self.column = 1;
-                TokenKind::Newline
             }
-
+            '|' => {
+                self.advance();
+                let next = self.source[self.position..].chars().next();
+                if next == Some('|') {
+                    self.advance();
+                    Token::new(TokenKind::Or, "||".to_string(), (start_line, start_col))
+                } else {
+                    Token::new(TokenKind::BitOr, String::from(ch), (start_line, start_col))
+                }
+            }
+            '^' => {
+                self.advance();
+                Token::new(TokenKind::BitXor, String::from(ch), (start_line, start_col))
+            }
+            '~' => {
+                self.advance();
+                Token::new(TokenKind::BitNot, String::from(ch), (start_line, start_col))
+            }
+            // Delimiters
+            '(' => {
+                self.advance();
+                Token::new(TokenKind::LeftParen, String::from(ch), (start_line, start_col))
+            }
+            ')' => {
+                self.advance();
+                Token::new(TokenKind::RightParen, String::from(ch), (start_line, start_col))
+            }
+            '{' => {
+                self.advance();
+                Token::new(TokenKind::LeftBrace, String::from(ch), (start_line, start_col))
+            }
+            '}' => {
+                self.advance();
+                Token::new(TokenKind::RightBrace, String::from(ch), (start_line, start_col))
+            }
+            '[' => {
+                self.advance();
+                Token::new(TokenKind::LeftBracket, String::from(ch), (start_line, start_col))
+            }
+            ']' => {
+                self.advance();
+                Token::new(TokenKind::RightBracket, String::from(ch), (start_line, start_col))
+            }
+            ',' => {
+                self.advance();
+                Token::new(TokenKind::Comma, String::from(ch), (start_line, start_col))
+            }
+            ';' => {
+                self.advance();
+                Token::new(TokenKind::Semicolon, String::from(ch), (start_line, start_col))
+            }
+            ':' => {
+                self.advance();
+                Token::new(TokenKind::Colon, String::from(ch), (start_line, start_col))
+            }
+            '.' => {
+                self.advance();
+                Token::new(TokenKind::Dot, String::from(ch), (start_line, start_col))
+            }
+            // String and char literals
+            '"' => {
+                self.read_string(ch)?
+            }
+            '\'' => {
+                // Check if it's a char literal (single character) or string literal
+                self.read_char_or_string(ch)?
+            }
+            // Numbers
+            '0'..='9' => {
+                self.read_number()?
+            }
+            // Identifiers and keywords
+            'a'..='z' | 'A'..='Z' | '_' => {
+                self.read_identifier()?
+            }
             _ => {
-                return Err(LexError {
-                    message: format!("Unexpected character: {}", ch),
-                    span: self.current_span(1),
-                });
+                return Err(format!("Unexpected character: {} at line {}:{}", ch, self.line, self.column));
             }
         };
 
-        // Only advance if we haven't already (numbers, identifiers, and strings advance themselves)
-        if !matches!(kind, TokenKind::Identifier(_) | TokenKind::Integer(_) | TokenKind::Float(_) | TokenKind::String(_)) {
-            self.advance();
-        }
-        let span = Span::new(start_pos, self.position, start_line, start_col);
-
-        Ok(Some(Token::new(kind, span)))
+        Ok(Some(token))
     }
 
-    fn read_string(&mut self, quote: char) -> Result<TokenKind, LexError> {
-        let mut value = String::new();
-        let mut escaped = false;
-
-        self.advance(); // Skip opening quote
-
-        loop {
-            if self.position >= self.input.len() {
-                return Err(LexError {
-                    message: "Unterminated string literal".to_string(),
-                    span: self.current_span(1),
-                });
-            }
-
-            let ch = self.input[self.position];
-            self.advance();
-
-            if escaped {
-                match ch {
-                    'n' => value.push('\n'),
-                    't' => value.push('\t'),
-                    'r' => value.push('\r'),
-                    '\\' => value.push('\\'),
-                    '"' => value.push('"'),
-                    '\'' => value.push('\''),
-                    _ => {
-                        return Err(LexError {
-                            message: format!("Invalid escape sequence: \\{}", ch),
-                            span: self.current_span(1),
-                        });
-                    }
+    fn advance(&mut self) {
+        if self.position < self.source.len() {
+            // Get the character at current byte position to check for newline
+            let remaining = &self.source[self.position..];
+            if let Some(ch) = remaining.chars().next() {
+                if ch == '\n' {
+                    self.line += 1;
+                    self.column = 1;
+                } else {
+                    self.column += 1;
                 }
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == quote {
-                break;
+                // Advance by the byte length of this character (handles Unicode)
+                self.position += ch.len_utf8();
             } else {
-                value.push(ch);
-            }
-        }
-
-        Ok(TokenKind::String(value))
-    }
-
-    fn read_number(&mut self) -> Result<TokenKind, LexError> {
-        let mut value = String::new();
-        let mut is_float = false;
-        let mut is_hex = false;
-        let mut is_binary = false;
-
-        // Add the first digit (current position)
-        if self.position < self.input.len() {
-            value.push(self.input[self.position]);
-            self.advance();
-        }
-
-        // Check for hex (0x) or binary (0b) prefix
-        if value == "0" && self.position < self.input.len() {
-            match self.input[self.position] {
-                'x' | 'X' => {
-                    value.push(self.input[self.position]);
-                    self.advance();
-                    is_hex = true;
-                }
-                'b' | 'B' => {
-                    value.push(self.input[self.position]);
-                    self.advance();
-                    is_binary = true;
-                }
-                _ => {}
-            }
-        }
-
-        // Read digits
-        while self.position < self.input.len() {
-            let ch = self.input[self.position];
-            match ch {
-                '0'..='9' | 'a'..='f' | 'A'..='F' if is_hex => {
-                    value.push(ch);
-                    self.advance();
-                }
-                '0'..='1' if is_binary => {
-                    value.push(ch);
-                    self.advance();
-                }
-                '0'..='9' if !is_hex && !is_binary => {
-                    value.push(ch);
-                    self.advance();
-                }
-                '.' if !is_float && !is_hex && !is_binary => {
-                    value.push(ch);
-                    self.advance();
-                    is_float = true;
-                }
-                'e' | 'E' if !is_hex && !is_binary => {
-                    value.push(ch);
-                    self.advance();
-                    if self.position < self.input.len() {
-                        let next = self.input[self.position];
-                        if next == '+' || next == '-' {
-                            value.push(next);
-                            self.advance();
-                        }
-                    }
-                    is_float = true;
-                }
-                _ => break,
-            }
-        }
-
-        if is_hex {
-            let num = i64::from_str_radix(&value[2..], 16)
-                .map_err(|_| LexError {
-                    message: format!("Invalid hex number: {}", value),
-                    span: self.current_span(value.len()),
-                })?;
-            Ok(TokenKind::Integer(num))
-        } else if is_binary {
-            let num = i64::from_str_radix(&value[2..], 2)
-                .map_err(|_| LexError {
-                    message: format!("Invalid binary number: {}", value),
-                    span: self.current_span(value.len()),
-                })?;
-            Ok(TokenKind::Integer(num))
-        } else if is_float {
-            let num = value.parse::<f64>()
-                .map_err(|_| LexError {
-                    message: format!("Invalid float number: {}", value),
-                    span: self.current_span(value.len()),
-                })?;
-            Ok(TokenKind::Float(num))
-        } else {
-            let num = value.parse::<i64>()
-                .map_err(|_| LexError {
-                    message: format!("Invalid integer: {}", value),
-                    span: self.current_span(value.len()),
-                })?;
-            Ok(TokenKind::Integer(num))
-        }
-    }
-
-    fn read_identifier(&mut self) -> Result<TokenKind, LexError> {
-        let mut value = String::new();
-
-        // Add the first character (current position)
-        if self.position < self.input.len() {
-            value.push(self.input[self.position]);
-            self.advance();
-        }
-
-        while self.position < self.input.len() {
-            let ch = self.input[self.position];
-            if ch.is_alphanumeric() || ch == '_' {
-                value.push(ch);
-                self.advance();
-            } else {
-                break;
-            }
-        }
-
-        if let Some(keyword) = get_keyword(&value) {
-            Ok(keyword)
-        } else {
-            Ok(TokenKind::Identifier(value))
-        }
-    }
-
-    fn read_single_comment(&mut self) -> Result<TokenKind, LexError> {
-        let mut value = String::new();
-
-        // Skip the '#' character
-        if self.position < self.input.len() {
-            self.advance();
-        }
-
-        while self.position < self.input.len() {
-            let ch = self.input[self.position];
-            if ch == '\n' || ch == '\r' {
-                break;
-            }
-            value.push(ch);
-            self.advance();
-        }
-
-        Ok(TokenKind::Comment(value))
-    }
-
-    fn read_multiline_comment(&mut self) -> Result<TokenKind, LexError> {
-        let mut value = String::new();
-        let mut last_hash = false;
-
-        loop {
-            if self.position >= self.input.len() {
-                return Err(LexError {
-                    message: "Unterminated multi-line comment".to_string(),
-                    span: self.current_span(1),
-                });
-            }
-
-            let ch = self.input[self.position];
-            self.advance();
-
-            if last_hash && ch == '#' {
-                value.pop(); // Remove the last '#'
-                break;
-            }
-            last_hash = ch == '#';
-            value.push(ch);
-        }
-
-        Ok(TokenKind::MultiLineComment(value))
-    }
-
-    fn skip_whitespace(&mut self) {
-        while self.position < self.input.len() {
-            let ch = self.input[self.position];
-            if ch == ' ' || ch == '\t' {
-                self.advance();
-            } else {
-                break;
+                // Fallback: advance by 1 byte (shouldn't happen)
+                self.position += 1;
             }
         }
     }
 
     fn peek(&self) -> Option<char> {
-        if self.position + 1 < self.input.len() {
-            Some(self.input[self.position + 1])
+        if self.position < self.source.len() {
+            // Get the character at the next position after current
+            // First, get current char to know its byte length
+            let remaining = &self.source[self.position..];
+            if let Some(current_ch) = remaining.chars().next() {
+                // Advance past current character
+                let next_pos = self.position + current_ch.len_utf8();
+                if next_pos < self.source.len() {
+                    let next_remaining = &self.source[next_pos..];
+                    next_remaining.chars().next()
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         } else {
             None
         }
     }
 
-    fn advance(&mut self) {
-        if self.position < self.input.len() {
-            self.position += 1;
-            self.column += 1;
+    fn skip_whitespace(&mut self) {
+        while self.position < self.source.len() {
+            let remaining = &self.source[self.position..];
+            if let Some(ch) = remaining.chars().next() {
+                if ch == ' ' || ch == '\t' {
+                    self.advance();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
         }
     }
 
-    fn current_span(&self, length: usize) -> Span {
-        Span::new(
-            self.position,
-            self.position + length,
-            self.line,
-            self.column,
-        )
+    fn skip_comment(&mut self) {
+        while self.position < self.source.len() {
+            let remaining = &self.source[self.position..];
+            if let Some(ch) = remaining.chars().next() {
+                if ch == '\n' || ch == '\r' {
+                    break;
+                }
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn read_char_or_string(&mut self, quote: char) -> Result<Token, String> {
+        let start_line = self.line;
+        let start_col = self.column;
+        self.advance(); // Skip opening quote
+        
+        if self.position >= self.source.len() {
+            return Err("Unterminated character literal".to_string());
+        }
+        
+        let remaining = &self.source[self.position..];
+        let ch = match remaining.chars().next() {
+            Some(c) => c,
+            None => return Err("Unterminated character literal".to_string()),
+        };
+        
+        // Check if it's an escape sequence
+        if ch == '\\' {
+            self.advance();
+            if self.position >= self.source.len() {
+                return Err("Unterminated escape sequence".to_string());
+            }
+            let escaped_remaining = &self.source[self.position..];
+            let escaped = match escaped_remaining.chars().next() {
+                Some(c) => c,
+                None => return Err("Unterminated escape sequence".to_string()),
+            };
+            let char_value = match escaped {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                '\\' => '\\',
+                '\'' => '\'',
+                '"' => '"',
+                _ => escaped,
+            };
+            self.advance();
+            
+            // Check for closing quote
+            let closing_remaining = &self.source[self.position..];
+            if self.position >= self.source.len() || 
+               closing_remaining.chars().next().map(|c| c != quote).unwrap_or(true) {
+                return Err("Character literal must be exactly one character".to_string());
+            }
+            self.advance(); // Skip closing quote
+            
+            Ok(Token::new(TokenKind::Char, char_value.to_string(), (start_line, start_col)))
+        } else {
+            // Regular character
+            let char_value = ch;
+            self.advance();
+            
+            // Check for closing quote
+            let closing_remaining = &self.source[self.position..];
+            if self.position >= self.source.len() || 
+               closing_remaining.chars().next().map(|c| c != quote).unwrap_or(true) {
+                // Not a char literal, treat as string
+                return self.read_string(quote);
+            }
+            self.advance(); // Skip closing quote
+            
+            Ok(Token::new(TokenKind::Char, char_value.to_string(), (start_line, start_col)))
+        }
+    }
+
+    fn read_string(&mut self, quote: char) -> Result<Token, String> {
+        let start_line = self.line;
+        let start_col = self.column;
+        self.advance(); // Skip opening quote
+        let mut value = String::new();
+        let mut has_interpolation = false;
+        let mut found_closing_quote = false;
+        
+        while self.position < self.source.len() {
+            let remaining = &self.source[self.position..];
+            let ch = match remaining.chars().next() {
+                Some(c) => c,
+                None => break,
+            };
+            if ch == quote {
+                self.advance(); // Skip closing quote
+                found_closing_quote = true;
+                break;
+            } else if ch == '{' {
+                // Check if it's an interpolation (not escaped)
+                if self.position > 0 {
+                    let prev_remaining = &self.source[self.position - 1..];
+                    if let Some(prev_ch) = prev_remaining.chars().next() {
+                        if prev_ch != '\\' {
+                            has_interpolation = true;
+                        }
+                    }
+                } else {
+                    has_interpolation = true;
+                }
+                value.push(ch);
+                self.advance();
+            } else if ch == '\\' {
+                self.advance();
+                if self.position < self.source.len() {
+                    let escaped_remaining = &self.source[self.position..];
+                    let escaped = match escaped_remaining.chars().next() {
+                        Some(c) => c,
+                        None => break,
+                    };
+                    value.push(match escaped {
+                        'n' => '\n',
+                        't' => '\t',
+                        'r' => '\r',
+                        '\\' => '\\',
+                        '"' => '"',
+                        '\'' => '\'',
+                        '{' => '{', // Allow escaping {
+                        '}' => '}', // Allow escaping }
+                        _ => escaped,
+                    });
+                    self.advance();
+                }
+            } else {
+                value.push(ch);
+                self.advance();
+            }
+        }
+        
+        // Check if string was properly terminated
+        if !found_closing_quote {
+            return Err(format!("Unterminated string literal starting at line {}, column {}", start_line, start_col));
+        }
+        
+        // If string contains unescaped {, mark it as interpolated
+        if has_interpolation {
+            Ok(Token::new(TokenKind::InterpolatedString, value, (start_line, start_col)))
+        } else {
+            Ok(Token::new(TokenKind::String, value, (start_line, start_col)))
+        }
+    }
+
+    fn read_number(&mut self) -> Result<Token, String> {
+        let start_line = self.line;
+        let start_col = self.column;
+        let mut value = String::new();
+        let mut has_dot = false;
+        let mut has_exponent = false;
+        
+        // Check for hex (0x) or binary (0b) prefixes
+        if self.position < self.source.len() {
+            let remaining = &self.source[self.position..];
+            if let Some(ch) = remaining.chars().next() {
+                if ch == '0' {
+                    let next_remaining = &self.source[self.position + 1..];
+                    if let Some(next_ch) = next_remaining.chars().next() {
+                        if next_ch == 'x' || next_ch == 'X' {
+                            // Hexadecimal literal: 0xFF, 0xABCD
+                            self.advance(); // consume '0'
+                            self.advance(); // consume 'x' or 'X'
+                            value.push('0');
+                            value.push('x');
+                            
+                            // Read hex digits
+                            let mut has_digits = false;
+                            while self.position < self.source.len() {
+                                let hex_remaining = &self.source[self.position..];
+                                if let Some(hex_ch) = hex_remaining.chars().next() {
+                                    if hex_ch.is_ascii_hexdigit() {
+                                        value.push(hex_ch);
+                                        has_digits = true;
+                                        self.advance();
+                                    } else {
+                                        break;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            if !has_digits {
+                                return Err(format!("Hexadecimal literal must have at least one digit at line {}:{}", self.line, self.column));
+                            }
+                            
+                            // Parse hex value
+                            let hex_str = &value[2..]; // Skip "0x"
+                            let int_val = i64::from_str_radix(hex_str, 16)
+                                .map_err(|_| format!("Invalid hexadecimal number at line {}:{}", self.line, self.column))?;
+                            
+                            return Ok(Token::new(TokenKind::Integer, int_val.to_string(), (start_line, start_col)));
+                        } else if next_ch == 'b' || next_ch == 'B' {
+                            // Binary literal: 0b1010, 0b1111
+                            self.advance(); // consume '0'
+                            self.advance(); // consume 'b' or 'B'
+                            value.push('0');
+                            value.push('b');
+                            
+                            // Read binary digits
+                            let mut has_digits = false;
+                            while self.position < self.source.len() {
+                                let bin_remaining = &self.source[self.position..];
+                                if let Some(bin_ch) = bin_remaining.chars().next() {
+                                    if bin_ch == '0' || bin_ch == '1' {
+                                        value.push(bin_ch);
+                                        has_digits = true;
+                                        self.advance();
+                                    } else {
+                                        break;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            if !has_digits {
+                                return Err(format!("Binary literal must have at least one digit at line {}:{}", self.line, self.column));
+                            }
+                            
+                            // Parse binary value
+                            let bin_str = &value[2..]; // Skip "0b"
+                            let int_val = i64::from_str_radix(bin_str, 2)
+                                .map_err(|_| format!("Invalid binary number at line {}:{}", self.line, self.column))?;
+                            
+                            return Ok(Token::new(TokenKind::Integer, int_val.to_string(), (start_line, start_col)));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Regular decimal number parsing
+        while self.position < self.source.len() {
+            let remaining = &self.source[self.position..];
+            let ch = match remaining.chars().next() {
+                Some(c) => c,
+                None => break,
+            };
+            if ch.is_ascii_digit() {
+                value.push(ch);
+                self.advance();
+            } else if ch == '.' && !has_dot && !has_exponent {
+                value.push(ch);
+                has_dot = true;
+                self.advance();
+            } else if (ch == 'e' || ch == 'E') && !has_exponent {
+                // Scientific notation: 1e10, 2.5e-3, 1E+5
+                value.push(ch);
+                has_exponent = true;
+                has_dot = true; // Once we have exponent, treat as float
+                self.advance();
+                
+                // Optional + or - after e/E
+                if self.position < self.source.len() {
+                    let next_remaining = &self.source[self.position..];
+                    if let Some(next_ch) = next_remaining.chars().next() {
+                        if next_ch == '+' || next_ch == '-' {
+                            value.push(next_ch);
+                            self.advance();
+                        }
+                    }
+                }
+                
+                // Exponent must be followed by digits
+                if self.position >= self.source.len() {
+                    return Err(format!("Exponent must be followed by digits at line {}:{}", self.line, self.column));
+                }
+                let digit_remaining = &self.source[self.position..];
+                if let Some(digit_ch) = digit_remaining.chars().next() {
+                    if !digit_ch.is_ascii_digit() {
+                        return Err(format!("Exponent must be followed by digits at line {}:{}", self.line, self.column));
+                    }
+                } else {
+                    return Err(format!("Exponent must be followed by digits at line {}:{}", self.line, self.column));
+                }
+            } else {
+                break;
+            }
+        }
+        
+        let kind = if has_dot || has_exponent {
+            TokenKind::Float
+        } else {
+            TokenKind::Integer
+        };
+        
+        Ok(Token::new(kind, value, (start_line, start_col)))
+    }
+
+    fn read_identifier(&mut self) -> Result<Token, String> {
+        let start_line = self.line;
+        let start_col = self.column;
+        let mut value = String::new();
+        
+        while self.position < self.source.len() {
+            let remaining = &self.source[self.position..];
+            if let Some(ch) = remaining.chars().next() {
+                if ch.is_ascii_alphanumeric() || ch == '_' {
+                    value.push(ch);
+                    self.advance();
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        let kind = if is_keyword(&value) {
+            TokenKind::Keyword
+        } else {
+            TokenKind::Identifier
+        };
+        
+        Ok(Token::new(kind, value, (start_line, start_col)))
     }
 }
 

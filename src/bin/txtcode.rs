@@ -5,12 +5,16 @@ use std::path::PathBuf;
 // Binary must use txtcode:: to access library modules (they're separate crates in same package)
 use txtcode::lexer::Lexer;
 use txtcode::parser::Parser;
-use txtcode::runtime::vm::{VirtualMachine, Value};
+use txtcode::runtime::vm::VirtualMachine;
+use txtcode::runtime::Value;
 use txtcode::lexer::TokenKind;
 use txtcode::compiler::optimizer::{Optimizer, OptimizationLevel};
 use txtcode::security::{Obfuscator, BytecodeEncryptor};
 use txtcode::compiler::bytecode::BytecodeCompiler;
 use txtcode::cli::package;
+use txtcode::config::Config;
+use txtcode::tools::logger;
+use sha2::{Sha256, Digest};
 
 #[derive(ClapParser)]
 #[command(name = "txtcode")]
@@ -24,6 +28,26 @@ pub struct Cli {
     /// File to execute (when no subcommand specified)
     #[arg(value_name = "FILE")]
     pub file: Option<PathBuf>,
+    
+    /// Enable safe mode (disables exec() function)
+    #[arg(long, global = true)]
+    pub safe_mode: bool,
+    
+    /// Allow exec() function (overrides --safe-mode)
+    #[arg(long, global = true)]
+    pub allow_exec: bool,
+    
+    /// Enable debug mode (verbose execution logging)
+    #[arg(long, short = 'd', global = true)]
+    pub debug: bool,
+    
+    /// Enable verbose output
+    #[arg(long, short = 'v', global = true)]
+    pub verbose: bool,
+    
+    /// Quiet mode (minimal output)
+    #[arg(long, short = 'q', global = true)]
+    pub quiet: bool,
 }
 
 #[derive(Subcommand)]
@@ -43,9 +67,9 @@ pub enum Commands {
         /// Target (native, wasm, bytecode)
         #[arg(short, long, default_value = "bytecode")]
         target: String,
-        /// Optimization level (none, basic, aggressive)
-        #[arg(short, long, default_value = "basic")]
-        optimize: String,
+                /// Optimization level (none, basic, aggressive)
+                #[arg(long, default_value = "basic")]
+                optimize: String,
         /// Enable obfuscation
         #[arg(long)]
         obfuscate: bool,
@@ -73,6 +97,27 @@ pub enum Commands {
         #[command(subcommand)]
         command: PackageCommands,
     },
+    /// Migrate code between versions
+    Migrate {
+        /// Files to migrate
+        #[arg(short, long)]
+        files: Vec<String>,
+        /// Directory to migrate (all .tc files)
+        #[arg(short, long)]
+        directory: Option<String>,
+        /// Source version (e.g., "0.1.0")
+        #[arg(long)]
+        from: Option<String>,
+        /// Target version (e.g., "0.2.0")
+        #[arg(long)]
+        to: Option<String>,
+        /// Dry run (don't modify files, just report)
+        #[arg(long, default_value = "true")]
+        dry_run: bool,
+        /// Strict mode (errors on deprecated features)
+        #[arg(long)]
+        strict: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -96,9 +141,26 @@ pub enum PackageCommands {
         /// Package version
         version: String,
     },
+    /// List dependencies
+    List,
 }
 
 pub fn main() {
+    // Initialize txtcode runtime directories
+    if let Err(e) = txtcode::config::Config::ensure_directories() {
+        eprintln!("Warning: Failed to initialize txtcode directories: {}", e);
+    }
+    
+    // Initialize default config if it doesn't exist
+    if let Err(e) = txtcode::config::Config::init_default_config() {
+        eprintln!("Warning: Failed to initialize config file: {}", e);
+    }
+
+    // Initialize logger
+    if let Err(e) = txtcode::tools::logger::init_logger("txtcode") {
+        eprintln!("Warning: Failed to initialize logger: {}", e);
+    }
+
     let cli = Cli::parse();
 
     match (&cli.command, &cli.file) {
@@ -111,7 +173,7 @@ pub fn main() {
         }
         (None, Some(file)) => {
             // File provided, no subcommand → Run file
-            if let Err(e) = run_file(file) {
+            if let Err(e) = run_file(file, cli.safe_mode, cli.allow_exec, cli.debug, cli.verbose) {
                 eprintln!("Error: {}", e);
                 std::process::exit(1);
             }
@@ -120,7 +182,7 @@ pub fn main() {
             // Subcommand provided → Use existing subcommand logic
             match cmd {
                 Commands::Run { file } => {
-                    if let Err(e) = run_file(file) {
+                    if let Err(e) = run_file(file, cli.safe_mode, cli.allow_exec, cli.debug, cli.verbose) {
                         eprintln!("Error: {}", e);
                         std::process::exit(1);
                     }
@@ -155,12 +217,30 @@ pub fn main() {
                         std::process::exit(1);
                     }
                 }
+                Commands::Migrate { files, directory, from, to, dry_run, strict } => {
+                    use txtcode::cli::migrate::migrate_command;
+                    if let Err(e) = migrate_command(files.clone(), from.clone(), to.clone(), *dry_run, *strict, directory.clone()) {
+                        eprintln!("Error: {}", e);
+                        std::process::exit(1);
+                    }
+                }
             }
         }
     }
 }
 
-fn run_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn run_file(file: &PathBuf, safe_mode: bool, allow_exec: bool, debug: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+    // Load user config for defaults
+    let user_config = Config::load_config().unwrap_or_default();
+    
+    // Use config defaults if CLI args not provided (CLI args override config)
+    let safe_mode = safe_mode || user_config.runtime.safe_mode;
+    let allow_exec = allow_exec || user_config.runtime.allow_exec;
+    let debug = debug || user_config.runtime.debug;
+    let verbose = verbose || user_config.runtime.verbose;
+    
+    logger::log_info(&format!("Running file: {}", file.display()));
+    
     // Check if file exists
     if !file.exists() {
         return Err(format!("Error: File '{}' not found", file.display()).into());
@@ -191,8 +271,10 @@ fn run_file(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let program = parser.parse()
         .map_err(|e| format!("Parse error: {}", e))?;
     
-    // Interpret with safety limits
-    let mut vm = VirtualMachine::new();
+    // Interpret with safety limits and options
+    let exec_allowed = if allow_exec { true } else { !safe_mode };
+    let mut vm = VirtualMachine::with_all_options(safe_mode, debug, verbose);
+    vm.set_exec_allowed(exec_allowed);
     vm.interpret(&program)
         .map_err(|e| format!("Runtime error: {}", e))?;
     
@@ -206,10 +288,45 @@ fn compile_file(
     obfuscate: bool,
     encrypt: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Load user config for defaults
+    let user_config = Config::load_config().unwrap_or_default();
+    
+    // Use config defaults if CLI args not provided (use CLI args as override)
+    let optimize = if optimize == "basic" && user_config.compiler.optimization != "basic" {
+        &user_config.compiler.optimization
+    } else {
+        optimize
+    };
+    let obfuscate = obfuscate || user_config.compiler.obfuscate;
+    let encrypt = encrypt || user_config.compiler.encrypt;
+    
     let source = fs::read_to_string(file)?;
     
+    // Check cache if enabled
+    if user_config.package.cache_packages && !encrypt {
+        let cache_key = generate_cache_key(&source, optimize, obfuscate)?;
+        let cache_path = Config::get_cache_path(&cache_key)?;
+        
+        if cache_path.exists() {
+            logger::log_info(&format!("Using cached bytecode for: {}", file.display()));
+            
+            // If output specified, copy from cache; otherwise use cache directly
+            if let Some(output_path) = output {
+                fs::copy(&cache_path, output_path)?;
+                println!("Compiled (from cache) to: {}", output_path.display());
+            } else {
+                let default_output = file.with_extension("txtc");
+                fs::copy(&cache_path, &default_output)?;
+                println!("Compiled (from cache) to: {}", default_output.display());
+            }
+            return Ok(());
+        }
+    }
+    
+    logger::log_info(&format!("Compiling: {}", file.display()));
+    
     // Lex
-    let mut lexer = Lexer::new(source);
+    let mut lexer = Lexer::new(source.clone());
     let tokens = lexer.tokenize()?;
     
     // Parse
@@ -220,7 +337,11 @@ fn compile_file(
     let opt_level = match optimize {
         "none" => OptimizationLevel::None,
         "basic" => OptimizationLevel::Basic,
-        "aggressive" => OptimizationLevel::Aggressive,
+        "aggressive" => {
+            // Aggressive optimization removed - fall back to basic
+            eprintln!("Warning: 'aggressive' optimization level removed. Using 'basic' instead.");
+            OptimizationLevel::Basic
+        },
         _ => OptimizationLevel::Basic,
     };
     let optimizer = Optimizer::new(opt_level);
@@ -245,16 +366,43 @@ fn compile_file(
         });
         fs::write(&output_path, encrypted.serialize())?;
         println!("Compiled and encrypted to: {}", output_path.display());
+        logger::log_info(&format!("Compiled and encrypted: {}", output_path.display()));
     } else {
+        let serialized = bincode::serialize(&bytecode_program)?;
+        
+        // Save to cache if enabled
+        if user_config.package.cache_packages {
+            let cache_key = generate_cache_key(&source, optimize, obfuscate)?;
+            let cache_path = Config::get_cache_path(&cache_key)?;
+            
+            // Ensure cache directory exists
+            if let Some(parent) = cache_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            
+            fs::write(&cache_path, &serialized)?;
+            logger::log_info(&format!("Cached bytecode: {}", cache_path.display()));
+        }
+        
         let output_path = output.map(|p| p.clone()).unwrap_or_else(|| {
             file.with_extension("txtc")
         });
-        let serialized = bincode::serialize(&bytecode_program)?;
         fs::write(&output_path, serialized)?;
         println!("Compiled to: {}", output_path.display());
+        logger::log_info(&format!("Compiled: {}", output_path.display()));
     }
     
     Ok(())
+}
+
+/// Generate a cache key from source code and compile options
+fn generate_cache_key(source: &str, optimize: &str, obfuscate: bool) -> Result<String, Box<dyn std::error::Error>> {
+    let mut hasher = Sha256::new();
+    hasher.update(source.as_bytes());
+    hasher.update(optimize.as_bytes());
+    hasher.update(if obfuscate { b"1" } else { b"0" });
+    let hash = hasher.finalize();
+    Ok(hex::encode(&hash[..16])) // Use first 16 bytes for shorter key
 }
 
 fn format_files(files: &[PathBuf], write: bool) -> Result<(), Box<dyn std::error::Error>> {
@@ -386,6 +534,9 @@ fn handle_package_command(command: &PackageCommands) -> Result<(), Box<dyn std::
         }
         PackageCommands::Add { name, version } => {
             package::add_dependency(name.clone(), version.clone())?;
+        }
+        PackageCommands::List => {
+            package::list_dependencies()?;
         }
     }
     Ok(())

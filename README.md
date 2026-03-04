@@ -1,15 +1,33 @@
 # Txt-code Programming Language
 
-Txt-code is a simple, memorable, security-focused programming language designed for both cybersecurity tools and general development. It features built-in obfuscation and reverse-engineering protection while maintaining an easy-to-learn syntax.
+**Txt-code** © 2026 MD POOR
+
+Txtcode is a **deterministic cyber orchestration DSL** - a policy-enforced execution engine designed for security-sensitive automation and experimentation. It provides a safe bridge between AI planning and real-world actions, with built-in audit trails and permission systems.
+
+## License
+
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
+
+## Disclaimer
+
+This software is provided "as-is" without warranty of any kind.  
+By using Txt-code, you agree to respect the license and acknowledge MD POOR as the original author.
+
+---
+
+**Note:** "Txt-code" is the official name of this programming language.  
+Unauthorized use of this name for competing products may infringe on intellectual property rights.
 
 ## Features
 
-- **Simple Syntax**: Hybrid syntax supporting both `action → data` and `action data` patterns
-- **Security-First**: Built-in obfuscation, bytecode encryption, and anti-debugging protection
-- **Memory Safe**: Garbage-collected runtime with secure memory management
-- **Cross-Platform**: Compile to native code, WebAssembly, or bytecode
-- **Rich Standard Library**: Core utilities, cryptography, networking, I/O, and system operations
-- **Developer Tools**: REPL, formatter, linter, debugger, and documentation generator
+- **Cyber Orchestration**: Safe control of external pentest tools with permission enforcement
+- **Execution Transparency**: Full trace logging and replayable execution graphs
+- **Policy Enforcement**: Intent declarations, capability scoping, and rate limiting
+- **AI-Safe Design**: Structured error output and deterministic execution for AI agents
+- **Security-First**: Built-in audit trails, permission systems, and policy engines
+- **Developer Tools**: REPL, formatter, linter, and execution tracer
+
+> **Note**: See [NON-GOALS.md](NON-GOALS.md) for what Txtcode is NOT designed to do.
 
 ## Quick Start
 
@@ -99,13 +117,9 @@ cargo run -- run examples/hello.txt
 - [Security Features](docs/security-features.md)
 - [Contributing Guide](docs/contributing.md)
 
-## License
+## License Details
 
-Licensed under either of:
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-
-at your option.
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for the full license text.
 
 ## Contributing
 

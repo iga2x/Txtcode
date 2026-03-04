@@ -33,10 +33,16 @@ impl BytecodeEncryptor {
         let mut hasher = Sha256::new();
         
         // Use system time as part of key derivation
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_secs(),
+            Err(e) => {
+                // Fallback: use a default timestamp if system time fails
+                // This is a rare error (system clock set backwards), but we need to handle it
+                eprintln!("Warning: System time error in key derivation: {}. Using fallback timestamp.", e);
+                // Use a fixed timestamp as fallback (Jan 1, 2020)
+                1577836800
+            }
+        };
         hasher.update(&timestamp.to_le_bytes());
         
         // Use environment variables if available
