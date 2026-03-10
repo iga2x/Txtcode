@@ -16,22 +16,18 @@ err()   { printf "${RED}error${RESET}  %s\n" "$*" >&2; exit 1; }
 
 printf "\n${BOLD}Txt-code — Dev Install${RESET}\n\n"
 
-# Cargo may not be in PATH when run with sudo — check common locations
-CARGO="cargo"
-if ! command -v cargo >/dev/null 2>&1; then
-    for TRY in "$HOME/.cargo/bin/cargo" "/root/.cargo/bin/cargo" \
-               "/home/$SUDO_USER/.cargo/bin/cargo"; do
-        [ -x "$TRY" ] && { CARGO="$TRY"; break; }
-    done
-    command -v "$CARGO" >/dev/null 2>&1 || \
-        err "cargo not found. Install Rust: https://rustup.rs"
-fi
-
 # must be run from project root
 [ -f "Cargo.toml" ] || err "Run this from the project root (where Cargo.toml is)."
 
 ok "Building release binary..."
-"$CARGO" build --release --quiet
+# When run via sudo, build as the original user (who has rustup configured),
+# then the install step below runs as root.
+if [ -n "$SUDO_USER" ]; then
+    su - "$SUDO_USER" -c "cd '$PWD' && cargo build --release --quiet" \
+        || err "Build failed."
+else
+    cargo build --release --quiet || err "cargo not found. Install Rust: https://rustup.rs"
+fi
 
 SRC="target/release/${BIN_NAME}"
 [ -f "$SRC" ] || err "Build succeeded but binary not found at ${SRC}"
