@@ -467,6 +467,16 @@ pub fn call_user_function<VM: ExpressionVM>(
         name, args.len(), params.len()
     ));
     
+    // Guard against infinite recursion before pushing the next frame.
+    // Kept at 50 in debug mode — larger enums use more Rust stack per frame.
+    const MAX_CALL_DEPTH: usize = 50;
+    if vm.call_stack_depth() >= MAX_CALL_DEPTH {
+        return Err(RuntimeError::new(format!(
+            "Maximum call stack depth ({}) exceeded — possible infinite recursion in '{}'",
+            MAX_CALL_DEPTH, name
+        )));
+    }
+
     // Push call frame
     let span = match expr {
         Expression::FunctionCall { span, .. } => span,

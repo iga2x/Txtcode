@@ -117,6 +117,17 @@ impl JsonLib {
             Value::Function(_, _, _, _) => {
                 return Err(RuntimeError::new("Cannot encode functions to JSON".to_string()));
             }
+            Value::Result(ok, inner) => {
+                let inner_str = match Self::json_encode(inner)? {
+                    Value::String(s) => s,
+                    other => other.to_string(),
+                };
+                if *ok {
+                    format!("{{\"ok\":{}}}", inner_str)
+                } else {
+                    format!("{{\"err\":{}}}", inner_str)
+                }
+            }
         };
         
         // If the result is already a JSON string (starts with "), return it as-is

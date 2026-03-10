@@ -154,7 +154,15 @@ pub fn parse_primary(parser: &mut Parser) -> Result<Expression, String> {
             let mut elements = Vec::new();
             if !parser.check(crate::lexer::token::TokenKind::RightBracket) {
                 loop {
-                    elements.push(crate::parser::expressions::operators::parse_expression(parser)?);
+                    // Check for spread element: ...expr
+                    if parser.check(crate::lexer::token::TokenKind::Spread) {
+                        let span = crate::parser::utils::token_span_to_ast_span(&parser.peek().clone());
+                        parser.advance(); // consume ...
+                        let expr = crate::parser::expressions::operators::parse_expression(parser)?;
+                        elements.push(Expression::Spread { value: Box::new(expr), span });
+                    } else {
+                        elements.push(crate::parser::expressions::operators::parse_expression(parser)?);
+                    }
                     if !parser.check(crate::lexer::token::TokenKind::Comma) {
                         break;
                     }

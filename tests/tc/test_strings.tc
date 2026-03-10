@@ -1,0 +1,29 @@
+## String operation tests
+
+# Concatenation
+store → s → "hello" + " " + "world"
+assert(s == "hello world", "string concat")
+
+# Comparison
+assert("abc" == "abc", "string equality")
+assert("abc" != "def", "string inequality")
+
+# Length
+store → greeting → "hello"
+assert(len(greeting) == 5, "len")
+
+# Nested strings
+define → repeat_str → (s, n)
+  store → acc → ""
+  store → i → 0
+  while → i < n
+    store → acc → acc + s
+    store → i → i + 1
+  end
+  return → acc
+end
+
+assert(repeat_str("ab", 3) == "ababab", "repeat_str")
+assert(repeat_str("x", 0) == "", "repeat_str 0 times")
+
+print → "strings: all tests passed"

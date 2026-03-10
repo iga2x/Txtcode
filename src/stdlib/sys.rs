@@ -287,6 +287,201 @@ impl SysLib {
                 std::thread::sleep(std::time::Duration::from_millis(ms));
                 Ok(Value::Null)
             }
+            "env_list" => {
+                let vars: HashMap<String, Value> = std::env::vars()
+                    .map(|(k, v)| (k, Value::String(v)))
+                    .collect();
+                Ok(Value::Map(vars))
+            }
+            "signal_send" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(RuntimeError::new("signal_send requires 1-2 arguments (pid, signal?)".to_string()));
+                }
+                let pid = match &args[0] {
+                    Value::Integer(p) => *p,
+                    _ => return Err(RuntimeError::new("signal_send pid must be an integer".to_string())),
+                };
+                #[cfg(unix)]
+                {
+                    let signal = if args.len() == 2 {
+                        match &args[1] {
+                            Value::Integer(s) => *s as i32,
+                            Value::String(s) => match s.as_str() {
+                                "SIGTERM" | "TERM" => libc::SIGTERM,
+                                "SIGKILL" | "KILL" => libc::SIGKILL,
+                                "SIGINT"  | "INT"  => libc::SIGINT,
+                                "SIGHUP"  | "HUP"  => libc::SIGHUP,
+                                "SIGUSR1" | "USR1" => libc::SIGUSR1,
+                                "SIGUSR2" | "USR2" => libc::SIGUSR2,
+                                other => return Err(RuntimeError::new(format!("Unknown signal: {}", other))),
+                            },
+                            _ => libc::SIGTERM,
+                        }
+                    } else { libc::SIGTERM };
+                    unsafe {
+                        let result = libc::kill(pid as libc::pid_t, signal);
+                        Ok(Value::Boolean(result == 0))
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = pid;
+                    Err(RuntimeError::new("signal_send is not supported on this platform".to_string()))
+                }
+            }
+            "pipe_exec" => {
+                if !exec_allowed {
+                    return Err(RuntimeError::new("pipe_exec() is disabled in safe mode".to_string()));
+                }
+                if args.is_empty() || args.len() > 2 {
+                    return Err(RuntimeError::new("pipe_exec requires 1-2 arguments (cmd, stdin_input?)".to_string()));
+                }
+                let cmd_str = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("pipe_exec command must be a string".to_string())),
+                };
+                let stdin_input = if args.len() == 2 {
+                    match &args[1] { Value::String(s) => Some(s.clone()), _ => None }
+                } else { None };
+                use std::process::Stdio;
+                use std::io::Write;
+                let mut cmd = Command::new("sh");
+                cmd.arg("-c").arg(&cmd_str)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                if stdin_input.is_some() { cmd.stdin(Stdio::piped()); } else { cmd.stdin(Stdio::null()); }
+                let mut child = cmd.spawn()
+                    .map_err(|e| RuntimeError::new(format!("pipe_exec failed to start: {}", e)))?;
+                if let Some(input) = stdin_input {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        let _ = stdin.write_all(input.as_bytes());
+                    }
+                }
+                let output = child.wait_with_output()
+                    .map_err(|e| RuntimeError::new(format!("pipe_exec failed: {}", e)))?;
+                let mut result = HashMap::new();
+                result.insert("stdout".to_string(), Value::String(String::from_utf8_lossy(&output.stdout).to_string()));
+                result.insert("stderr".to_string(), Value::String(String::from_utf8_lossy(&output.stderr).to_string()));
+                result.insert("exit_code".to_string(), Value::Integer(output.status.code().unwrap_or(-1) as i64));
+                result.insert("success".to_string(), Value::Boolean(output.status.success()));
+                Ok(Value::Map(result))
+            }
+            "which" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("which requires 1 argument (binary)".to_string()));
+                }
+                let binary = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("which requires a string argument".to_string())),
+                };
+                let sep = if cfg!(windows) { ';' } else { ':' };
+                let path_var = std::env::var("PATH").unwrap_or_default();
+                for dir in path_var.split(sep) {
+                    let candidate = std::path::Path::new(dir).join(&binary);
+                    if candidate.is_file() {
+                        return Ok(Value::String(candidate.to_string_lossy().to_string()));
+                    }
+                }
+                Ok(Value::Null)
+            }
+            "is_root" => {
+                #[cfg(unix)]
+                {
+                    unsafe { Ok(Value::Boolean(libc::getuid() == 0)) }
+                }
+                #[cfg(not(unix))]
+                {
+                    Ok(Value::Boolean(false))
+                }
+            }
+            "cpu_count" => {
+                let count = std::thread::available_parallelism()
+                    .map(|n| n.get() as i64)
+                    .unwrap_or(1);
+                Ok(Value::Integer(count))
+            }
+            "memory_available" => {
+                #[cfg(target_os = "linux")]
+                {
+                    match std::fs::read_to_string("/proc/meminfo") {
+                        Ok(content) => {
+                            for line in content.lines() {
+                                if line.starts_with("MemAvailable:") {
+                                    let parts: Vec<&str> = line.split_whitespace().collect();
+                                    if parts.len() >= 2 {
+                                        if let Ok(kb) = parts[1].parse::<i64>() {
+                                            return Ok(Value::Integer(kb * 1024));
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(Value::Integer(0))
+                        }
+                        Err(_) => Ok(Value::Integer(0)),
+                    }
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    Ok(Value::Integer(0))
+                }
+            }
+            "disk_space" => {
+                let path = if args.is_empty() {
+                    ".".to_string()
+                } else {
+                    match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err(RuntimeError::new("disk_space path must be a string".to_string())),
+                    }
+                };
+                #[cfg(unix)]
+                {
+                    use std::ffi::CString;
+                    let c_path = CString::new(path.as_str())
+                        .map_err(|_| RuntimeError::new("Invalid path for disk_space".to_string()))?;
+                    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+                    let rc = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+                    if rc != 0 {
+                        return Err(RuntimeError::new(format!("disk_space failed for path: {}", path)));
+                    }
+                    let total = (stat.f_blocks as i64).saturating_mul(stat.f_frsize as i64);
+                    let available = (stat.f_bavail as i64).saturating_mul(stat.f_frsize as i64);
+                    let mut map = HashMap::new();
+                    map.insert("total".to_string(), Value::Integer(total));
+                    map.insert("available".to_string(), Value::Integer(available));
+                    map.insert("used".to_string(), Value::Integer(total.saturating_sub(available)));
+                    Ok(Value::Map(map))
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = path;
+                    Err(RuntimeError::new("disk_space is not supported on this platform".to_string()))
+                }
+            }
+            "os_name" => {
+                Ok(Value::String(std::env::consts::OS.to_string()))
+            }
+            "os_version" => {
+                #[cfg(unix)]
+                {
+                    if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
+                        for line in content.lines() {
+                            if line.starts_with("PRETTY_NAME=") {
+                                let val = line.trim_start_matches("PRETTY_NAME=").trim_matches('"');
+                                return Ok(Value::String(val.to_string()));
+                            }
+                        }
+                    }
+                    let output = Command::new("uname").arg("-r").output()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .unwrap_or_else(|_| "unknown".to_string());
+                    Ok(Value::String(output))
+                }
+                #[cfg(not(unix))]
+                {
+                    Ok(Value::String("unknown".to_string()))
+                }
+            }
             _ => Err(RuntimeError::new(format!("Unknown sys function: {}", name))),
         }
     }

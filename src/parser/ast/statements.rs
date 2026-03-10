@@ -125,6 +125,18 @@ pub enum Statement {
         scope: Option<String>, // Optional scope like "/tmp/*"
         span: Span,
     },
+    /// Type alias: type → UserId → int
+    TypeAlias {
+        name: String,
+        target: String,
+        span: Span,
+    },
+    /// Named error: error → NotFound → "Resource not found"
+    NamedError {
+        name: String,
+        message: Expression,
+        span: Span,
+    },
 }
 
 /// Program root node

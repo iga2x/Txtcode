@@ -48,9 +48,22 @@ pub enum TokenKind {
     Not,          // not
     NullCoalesce, // ??
     OptionalChain, // ?.
+    QuestionMark, // ? (standalone)
+    Pipe,         // |>
     Increment,    // ++
     Decrement,    // --
-    
+
+    // Compound assignment operators
+    PlusAssign,   // +=
+    MinusAssign,  // -=
+    StarAssign,   // *=
+    SlashAssign,  // /=
+    PercentAssign, // %=
+    PowerAssign,  // **=
+    BitAndAssign, // &=
+    BitOrAssign,  // |=
+    BitXorAssign, // ^=
+
     // Bitwise
     BitAnd,       // &
     BitOr,        // |
@@ -70,6 +83,7 @@ pub enum TokenKind {
     Semicolon,    // ;
     Colon,        // :
     Dot,          // .
+    Spread,       // ... (spread/rest operator)
     
     // Special
     Eof,

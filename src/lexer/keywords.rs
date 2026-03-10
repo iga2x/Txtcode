@@ -24,8 +24,8 @@ pub fn is_keyword(word: &str) -> bool {
         "import" | "use" | "from" | "as" | "export" |
         // Permissions
         "permission" |
-        // Intent declarations
-        "intent" | "ai_hint" | "allowed" | "forbidden" |
+        // Doc/hint declarations (intent/ai_hint are legacy aliases)
+        "intent" | "doc" | "ai_hint" | "hint" | "allowed" | "forbidden" |
         // Loop keywords
         "in" | "to" | "step" | "then" |
         // Async/await
@@ -45,6 +45,9 @@ pub fn canonicalize_keyword(word: &str) -> String {
         "elif" => "elseif".to_string(),
         "switch" => "match".to_string(),
         "foreach" => "for".to_string(),
+        // Generalized doc/hint (intent and ai_hint are kept as aliases)
+        "intent" => "doc".to_string(),
+        "ai_hint" | "ai-hint" | "aihint" => "hint".to_string(),
         _ => word.to_string(),
     }
 }

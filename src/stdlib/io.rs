@@ -444,6 +444,234 @@ impl IOLib {
                     _ => Err(RuntimeError::new("file_modified requires a string path".to_string())),
                 }
             }
+            "read_lines" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("read_lines requires 1 argument (path)".to_string()));
+                }
+                match &args[0] {
+                    Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(&PermissionResource::FileSystem("read".to_string()), Some(path.as_str()))?;
+                        }
+                        let validated_path = Self::validate_path(path)?;
+                        let content = fs::read_to_string(&validated_path)
+                            .map_err(|e| RuntimeError::new(format!("Failed to read file: {}", e)))?;
+                        let lines: Vec<Value> = content.lines().map(|l| Value::String(l.to_string())).collect();
+                        Ok(Value::Array(lines))
+                    }
+                    _ => Err(RuntimeError::new("read_lines requires a string path".to_string())),
+                }
+            }
+            "read_csv" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("read_csv requires 1 argument (path)".to_string()));
+                }
+                match &args[0] {
+                    Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(&PermissionResource::FileSystem("read".to_string()), Some(path.as_str()))?;
+                        }
+                        let validated_path = Self::validate_path(path)?;
+                        let content = fs::read_to_string(&validated_path)
+                            .map_err(|e| RuntimeError::new(format!("Failed to read CSV file: {}", e)))?;
+                        let mut rows: Vec<Value> = Vec::new();
+                        for line in content.lines() {
+                            if line.trim().is_empty() { continue; }
+                            let mut fields: Vec<Value> = Vec::new();
+                            let mut field = String::new();
+                            let mut in_quotes = false;
+                            let mut chars = line.chars().peekable();
+                            while let Some(c) = chars.next() {
+                                match c {
+                                    '"' if !in_quotes => { in_quotes = true; }
+                                    '"' if in_quotes => {
+                                        if chars.peek() == Some(&'"') { chars.next(); field.push('"'); }
+                                        else { in_quotes = false; }
+                                    }
+                                    ',' if !in_quotes => { fields.push(Value::String(field.clone())); field.clear(); }
+                                    _ => { field.push(c); }
+                                }
+                            }
+                            fields.push(Value::String(field));
+                            rows.push(Value::Array(fields));
+                        }
+                        Ok(Value::Array(rows))
+                    }
+                    _ => Err(RuntimeError::new("read_csv requires a string path".to_string())),
+                }
+            }
+            "temp_file" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::new("temp_file takes no arguments".to_string()));
+                }
+                let tmp_dir = env::temp_dir();
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .subsec_nanos();
+                let pid = std::process::id();
+                let filename = format!("txtcode_tmp_{}_{}", pid, nanos);
+                let tmp_path = tmp_dir.join(&filename);
+                fs::File::create(&tmp_path)
+                    .map_err(|e| RuntimeError::new(format!("Failed to create temp file: {}", e)))?;
+                Ok(Value::String(tmp_path.to_string_lossy().to_string()))
+            }
+            "watch_file" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("watch_file requires 1 argument (path)".to_string()));
+                }
+                match &args[0] {
+                    Value::String(path) => {
+                        let mut map = std::collections::HashMap::new();
+                        map.insert("path".to_string(), Value::String(path.clone()));
+                        match Self::validate_path(path) {
+                            Ok(validated_path) => {
+                                let exists = validated_path.exists();
+                                map.insert("exists".to_string(), Value::Boolean(exists));
+                                if exists {
+                                    if let Ok(meta) = fs::metadata(&validated_path) {
+                                        map.insert("size".to_string(), Value::Integer(meta.len() as i64));
+                                        if let Ok(modified) = meta.modified() {
+                                            if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
+                                                map.insert("modified".to_string(), Value::Integer(dur.as_secs() as i64));
+                                            } else {
+                                                map.insert("modified".to_string(), Value::Integer(0));
+                                            }
+                                        } else {
+                                            map.insert("modified".to_string(), Value::Integer(0));
+                                        }
+                                    }
+                                } else {
+                                    map.insert("size".to_string(), Value::Integer(0));
+                                    map.insert("modified".to_string(), Value::Integer(0));
+                                }
+                            }
+                            Err(_) => {
+                                map.insert("exists".to_string(), Value::Boolean(false));
+                                map.insert("size".to_string(), Value::Integer(0));
+                                map.insert("modified".to_string(), Value::Integer(0));
+                            }
+                        }
+                        Ok(Value::Map(map))
+                    }
+                    _ => Err(RuntimeError::new("watch_file requires a string path".to_string())),
+                }
+            }
+            "symlink_create" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new("symlink_create requires 2 arguments (target, link_path)".to_string()));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(target), Value::String(link_path)) => {
+                        let validated_link = Self::validate_path(link_path)?;
+                        #[cfg(unix)]
+                        {
+                            std::os::unix::fs::symlink(target, &validated_link)
+                                .map(|_| Value::Null)
+                                .map_err(|e| RuntimeError::new(format!("Failed to create symlink: {}", e)))
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            let _ = (target, validated_link);
+                            Err(RuntimeError::new("symlink_create is not supported on Windows".to_string()))
+                        }
+                    }
+                    _ => Err(RuntimeError::new("symlink_create requires string arguments".to_string())),
+                }
+            }
+            "zip_create" => {
+                // zip_create(output_path, [files...]) or zip_create(output_path, file1, file2, ...)
+                #[cfg(feature = "zip-support")]
+                {
+                    if args.is_empty() {
+                        return Err(RuntimeError::new("zip_create requires at least 1 argument: output_path".to_string()));
+                    }
+                    let output_path = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err(RuntimeError::new("zip_create: output_path must be a string".to_string())),
+                    };
+                    let file = std::fs::File::create(&output_path)
+                        .map_err(|e| RuntimeError::new(format!("zip_create: cannot create {}: {}", output_path, e)))?;
+                    let mut zip_writer = zip::ZipWriter::new(file);
+                    let options = zip::write::SimpleFileOptions::default()
+                        .compression_method(zip::CompressionMethod::Deflated);
+                    // args[1..] = files to add; or args[1] may be an Array of strings
+                    let file_args: Vec<String> = if args.len() == 2 {
+                        if let Value::Array(arr) = &args[1] {
+                            arr.iter().filter_map(|v| if let Value::String(s) = v { Some(s.clone()) } else { None }).collect()
+                        } else if let Value::String(s) = &args[1] {
+                            vec![s.clone()]
+                        } else {
+                            return Err(RuntimeError::new("zip_create: second argument must be a string or array of strings".to_string()));
+                        }
+                    } else {
+                        args[1..].iter().filter_map(|v| if let Value::String(s) = v { Some(s.clone()) } else { None }).collect()
+                    };
+                    for src_path in &file_args {
+                        let name = std::path::Path::new(src_path)
+                            .file_name().and_then(|n| n.to_str()).unwrap_or(src_path.as_str());
+                        zip_writer.start_file(name, options)
+                            .map_err(|e| RuntimeError::new(format!("zip_create: error adding {}: {}", src_path, e)))?;
+                        let data = std::fs::read(src_path)
+                            .map_err(|e| RuntimeError::new(format!("zip_create: cannot read {}: {}", src_path, e)))?;
+                        use std::io::Write;
+                        zip_writer.write_all(&data)
+                            .map_err(|e| RuntimeError::new(format!("zip_create: write error: {}", e)))?;
+                    }
+                    zip_writer.finish()
+                        .map_err(|e| RuntimeError::new(format!("zip_create: finalize error: {}", e)))?;
+                    Ok(Value::String(output_path))
+                }
+                #[cfg(not(feature = "zip-support"))]
+                Err(RuntimeError::new("zip_create requires the 'zip-support' feature. Build with: cargo build --features zip-support".to_string()))
+            }
+            "zip_extract" => {
+                // zip_extract(archive_path, output_dir)
+                #[cfg(feature = "zip-support")]
+                {
+                    if args.len() < 2 {
+                        return Err(RuntimeError::new("zip_extract requires 2 arguments: archive_path, output_dir".to_string()));
+                    }
+                    let archive_path = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err(RuntimeError::new("zip_extract: archive_path must be a string".to_string())),
+                    };
+                    let output_dir = match &args[1] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err(RuntimeError::new("zip_extract: output_dir must be a string".to_string())),
+                    };
+                    let file = std::fs::File::open(&archive_path)
+                        .map_err(|e| RuntimeError::new(format!("zip_extract: cannot open {}: {}", archive_path, e)))?;
+                    let mut archive = zip::ZipArchive::new(file)
+                        .map_err(|e| RuntimeError::new(format!("zip_extract: invalid archive: {}", e)))?;
+                    std::fs::create_dir_all(&output_dir)
+                        .map_err(|e| RuntimeError::new(format!("zip_extract: cannot create output dir: {}", e)))?;
+                    let count = archive.len();
+                    for i in 0..count {
+                        let mut entry = archive.by_index(i)
+                            .map_err(|e| RuntimeError::new(format!("zip_extract: error reading entry {}: {}", i, e)))?;
+                        let out_path = std::path::Path::new(&output_dir).join(entry.name());
+                        if entry.is_dir() {
+                            std::fs::create_dir_all(&out_path)
+                                .map_err(|e| RuntimeError::new(format!("zip_extract: mkdir error: {}", e)))?;
+                        } else {
+                            if let Some(parent) = out_path.parent() {
+                                std::fs::create_dir_all(parent)
+                                    .map_err(|e| RuntimeError::new(format!("zip_extract: mkdir error: {}", e)))?;
+                            }
+                            let mut out_file = std::fs::File::create(&out_path)
+                                .map_err(|e| RuntimeError::new(format!("zip_extract: create error: {}", e)))?;
+                            std::io::copy(&mut entry, &mut out_file)
+                                .map_err(|e| RuntimeError::new(format!("zip_extract: copy error: {}", e)))?;
+                        }
+                    }
+                    Ok(Value::Integer(count as i64))
+                }
+                #[cfg(not(feature = "zip-support"))]
+                Err(RuntimeError::new("zip_extract requires the 'zip-support' feature. Build with: cargo build --features zip-support".to_string()))
+            }
             _ => Err(RuntimeError::new(format!("Unknown I/O function: {}", name))),
         }
     }

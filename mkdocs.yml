@@ -1,0 +1,50 @@
+site_name: Txt-code Documentation
+site_description: A simple, memorable, security-focused programming language
+site_url: https://txtcode.github.io/txtcode
+repo_url: https://github.com/txtcode/txtcode
+repo_name: txtcode/txtcode
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: README.md
+  - Quick Start: docs/quick-start.md
+  - Language Spec: docs/language-spec.md
+  - Syntax Reference: docs/syntax-reference.md
+  - Security Features: docs/security-features.md
+  - Contributing: docs/contributing.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - tables
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/txtcode/txtcode

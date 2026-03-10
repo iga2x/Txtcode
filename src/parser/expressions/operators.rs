@@ -1,9 +1,62 @@
 use crate::parser::ast::*;
 use crate::parser::parser::Parser;
 
-/// Parse expression starting from the lowest precedence (or)
+/// Parse expression starting from the lowest precedence (pipe)
 pub fn parse_expression(parser: &mut Parser) -> Result<Expression, String> {
-    parse_or(parser)
+    parse_pipe(parser)
+}
+
+/// Parse pipe operator: expr |> func  →  func(expr)
+pub fn parse_pipe(parser: &mut Parser) -> Result<Expression, String> {
+    let mut lhs = parse_ternary(parser)?;
+
+    while parser.check(crate::lexer::token::TokenKind::Pipe) {
+        parser.advance(); // consume |>
+        // Right-hand side should be an identifier (function name)
+        let func_expr = parse_ternary(parser)?;
+        // Desugar: lhs |> func → func(lhs)
+        match func_expr {
+            Expression::Identifier(func_name) => {
+                lhs = Expression::FunctionCall {
+                    name: func_name,
+                    type_arguments: None,
+                    arguments: vec![lhs],
+                    span: Span::default(),
+                };
+            }
+            other => {
+                // For complex expressions, use BinaryOp::Pipe and handle at runtime
+                lhs = Expression::BinaryOp {
+                    left: Box::new(lhs),
+                    op: BinaryOperator::Pipe,
+                    right: Box::new(other),
+                    span: Span::default(),
+                };
+            }
+        }
+    }
+
+    Ok(lhs)
+}
+
+/// Parse ternary expression: condition ? true_expr : false_expr
+pub fn parse_ternary(parser: &mut Parser) -> Result<Expression, String> {
+    let lhs = parse_or(parser)?;
+
+    if parser.check(crate::lexer::token::TokenKind::QuestionMark) {
+        parser.advance(); // consume ?
+        let true_expr = parse_ternary(parser)?; // recursive for right-associativity
+        parser.expect(crate::lexer::token::TokenKind::Colon)?;
+        let false_expr = parse_ternary(parser)?;
+        return Ok(Expression::Ternary {
+            condition: Box::new(lhs),
+            true_expr: Box::new(true_expr),
+            false_expr: Box::new(false_expr),
+            span: Span::default(),
+        });
+    }
+
+    Ok(lhs)
 }
 
 pub fn parse_or(parser: &mut Parser) -> Result<Expression, String> {

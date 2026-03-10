@@ -1,0 +1,29 @@
+## Arithmetic tests
+##
+## Run with: txtcode test tests/tc/
+
+# Basic operations
+assert(1 + 1 == 2, "addition")
+assert(10 - 3 == 7, "subtraction")
+assert(3 * 4 == 12, "multiplication")
+assert(10 / 2 == 5, "division")
+assert(10 % 3 == 1, "modulo")
+assert(2 ** 8 == 256, "power")
+
+# Operator precedence
+assert(2 + 3 * 4 == 14, "precedence: mul before add")
+assert((2 + 3) * 4 == 20, "parentheses override precedence")
+
+# Negative numbers
+assert(-5 + 3 == -2, "negative numbers")
+assert(-(-5) == 5, "double negation")
+
+# Float arithmetic
+assert(0.1 + 0.2 > 0.0, "float addition")
+assert(1.5 * 2.0 == 3.0, "float multiplication")
+
+# Integer division
+assert(7 / 2 == 3, "integer division truncates")
+assert(-7 / 2 == -3, "negative integer division")
+
+print → "arithmetic: all tests passed"

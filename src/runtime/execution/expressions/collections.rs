@@ -10,11 +10,26 @@ pub fn evaluate_array<VM: ExpressionVM>(
     vm: &mut VM,
     elements: &[Expression],
 ) -> Result<Value, RuntimeError> {
-    let values: Result<Vec<Value>, RuntimeError> = elements.iter()
-        .map(|e| super::ExpressionEvaluator::evaluate(vm, e))
-        .collect();
-    let arr = Value::Array(values?);
-    // Register with GC
+    let mut result: Vec<Value> = Vec::new();
+    for e in elements {
+        match e {
+            Expression::Spread { value, .. } => {
+                // ...arr — flatten the spread array into the result
+                let spread_val = super::ExpressionEvaluator::evaluate(vm, value)?;
+                match spread_val {
+                    Value::Array(arr) => result.extend(arr),
+                    other => return Err(RuntimeError::new(format!(
+                        "Spread operator requires an array, got: {}",
+                        other.to_string()
+                    ))),
+                }
+            }
+            other => {
+                result.push(super::ExpressionEvaluator::evaluate(vm, other)?);
+            }
+        }
+    }
+    let arr = Value::Array(result);
     vm.gc_register_allocation(&arr);
     Ok(arr)
 }

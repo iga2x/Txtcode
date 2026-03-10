@@ -296,6 +296,16 @@ impl FunctionExecutor for VirtualMachine {
                     name, args.len()
                 ));
                 
+                // Guard against unbounded recursion.
+                // Kept at 50 in debug mode — larger enums use more Rust stack per frame.
+                const MAX_CALL_DEPTH: usize = 50;
+                if self.call_stack.frames().len() >= MAX_CALL_DEPTH {
+                    return Err(RuntimeError::new(format!(
+                        "Maximum call stack depth ({}) exceeded — possible infinite recursion in '{}'",
+                        MAX_CALL_DEPTH, name
+                    )));
+                }
+
                 // Push call frame
                 self.call_stack.push(CallFrame {
                     function_name: name.clone(),
@@ -422,6 +432,10 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
         self.call_stack.current_frame()
     }
     
+    fn call_stack_depth(&self) -> usize {
+        self.call_stack.frames().len()
+    }
+
     fn call_stack_push(&mut self, frame: crate::runtime::core::CallFrame) {
         self.call_stack.push(frame)
     }

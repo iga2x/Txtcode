@@ -1,0 +1,35 @@
+# Calculator in Txt-code
+# Demonstrates functions, pattern matching, and basic arithmetic
+
+define → calculate → (a, op, b)
+  match → op
+    case → "+"
+      return → a + b
+    case → "-"
+      return → a - b
+    case → "*"
+      return → a * b
+    case → "/"
+      if → b == 0
+        return → "Error: division by zero"
+      end
+      return → a / b
+    case → "%"
+      return → a % b
+    case → "**"
+      return → a ** b
+    case → _
+      return → "Error: unknown operator"
+  end
+end
+
+# Basic operations
+print → calculate(10, "+", 5)
+print → calculate(10, "-", 3)
+print → calculate(6, "*", 7)
+print → calculate(15, "/", 4)
+print → calculate(17, "%", 5)
+print → calculate(2, "**", 8)
+
+# Division by zero is handled safely
+print → calculate(10, "/", 0)

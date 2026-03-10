@@ -16,6 +16,7 @@ pub enum Value {
     Function(String, Vec<Parameter>, Vec<Statement>, HashMap<String, Value>), // name, params, body, captured_env
     Struct(String, HashMap<String, Value>),
     Enum(String, String), // enum_name, variant_name
+    Result(bool, Box<Value>), // true = Ok(inner), false = Err(inner)
 }
 
 impl Value {
@@ -49,6 +50,13 @@ impl Value {
                 format!("{}({})", name, field_strs.join(", "))
             }
             Value::Enum(name, variant) => format!("{}.{}", name, variant),
+            Value::Result(ok, inner) => {
+                if *ok {
+                    format!("Ok({})", inner.to_string())
+                } else {
+                    format!("Err({})", inner.to_string())
+                }
+            }
         }
     }
     

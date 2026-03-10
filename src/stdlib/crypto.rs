@@ -142,6 +142,128 @@ impl CryptoLib {
                     _ => Err(RuntimeError::new("base64_decode requires a string".to_string())),
                 }
             }
+            "hmac_sha256" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new("hmac_sha256 requires 2 arguments (key, data)".to_string()));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(key), Value::String(data)) => {
+                        use ring::hmac;
+                        let key = hmac::Key::new(hmac::HMAC_SHA256, key.as_bytes());
+                        let tag = hmac::sign(&key, data.as_bytes());
+                        Ok(Value::String(hex::encode(tag.as_ref())))
+                    }
+                    _ => Err(RuntimeError::new("hmac_sha256 requires string arguments".to_string())),
+                }
+            }
+            "uuid_v4" => {
+                if !args.is_empty() {
+                    return Err(RuntimeError::new("uuid_v4 takes no arguments".to_string()));
+                }
+                let mut bytes = [0u8; 16];
+                let rng = SystemRandom::new();
+                rng.fill(&mut bytes)
+                    .map_err(|_| RuntimeError::new("Failed to generate random bytes for UUID".to_string()))?;
+                // Set version 4 bits
+                bytes[6] = (bytes[6] & 0x0f) | 0x40;
+                // Set variant bits (10xx)
+                bytes[8] = (bytes[8] & 0x3f) | 0x80;
+                let uuid = format!(
+                    "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+                    bytes[0], bytes[1], bytes[2], bytes[3],
+                    bytes[4], bytes[5],
+                    bytes[6], bytes[7],
+                    bytes[8], bytes[9],
+                    bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+                );
+                Ok(Value::String(uuid))
+            }
+            "secure_compare" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new("secure_compare requires 2 arguments (a, b)".to_string()));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(a), Value::String(b)) => {
+                        let a_bytes = a.as_bytes();
+                        let b_bytes = b.as_bytes();
+                        if a_bytes.len() != b_bytes.len() {
+                            return Ok(Value::Boolean(false));
+                        }
+                        let mut diff: u8 = 0;
+                        for (x, y) in a_bytes.iter().zip(b_bytes.iter()) {
+                            diff |= x ^ y;
+                        }
+                        Ok(Value::Boolean(diff == 0))
+                    }
+                    _ => Err(RuntimeError::new("secure_compare requires string arguments".to_string())),
+                }
+            }
+            "pbkdf2" => {
+                if args.len() < 3 || args.len() > 4 {
+                    return Err(RuntimeError::new("pbkdf2 requires 3-4 arguments (password, salt, iterations, key_len?)".to_string()));
+                }
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(password), Value::String(salt), Value::Integer(iterations)) => {
+                        use ring::pbkdf2;
+                        use std::num::NonZeroU32;
+                        let key_len = if args.len() == 4 {
+                            match &args[3] { Value::Integer(n) => *n as usize, _ => 32 }
+                        } else { 32 };
+                        if key_len == 0 || key_len > 512 {
+                            return Err(RuntimeError::new("pbkdf2 key_len must be 1-512".to_string()));
+                        }
+                        if *iterations < 1 {
+                            return Err(RuntimeError::new("pbkdf2 iterations must be >= 1".to_string()));
+                        }
+                        let iter = NonZeroU32::new(*iterations as u32)
+                            .ok_or_else(|| RuntimeError::new("pbkdf2 iterations must be > 0".to_string()))?;
+                        let mut derived = vec![0u8; key_len];
+                        pbkdf2::derive(pbkdf2::PBKDF2_HMAC_SHA256, iter, salt.as_bytes(), password.as_bytes(), &mut derived);
+                        Ok(Value::String(hex::encode(derived)))
+                    }
+                    _ => Err(RuntimeError::new("pbkdf2 requires (string, string, int) arguments".to_string())),
+                }
+            }
+            "bcrypt_hash" | "bcrypt_verify" => {
+                Err(RuntimeError::new(format!("{} requires the 'bcrypt' crate. Add bcrypt = \"0.15\" to Cargo.toml", name)))
+            }
+            "ed25519_sign" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new("ed25519_sign requires 2 arguments (seed_hex, message)".to_string()));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(seed_hex), Value::String(message)) => {
+                        use ring::signature;
+                        let seed = hex::decode(seed_hex)
+                            .map_err(|_| RuntimeError::new("ed25519_sign: seed_hex must be valid hex".to_string()))?;
+                        let key_pair = signature::Ed25519KeyPair::from_seed_unchecked(&seed)
+                            .map_err(|_| RuntimeError::new("ed25519_sign: invalid seed (must be 32 bytes)".to_string()))?;
+                        let sig = key_pair.sign(message.as_bytes());
+                        Ok(Value::String(hex::encode(sig.as_ref())))
+                    }
+                    _ => Err(RuntimeError::new("ed25519_sign requires string arguments".to_string())),
+                }
+            }
+            "ed25519_verify" => {
+                if args.len() != 3 {
+                    return Err(RuntimeError::new("ed25519_verify requires 3 arguments (pubkey_hex, message, signature_hex)".to_string()));
+                }
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(pubkey_hex), Value::String(message), Value::String(sig_hex)) => {
+                        use ring::signature;
+                        let pubkey_bytes = hex::decode(pubkey_hex)
+                            .map_err(|_| RuntimeError::new("ed25519_verify: pubkey_hex must be valid hex".to_string()))?;
+                        let sig_bytes = hex::decode(sig_hex)
+                            .map_err(|_| RuntimeError::new("ed25519_verify: signature_hex must be valid hex".to_string()))?;
+                        let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, pubkey_bytes);
+                        Ok(Value::Boolean(public_key.verify(message.as_bytes(), &sig_bytes).is_ok()))
+                    }
+                    _ => Err(RuntimeError::new("ed25519_verify requires string arguments".to_string())),
+                }
+            }
+            "rsa_generate" | "rsa_sign" | "rsa_verify" => {
+                Err(RuntimeError::new(format!("{} requires the 'rsa' crate. Add rsa = \"0.9\" to Cargo.toml", name)))
+            }
             _ => Err(RuntimeError::new(format!("Unknown crypto function: {}", name))),
         }
     }

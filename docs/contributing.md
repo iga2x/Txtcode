@@ -16,7 +16,7 @@ cargo build --release
 cargo test
 
 # Run examples
-cargo run -- run examples/hello.txt
+cargo run -- run examples/hello.tc
 ```
 
 ## Architecture Overview
@@ -62,17 +62,41 @@ cargo test -- --nocapture
 
 ## Development Roadmap
 
-See the main plan file for the complete development roadmap. Current priorities:
+### v0.2 (released) — Security & stdlib hardening
+- ✅ Virtual environment system (`.txtcode-env/`)
+- ✅ Permission allowlists (`--allow-fs`, `--allow-net`)
+- ✅ Extended stdlib: net (PUT/DELETE/PATCH/headers/status/timeout), io (read_lines/csv/temp_file/watch_file), sys (env_list/signal_send/pipe_exec/which/cpu_count/memory/disk_space), crypto (HMAC/UUID/PBKDF2/ed25519), math (clamp/lerp/gcd/lcm/factorial/combinations/random)
+- ✅ Ternary, pipe operator, compound assignment, struct literals, type aliases, named errors
+- ✅ Bytecode VM: permissions, module imports, closures, try-catch
 
-- Phase 1: Core Language Foundation (✅ Complete)
-- Phase 2: Type System and Safety (In Progress)
-- Phase 3: Security Features (Planned)
-- Phase 4: Compilation and Code Generation (Planned)
-- Phase 5: Runtime Environment (Planned)
-- Phase 6: Standard Library (Planned)
-- Phase 7: Development Tools (Planned)
-- Phase 8: Testing and Examples (Planned)
-- Phase 9: Documentation and Ecosystem (Planned)
+### v0.3 (released) — Language completeness & quality
+- ✅ f-string prefix support (`f"Hello {name}"`)
+- ✅ Raw strings (`r"\n"` — no escape processing)
+- ✅ Number separators (`1_000_000`)
+- ✅ do-while loop in bytecode VM
+- ✅ Optional chaining (`?.` `?[]` `?()`) in both VMs
+- ✅ Ternary operator (`cond ? a : b`)
+- ✅ Pipe operator (`x |> func`) — including lambda/complex RHS
+- ✅ Spread operator (`[...arr]`) in both VMs
+- ✅ Multi-return values (`return → a, b` — auto-wraps as array)
+- ✅ Destructured function arguments (`define → f → ({x, y})`)
+- ✅ `doc →` and `hint →` as canonical names for `intent →` / `ai_hint →`
+- ✅ Pattern matching: array destructuring `[a, b]` and struct patterns `{x, y}`
+- ✅ `++`/`--` prefix increment/decrement (identifier targets only)
+- ✅ AST-to-source printer (migration file writing)
+- ✅ Feature-gated stdlib: `zip`, `quick-xml`, `serde_yaml` (`--features full-stdlib`)
+- ✅ `txtcode inspect file.tcc` — disassemble compiled bytecode
+- ✅ `--target` validation (errors on unsupported native/wasm targets)
+- ✅ Call depth aligned to 50 in all VMs
+- ✅ async/await runs synchronously (non-blocking passthrough)
+
+### v0.4+ (planned)
+- True async/await with Tokio runtime integration
+- Native binary compilation (`-t native`) via LLVM
+- WebAssembly compilation target
+- WebSocket stdlib (`websocket_connect`)
+- Obfuscation and encryption for compiled output
+- Generic type enforcement at runtime
 
 ## Questions?
 

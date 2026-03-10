@@ -1,0 +1,49 @@
+## Collection tests — arrays and maps
+
+# ── Arrays ────────────────────────────────────────────────────────────────────
+
+store → arr → [10, 20, 30, 40, 50]
+
+assert(len(arr) == 5, "array length")
+assert(arr[0] == 10, "array index 0")
+assert(arr[4] == 50, "array index 4")
+
+# Iteration and accumulation
+store → total → 0
+for → x in arr
+  store → total → total + x
+end
+assert(total == 150, "sum via for loop")
+
+# Nested arrays
+store → matrix → [[1, 2], [3, 4], [5, 6]]
+assert(len(matrix) == 3, "matrix rows")
+assert(matrix[0][0] == 1, "matrix[0][0]")
+assert(matrix[1][1] == 4, "matrix[1][1]")
+assert(matrix[2][0] == 5, "matrix[2][0]")
+
+# ── Maps ──────────────────────────────────────────────────────────────────────
+
+store → m → {"x": 1, "y": 2, "z": 3}
+
+assert(m["x"] == 1, "map access x")
+assert(m["y"] == 2, "map access y")
+
+# Map mutation
+store → m["w"] → 99
+assert(m["w"] == 99, "map set new key")
+
+# Map in function
+define → make_point → (x, y)
+  return → {"x": x, "y": y}
+end
+
+store → p → make_point(3, 4)
+assert(p["x"] == 3, "point x")
+assert(p["y"] == 4, "point y")
+
+# Nested maps
+store → config → {"server": {"port": 8080, "host": "localhost"}}
+assert(config["server"]["port"] == 8080, "nested map access")
+
+print → "collections: all tests passed"

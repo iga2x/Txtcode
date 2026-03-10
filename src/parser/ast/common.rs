@@ -56,6 +56,7 @@ pub enum BinaryOperator {
     LeftShift,
     RightShift,
     NullCoalesce, // ??
+    Pipe,         // |> (function pipe)
 }
 
 /// Unary operators

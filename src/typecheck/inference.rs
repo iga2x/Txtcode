@@ -346,6 +346,8 @@ impl TypeInference {
                 }
             }
             Expression::MethodCall { .. } => InferenceResult::Unknown,
+            Expression::StructLiteral { .. } => InferenceResult::Unknown,
+            Expression::Spread { .. } => InferenceResult::Unknown,
         }
     }
 

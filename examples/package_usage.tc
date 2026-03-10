@@ -1,0 +1,102 @@
+## Package Usage Example
+##
+## Run with: txtcode examples/package_usage.tc
+##
+## Shows how to use installed packages (from Txtcode.toml dependencies)
+## and the built-in standard library modules.
+##
+## Covers: import, stdlib io/json/time/crypto, error handling, assertions
+
+# ── Standard library imports ──────────────────────────────────────────────────
+
+import → json
+import → time
+import → crypto
+
+# ── JSON serialization ────────────────────────────────────────────────────────
+
+print → "=== JSON ==="
+
+store → user → {
+  "id": 1,
+  "name": "Alice",
+  "email": "alice@example.com",
+  "roles": ["admin", "editor"],
+  "active": true
+}
+
+store → serialized → json.encode(user)
+print → "Serialized: " + serialized
+
+store → decoded → json.decode(serialized)
+print → "Name: " + decoded["name"]
+print → "Roles: " + join(decoded["roles"], ", ")
+
+# JSON with nested objects
+store → api_response → json.decode("{\"status\":\"ok\",\"data\":{\"count\":42}}")
+print → "API status: " + api_response["status"]
+print → "API count: " + api_response["data"]["count"]
+
+# ── Timestamps ────────────────────────────────────────────────────────────────
+
+print → "\n=== Time ==="
+
+store → now → time.now()
+print → "Current timestamp (ms): " + now
+
+store → formatted → time.format(now, "YYYY-MM-DD")
+print → "Today: " + formatted
+
+# Measure elapsed time
+store → start → time.now()
+store → sum → 0
+store → i → 0
+while → i < 1000
+  store → sum → sum + i
+  store → i → i + 1
+end
+store → elapsed → time.now() - start
+print → "Sum 0..999 = " + sum + " (took " + elapsed + "ms)"
+
+# ── Cryptography ──────────────────────────────────────────────────────────────
+
+print → "\n=== Crypto ==="
+
+store → message → "Hello, Txt-code!"
+store → hash → crypto.sha256(message)
+print → "SHA-256: " + hash
+
+store → token → crypto.random_bytes(16)
+print → "Random token (hex): " + token
+
+# Verify hashing is deterministic
+store → hash2 → crypto.sha256(message)
+assert → hash == hash2, "SHA-256 should be deterministic"
+print → "Hash verification: OK"
+
+# ── Putting it together: build a simple event log ─────────────────────────────
+
+print → "\n=== Event Log ==="
+
+define → make_event → (kind, data)
+  return → {
+    "id": crypto.random_bytes(4),
+    "kind": kind,
+    "data": data,
+    "ts": time.now()
+  }
+end
+
+store → events → [
+  make_event("user.login",   {"user": "alice"}),
+  make_event("page.view",    {"path": "/dashboard"}),
+  make_event("user.logout",  {"user": "alice"})
+]
+
+for → evt in events
+  store → line → "[" + evt["kind"] + "] id=" + evt["id"] + " ts=" + evt["ts"]
+  print → line
+end
+
+store → log_json → json.encode(events)
+print → "\nLog as JSON (" + len(log_json) + " bytes)"

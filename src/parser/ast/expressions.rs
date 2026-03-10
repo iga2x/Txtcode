@@ -95,5 +95,16 @@ pub enum Expression {
         arguments: Vec<Expression>,
         span: Span,
     },
+    /// Struct literal: Point { x: 1, y: 2 }
+    StructLiteral {
+        name: String,
+        fields: Vec<(String, Expression)>,
+        span: Span,
+    },
+    /// Spread: ...expr — expands array into surrounding array/call
+    Spread {
+        value: Box<Expression>,
+        span: Span,
+    },
 }
 

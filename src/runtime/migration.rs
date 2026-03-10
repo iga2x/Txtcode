@@ -1,6 +1,7 @@
 use crate::parser::ast::Program;
 use crate::runtime::compatibility::{CompatibilityLayer, Version, MigrationReport, FeatureFlags};
 use crate::runtime::errors::RuntimeError;
+use crate::tools::ast_printer::{AstPrinter, detect_version_from_source};
 use std::path::PathBuf;
 
 /// Migration framework for automated code migration
@@ -34,12 +35,27 @@ impl MigrationFramework {
         source_version: Option<Version>,
         target_version: Option<Version>,
     ) -> Result<MigrationReport, RuntimeError> {
-        let source_version = source_version.unwrap_or_else(|| Version::new(0, 1, 0));
-        let target_version = target_version.unwrap_or_else(|| Version::current());
-
         // Read file
         let source_code = std::fs::read_to_string(file_path)
             .map_err(|e| RuntimeError::new(format!("Failed to read file {}: {}", file_path.display(), e)))?;
+
+        // Auto-detect source version from header comment if not provided
+        let source_version = source_version.unwrap_or_else(|| {
+            detect_version_from_source(&source_code)
+                .and_then(|v| {
+                    let parts: Vec<&str> = v.split('.').collect();
+                    if parts.len() == 3 {
+                        let major = parts[0].parse().ok()?;
+                        let minor = parts[1].parse().ok()?;
+                        let patch = parts[2].parse().ok()?;
+                        Some(Version::new(major, minor, patch))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| Version::new(0, 1, 0))
+        });
+        let target_version = target_version.unwrap_or_else(|| Version::current());
 
         // Parse AST
         let mut lexer = crate::lexer::Lexer::new(source_code);
@@ -88,7 +104,6 @@ impl MigrationFramework {
 
         // Perform AST migration
         let _migrated_program = self.compatibility_layer.migrate_ast(program, Some(source_version.clone()))?;
-        // TODO: Use migrated_program in dry-run mode to validate migration without modifying files
 
         // Record transformations
         // Check if any transformations were actually applied
@@ -96,13 +111,32 @@ impl MigrationFramework {
         report.add_transformation(format!("Migrated from {} to {}", 
             source_version_str, target_version_str));
 
-        // If not dry run, write migrated code back
+        // If not dry run, regenerate source from migrated AST and write back
         if !self.dry_run {
-            // In a real implementation, we'd regenerate source code from AST
-            // For now, this is a placeholder
-            report.add_transformation("Source code regeneration not yet implemented".to_string());
+            let mut printer = AstPrinter::new();
+            let new_source = format!(
+                "# version: {}\n{}",
+                target_version.to_string(),
+                printer.print_program(&_migrated_program)
+            );
+            report.generated_source = Some(new_source.clone());
+            if !_file_path.as_os_str().is_empty() {
+                std::fs::write(_file_path, &new_source)
+                    .map_err(|e| RuntimeError::new(format!(
+                        "Failed to write migrated file {}: {}",
+                        _file_path.display(), e
+                    )))?;
+                report.add_transformation(format!(
+                    "Wrote migrated source to {}",
+                    _file_path.display()
+                ));
+            }
         } else {
-            report.add_transformation("DRY RUN: No files were modified".to_string());
+            report.add_transformation(
+                "DRY RUN: Files were validated but not modified. \
+                 Review the warnings above and apply changes manually."
+                .to_string(),
+            );
         }
 
         Ok(report)
@@ -184,28 +218,28 @@ impl MigrationFramework {
     }
 }
 
-/// Runtime version detector - detects code version from AST/metadata
+/// Runtime version detector - detects code version from source/file metadata
 pub struct VersionDetector;
 
 impl VersionDetector {
-    /// Detect version from program AST
-    /// Looks for version metadata in comments or module headers
+    /// Detect version from program AST (cannot read comments from AST; use detect_version_from_source)
     pub fn detect_version(_program: &Program) -> Option<Version> {
-        // In production, this would parse version from:
-        // - Module header comments: # version: 0.1.0
-        // - AST metadata
-        // - File conventions
-        
-        // Placeholder: try to infer from syntax features
-        // If using deprecated features, likely older version
-        None // For now, return None and default to 0.1.0
+        None
     }
 
-    /// Detect version from file metadata or conventions
-    pub fn detect_version_from_file(_file_path: &PathBuf) -> Option<Version> {
-        // Check for version in filename, comments, or metadata
-        // TODO: Implement version detection from file metadata
-        None
+    /// Detect version from a source file by reading its header comment `# version: X.Y.Z`
+    pub fn detect_version_from_file(file_path: &PathBuf) -> Option<Version> {
+        let source = std::fs::read_to_string(file_path).ok()?;
+        let ver_str = detect_version_from_source(&source)?;
+        let parts: Vec<&str> = ver_str.split('.').collect();
+        if parts.len() == 3 {
+            let major = parts[0].parse().ok()?;
+            let minor = parts[1].parse().ok()?;
+            let patch = parts[2].parse().ok()?;
+            Some(Version::new(major, minor, patch))
+        } else {
+            None
+        }
     }
 }
 

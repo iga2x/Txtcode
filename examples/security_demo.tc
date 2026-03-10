@@ -1,0 +1,36 @@
+# Security Features Demo in Txt-code
+# Demonstrates built-in cryptographic operations from stdlib
+
+# --- Hashing ---
+store → data → "Hello, World!"
+
+store → hash_sha256 → sha256(data)
+print → "SHA-256: " + hash_sha256
+
+# --- Symmetric Encryption (AES-GCM) ---
+store → key → "my-secret-key-32-bytes-long!!!!!"
+store → plaintext → "Sensitive data here"
+
+store → encrypted → encrypt(plaintext, key)
+print → "Encrypted: " + encrypted
+
+store → decrypted → decrypt(encrypted, key)
+print → "Decrypted: " + decrypted
+
+# Verify round-trip
+if → decrypted == plaintext
+  print → "Encryption round-trip: OK"
+else
+  print → "Encryption round-trip: FAILED"
+end
+
+# --- Base64 ---
+store → encoded → base64_encode(data)
+store → decoded → base64_decode(encoded)
+print → "Base64 encoded: " + encoded
+print → "Base64 decoded: " + decoded
+
+# --- Audit log ---
+# All security operations above are automatically recorded
+# to the audit trail when audit logging is enabled.
+print → "All operations have been audit-logged."

@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use crate::config::Config;
 use std::collections::HashMap;
+use semver::{Version, VersionReq};
+use sha2::{Sha256, Digest};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PackageConfig {
@@ -41,6 +43,147 @@ impl PackageConfig {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Lockfile
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LockedPackage {
+    pub version: String,
+    pub checksum: String,
+    pub dependencies: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct LockFile {
+    pub packages: HashMap<String, LockedPackage>,
+}
+
+impl LockFile {
+    /// Generate a lockfile from a resolved dependency map
+    pub fn generate(resolved: &HashMap<String, String>) -> LockFile {
+        let mut packages = HashMap::new();
+        for (name, version) in resolved {
+            let checksum = compute_checksum(name, version);
+            packages.insert(
+                name.clone(),
+                LockedPackage {
+                    version: version.clone(),
+                    checksum,
+                    dependencies: Vec::new(),
+                },
+            );
+        }
+        LockFile { packages }
+    }
+
+    pub fn save(&self, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+        let content = toml::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
+    }
+
+    pub fn load(path: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
+        let content = fs::read_to_string(path)?;
+        let lock: LockFile = toml::from_str(&content)?;
+        Ok(lock)
+    }
+}
+
+fn compute_checksum(name: &str, version: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(name.as_bytes());
+    hasher.update(b"@");
+    hasher.update(version.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+// ---------------------------------------------------------------------------
+// Package registry / download
+// ---------------------------------------------------------------------------
+
+pub struct PackageRegistry {
+    packages_dir: PathBuf,
+}
+
+impl PackageRegistry {
+    pub fn new(packages_dir: PathBuf) -> Self {
+        Self { packages_dir }
+    }
+
+    /// Try to fetch a package tarball from the remote registry (GitHub releases).
+    /// Returns Ok(true) if downloaded, Ok(false) if already present, Err on failure.
+    pub fn download_package(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let dest = self.packages_dir.join(name).join(version);
+        if dest.exists() {
+            return Ok(false); // already installed
+        }
+
+        // Build tarball URL following GitHub releases convention
+        let tarball_name = format!("{}-{}.tar.gz", name, version);
+        let url = format!(
+            "https://github.com/txtcode-packages/{}/releases/download/v{}/{}",
+            name, version, tarball_name
+        );
+
+        println!("    → Fetching {} from registry...", url);
+
+        let response = reqwest::blocking::get(&url);
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                fs::create_dir_all(&dest)?;
+                let tarball_path = dest.join(&tarball_name);
+                let bytes = resp.bytes()?;
+                fs::write(&tarball_path, &bytes)?;
+
+                // Extract tarball
+                let status = std::process::Command::new("tar")
+                    .args(["-xzf", tarball_path.to_str().unwrap_or("")]
+                        .iter()
+                        .chain(std::iter::once(&"-C"))
+                        .chain(std::iter::once(&dest.to_str().unwrap_or(""))))
+                    .status();
+
+                if let Ok(s) = status {
+                    if s.success() {
+                        let _ = fs::remove_file(&tarball_path);
+                    }
+                }
+
+                println!("    → Downloaded to: {}", dest.display());
+                Ok(true)
+            }
+            Ok(resp) => {
+                println!(
+                    "    → Package '{}@{}' not available in registry (HTTP {})",
+                    name,
+                    version,
+                    resp.status()
+                );
+                // Fall through: create empty directory so build can proceed
+                fs::create_dir_all(&dest)?;
+                Ok(false)
+            }
+            Err(e) => {
+                println!(
+                    "    → Could not reach registry for '{}@{}': {}",
+                    name, version, e
+                );
+                fs::create_dir_all(&dest)?;
+                Ok(false)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dependency resolver
+// ---------------------------------------------------------------------------
+
 /// Dependency resolver
 pub struct DependencyResolver {
     packages_dir: PathBuf,
@@ -54,29 +197,35 @@ impl DependencyResolver {
     }
 
     /// Resolve all dependencies for a package
-    pub fn resolve(&self, config: &PackageConfig) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    pub fn resolve(
+        &self,
+        config: &PackageConfig,
+    ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
         let mut resolved = HashMap::new();
         let mut to_resolve = config.dependencies.clone();
         let mut visited = std::collections::HashSet::new();
 
         while !to_resolve.is_empty() {
-            let (name, version) = {
+            let (name, version_constraint) = {
                 let entry = to_resolve.iter().next().unwrap();
                 (entry.0.clone(), entry.1.clone())
             };
             to_resolve.remove(&name);
 
             if visited.contains(&name) {
-                continue; // Already resolved
+                continue;
             }
             visited.insert(name.clone());
 
-            // Check if package exists locally
+            // Resolve version using semver constraint
+            let resolved_version =
+                self.resolve_version_constraint(&name, &version_constraint);
+            let version = resolved_version.unwrap_or(version_constraint.clone());
+
             let package_path = self.packages_dir.join(&name).join(&version);
             if package_path.exists() {
                 resolved.insert(name.clone(), version.clone());
 
-                // Load package config and resolve its dependencies
                 let package_config_path = package_path.join("Txtcode.toml");
                 if package_config_path.exists() {
                     if let Ok(pkg_config) = PackageConfig::load(&package_config_path) {
@@ -88,8 +237,6 @@ impl DependencyResolver {
                     }
                 }
             } else {
-                // Package not found - would need to download from registry
-                // For now, just add to resolved (would fail at runtime)
                 resolved.insert(name.clone(), version.clone());
             }
         }
@@ -97,36 +244,83 @@ impl DependencyResolver {
         Ok(resolved)
     }
 
-    /// Check if a package version is installed
-    pub fn is_installed(&self, name: &str, version: &str) -> bool {
-        let package_path = self.packages_dir.join(name).join(version);
-        package_path.exists()
+    /// Resolve a semver constraint against locally installed versions.
+    /// Falls back to the constraint string itself if no match found.
+    pub fn resolve_version_constraint(
+        &self,
+        name: &str,
+        constraint: &str,
+    ) -> Option<String> {
+        let package_dir = self.packages_dir.join(name);
+        if !package_dir.exists() {
+            return None;
+        }
+
+        let req = match VersionReq::parse(constraint) {
+            Ok(r) => r,
+            Err(_) => return Some(constraint.to_string()), // exact or non-semver
+        };
+
+        let mut matching: Vec<Version> = Vec::new();
+        if let Ok(entries) = fs::read_dir(&package_dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    if let Some(ver_str) = entry.file_name().to_str() {
+                        if let Ok(ver) = Version::parse(ver_str) {
+                            if req.matches(&ver) {
+                                matching.push(ver);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        matching.sort();
+        matching.last().map(|v| v.to_string())
     }
 
-    /// Get installed version of a package
+    /// Check if a package version is installed
+    pub fn is_installed(&self, name: &str, version: &str) -> bool {
+        self.packages_dir.join(name).join(version).exists()
+    }
+
+    /// Get the highest installed version of a package using semver ordering
     pub fn get_installed_version(&self, name: &str) -> Option<String> {
         let package_dir = self.packages_dir.join(name);
         if !package_dir.exists() {
             return None;
         }
 
-        // Find latest version
-        let mut versions = Vec::new();
+        let mut versions: Vec<Version> = Vec::new();
+        let mut non_semver: Vec<String> = Vec::new();
+
         if let Ok(entries) = fs::read_dir(&package_dir) {
             for entry in entries.flatten() {
                 if entry.path().is_dir() {
-                    if let Some(version) = entry.file_name().to_str() {
-                        versions.push(version.to_string());
+                    if let Some(ver_str) = entry.file_name().to_str() {
+                        match Version::parse(ver_str) {
+                            Ok(v) => versions.push(v),
+                            Err(_) => non_semver.push(ver_str.to_string()),
+                        }
                     }
                 }
             }
         }
 
-        // Simple version comparison (semver would be better)
-        versions.sort();
-        versions.last().cloned()
+        if !versions.is_empty() {
+            versions.sort();
+            return versions.last().map(|v| v.to_string());
+        }
+        // Fallback for non-semver version strings
+        non_semver.sort();
+        non_semver.last().cloned()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Public CLI entry points
+// ---------------------------------------------------------------------------
 
 pub fn init_package(name: String, version: String) -> Result<(), Box<dyn std::error::Error>> {
     let config = PackageConfig::new(name, version);
@@ -144,34 +338,39 @@ pub fn install_dependencies() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = PackageConfig::load(&config_path)?;
     println!("Installing {} dependencies...", config.dependencies.len());
-    
-    // Ensure txtcode directories exist
+
     Config::ensure_directories()
         .map_err(|e| format!("Failed to initialize txtcode directories: {}", e))?;
-    
-    // Resolve dependencies
-    let resolver = DependencyResolver::new()?;
-    let resolved = resolver.resolve(&config)?;
-    
-    // Install each dependency
+
+    let lock_path = PathBuf::from("Txtcode.lock");
+
+    // If lockfile exists, use locked versions
+    let resolved = if lock_path.exists() {
+        println!("Using Txtcode.lock for pinned versions.");
+        let lock = LockFile::load(&lock_path)?;
+        lock.packages
+            .into_iter()
+            .map(|(name, pkg)| (name, pkg.version))
+            .collect::<HashMap<String, String>>()
+    } else {
+        let resolver = DependencyResolver::new()?;
+        resolver.resolve(&config)?
+    };
+
+    let packages_dir = Config::get_packages_dir()
+        .map_err(|e| format!("Failed to get packages directory: {}", e))?;
+    let registry = PackageRegistry::new(packages_dir.clone());
+
     for (name, version) in &resolved {
         println!("  Installing {}@{}", name, version);
-        
-        // Get package path in global packages directory
-        let package_path = Config::get_package_path(name)
-            .map_err(|e| format!("Failed to get package path: {}", e))?;
-        
-        let version_path = package_path.join(version);
-        if !version_path.exists() {
-            fs::create_dir_all(&version_path)
-                .map_err(|e| format!("Failed to create package directory: {}", e))?;
-            
-            // In a full implementation, this would download from a package repository
-            // For now, just create the directory structure
-            println!("    → Installed to: {}", version_path.display());
-        } else {
-            println!("    → Already installed: {}", version_path.display());
-        }
+        registry.download_package(name, version)?;
+    }
+
+    // Generate and save lockfile if it doesn't already exist
+    if !lock_path.exists() {
+        let lock = LockFile::generate(&resolved);
+        lock.save(&lock_path)?;
+        println!("Generated Txtcode.lock");
     }
 
     println!("Dependencies installed successfully");
@@ -184,13 +383,93 @@ pub fn add_dependency(name: String, version: String) -> Result<(), Box<dyn std::
         return Err("Txtcode.toml not found. Run 'txtcode package init' first.".into());
     }
 
+    // Validate semver before writing
+    if VersionReq::parse(&version).is_err() && Version::parse(&version).is_err() {
+        return Err(format!(
+            "Invalid version '{}'. Use semver format (e.g. 1.0.0, ^1.0, ~2.3)",
+            version
+        )
+        .into());
+    }
+
     let mut config = PackageConfig::load(&config_path)?;
     config.dependencies.insert(name.clone(), version.clone());
     config.save(&config_path)?;
-    
+
     println!("Added dependency: {}@{}", name, version);
     println!("Run 'txtcode package install' to install it");
     Ok(())
+}
+
+pub fn remove_dependency(name: String) -> Result<(), Box<dyn std::error::Error>> {
+    let config_path = PathBuf::from("Txtcode.toml");
+    if !config_path.exists() {
+        return Err("Txtcode.toml not found. Run 'txtcode package init' first.".into());
+    }
+
+    let mut config = PackageConfig::load(&config_path)?;
+
+    if !config.dependencies.contains_key(&name) {
+        return Err(format!(
+            "Package '{}' is not in your dependencies. Run 'txtcode package list' to see what's installed.",
+            name
+        ).into());
+    }
+
+    // Remove from Txtcode.toml
+    config.dependencies.remove(&name);
+    config.save(&config_path)?;
+    println!("Removed '{}' from Txtcode.toml", name);
+
+    // Remove from lockfile
+    let lock_path = PathBuf::from("Txtcode.lock");
+    if lock_path.exists() {
+        if let Ok(lock_content) = fs::read_to_string(&lock_path) {
+            let cleaned: Vec<&str> = lock_content
+                .lines()
+                .filter(|l| !l.starts_with(&format!("{}@", name)) && !l.starts_with(&format!("{}=", name)))
+                .collect();
+            let _ = fs::write(&lock_path, cleaned.join("\n") + "\n");
+        }
+    }
+
+    // Remove installed package files from all envs
+    let removed_from = remove_package_files(&name);
+    if removed_from > 0 {
+        println!("Uninstalled '{}' from {} environment(s)", name, removed_from);
+    }
+
+    // Also try global packages dir
+    let global_pkg_dir = dirs::home_dir()
+        .map(|h| h.join(".txtcode").join("packages").join(&name));
+    if let Some(ref pkg_path) = global_pkg_dir {
+        if pkg_path.exists() {
+            let _ = fs::remove_dir_all(pkg_path);
+            println!("Removed global package files for '{}'", name);
+        }
+    }
+
+    println!("Done. Run 'txtcode package list' to verify.");
+    Ok(())
+}
+
+fn remove_package_files(name: &str) -> usize {
+    let mut count = 0;
+    let env_dir = PathBuf::from(".txtcode-env");
+    if !env_dir.exists() { return 0; }
+    let entries = match fs::read_dir(&env_dir) {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+    for entry in entries.flatten() {
+        let pkg_path = entry.path().join("packages").join(name);
+        if pkg_path.exists() {
+            if fs::remove_dir_all(&pkg_path).is_ok() {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 pub fn update_dependencies() -> Result<(), Box<dyn std::error::Error>> {
@@ -201,14 +480,12 @@ pub fn update_dependencies() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = PackageConfig::load(&config_path)?;
     println!("Updating {} dependencies...", config.dependencies.len());
-    
-    // Ensure txtcode directories exist
+
     Config::ensure_directories()
         .map_err(|e| format!("Failed to initialize txtcode directories: {}", e))?;
-    
+
     let resolver = DependencyResolver::new()?;
-    
-    // Check for updates
+
     for (name, requested_version) in &config.dependencies {
         if let Some(installed) = resolver.get_installed_version(name) {
             if &installed != requested_version {
@@ -220,10 +497,15 @@ pub fn update_dependencies() -> Result<(), Box<dyn std::error::Error>> {
             println!("  {}: not installed", name);
         }
     }
-    
-    // Reinstall to get latest versions
+
+    // Remove old lockfile to force re-resolution
+    let lock_path = PathBuf::from("Txtcode.lock");
+    if lock_path.exists() {
+        fs::remove_file(&lock_path)?;
+    }
+
     install_dependencies()?;
-    
+
     println!("Dependencies updated successfully");
     Ok(())
 }
@@ -236,7 +518,7 @@ pub fn list_dependencies() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = PackageConfig::load(&config_path)?;
     let resolver = DependencyResolver::new()?;
-    
+
     println!("Dependencies:");
     for (name, version) in &config.dependencies {
         if let Some(installed) = resolver.get_installed_version(name) {
@@ -249,6 +531,6 @@ pub fn list_dependencies() -> Result<(), Box<dyn std::error::Error>> {
             println!("  {}@{} (not installed)", name, version);
         }
     }
-    
+
     Ok(())
 }

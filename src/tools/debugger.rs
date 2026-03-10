@@ -1,49 +1,140 @@
+use crate::compiler::bytecode::Bytecode;
 use crate::runtime::bytecode_vm::BytecodeVM;
+use crate::runtime::{RuntimeError, Value};
+
+/// State snapshot returned after each debug step
+#[derive(Debug)]
+pub struct DebugState {
+    pub ip: usize,
+    pub instruction: String,
+    pub done: bool,
+}
 
 /// Debugger for Txt-code programs
-#[allow(dead_code)]
 pub struct Debugger {
     breakpoints: Vec<usize>,
     vm: BytecodeVM,
+    bytecode: Option<Bytecode>,
 }
 
 impl Debugger {
     pub fn new() -> Self {
-        let vm = BytecodeVM::new();
-        
         Self {
             breakpoints: Vec::new(),
-            vm,
+            vm: BytecodeVM::new(),
+            bytecode: None,
         }
     }
 
+    /// Load bytecode into the debugger and reset VM state
+    pub fn load(&mut self, bytecode: Bytecode) {
+        self.vm.reset();
+        self.bytecode = Some(bytecode);
+    }
+
     pub fn add_breakpoint(&mut self, address: usize) {
-        self.breakpoints.push(address);
+        if !self.breakpoints.contains(&address) {
+            self.breakpoints.push(address);
+        }
     }
 
     pub fn remove_breakpoint(&mut self, address: usize) {
         self.breakpoints.retain(|&a| a != address);
     }
 
-    pub fn step(&mut self) -> Result<(), crate::runtime::RuntimeError> {
-        // Execute one instruction
-        // In a full implementation, this would step through bytecode
-        Ok(())
+    pub fn list_breakpoints(&self) -> &[usize] {
+        &self.breakpoints
     }
 
-    pub fn continue_execution(&mut self) -> Result<crate::runtime::Value, crate::runtime::RuntimeError> {
-        // TODO: Implement when BytecodeVM has execute method
-        Ok(crate::runtime::Value::Null)
+    /// Execute one instruction and return the resulting debug state
+    pub fn step(&mut self) -> Result<DebugState, RuntimeError> {
+        let bytecode = self
+            .bytecode
+            .as_ref()
+            .ok_or_else(|| RuntimeError::new("No bytecode loaded".to_string()))?;
+
+        let ip = self.vm.get_ip();
+        let instruction = if ip < bytecode.instructions.len() {
+            format!("{:?}", bytecode.instructions[ip])
+        } else {
+            "END".to_string()
+        };
+
+        let more = self.vm.execute_single(bytecode)?;
+
+        Ok(DebugState {
+            ip,
+            instruction,
+            done: !more,
+        })
     }
 
-    pub fn inspect_variable(&self, _name: &str) -> Option<crate::runtime::Value> {
-        // In a full implementation, this would inspect VM state
-        None
+    /// Run until a breakpoint is hit or execution finishes
+    pub fn continue_execution(&mut self) -> Result<Value, RuntimeError> {
+        let bytecode = self
+            .bytecode
+            .as_ref()
+            .ok_or_else(|| RuntimeError::new("No bytecode loaded".to_string()))?
+            .clone();
+
+        loop {
+            let ip = self.vm.get_ip();
+            if ip >= bytecode.instructions.len() {
+                break;
+            }
+            // Check if we've hit a breakpoint (skip the initial ip on first call)
+            if self.breakpoints.contains(&ip) {
+                return Err(RuntimeError::new(format!("Breakpoint hit at ip={}", ip)));
+            }
+            let more = self.vm.execute_single(&bytecode)?;
+            if !more {
+                break;
+            }
+        }
+        Ok(Value::Null)
     }
 
+    /// Inspect a variable by name in the current VM scope
+    pub fn inspect_variable(&self, name: &str) -> Option<Value> {
+        self.vm.get_variable(name).cloned()
+    }
+
+    /// Return call stack frames as strings
     pub fn get_call_stack(&self) -> Vec<String> {
-        // Return call stack
-        Vec::new()
+        self.vm.get_call_stack_frames()
+    }
+
+    /// Return the top of the operand stack, if any
+    pub fn get_stack_top(&self) -> Option<Value> {
+        self.vm.get_stack().last().cloned()
+    }
+
+    /// Return the entire operand stack
+    pub fn get_stack(&self) -> Vec<Value> {
+        self.vm.get_stack().to_vec()
+    }
+
+    /// Return all variables in scope
+    pub fn get_all_variables(&self) -> std::collections::HashMap<String, Value> {
+        self.vm.get_all_variables().clone()
+    }
+
+    /// Current instruction pointer
+    pub fn current_ip(&self) -> usize {
+        self.vm.get_ip()
+    }
+
+    /// Total number of instructions in loaded bytecode
+    pub fn instruction_count(&self) -> usize {
+        self.bytecode
+            .as_ref()
+            .map(|b| b.instructions.len())
+            .unwrap_or(0)
     }
 }
 
+impl Default for Debugger {
+    fn default() -> Self {
+        Self::new()
+    }
+}

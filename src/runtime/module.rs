@@ -1,6 +1,7 @@
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::runtime::errors::RuntimeError;
+use crate::config::Config;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;
@@ -14,19 +15,29 @@ pub struct ModuleResolver {
 impl ModuleResolver {
     pub fn new() -> Self {
         let mut search_paths = Vec::new();
-        
+
         // Add current directory
         if let Ok(cwd) = std::env::current_dir() {
             search_paths.push(cwd);
         }
-        
+
+        // Auto-inject local env packages path (highest priority after cwd)
+        if let Some((env_dir, name, config)) = Config::load_active_env() {
+            if config.settings.use_local_packages {
+                let local_pkg = env_dir.join(&name).join("packages");
+                if local_pkg.is_dir() {
+                    search_paths.push(local_pkg);
+                }
+            }
+        }
+
         // Add paths from TXTCODE_MODULE_PATH environment variable
         if let Ok(module_path) = std::env::var("TXTCODE_MODULE_PATH") {
             for path in module_path.split(':') {
                 search_paths.push(PathBuf::from(path));
             }
         }
-        
+
         Self {
             loaded_modules: HashMap::new(),
             search_paths,

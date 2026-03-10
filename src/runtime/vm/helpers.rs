@@ -399,8 +399,16 @@ impl VirtualMachine {
             Expression::Literal(_) => {
                 // Literals don't have free variables
             }
+            Expression::StructLiteral { fields, .. } => {
+                for (_, field_expr) in fields {
+                    free_vars.extend(Self::extract_free_variables(field_expr, param_names));
+                }
+            }
+            Expression::Spread { value, .. } => {
+                free_vars.extend(Self::extract_free_variables(value, param_names));
+            }
         }
-        
+
         free_vars
     }
 

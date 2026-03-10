@@ -169,6 +169,18 @@ impl StatementExecutor {
                 
                 Ok(Value::Null)
             }
+            Statement::TypeAlias { name, target, .. } => {
+                // Register type alias: store as a special variable or just no-op at runtime
+                // Type aliases are primarily for static analysis; at runtime we register the name
+                vm.set_variable(format!("__type_alias_{}", name), Value::String(target.clone()))?;
+                Ok(Value::Null)
+            }
+            Statement::NamedError { name, message, .. } => {
+                // Register named error: evaluate message expression and store
+                let msg = vm.evaluate_expression(message)?;
+                vm.set_variable(format!("__named_error_{}", name), msg)?;
+                Ok(Value::Null)
+            }
             // Control flow statements are handled by ControlFlowExecutor
             // These should not reach here
             Statement::If { .. }

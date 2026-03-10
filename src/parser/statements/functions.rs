@@ -86,23 +86,78 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
     // - Variadic parameters (...args)
     // - Type annotations (name: type)
     // - Default values (name = expr or name: type = expr)
+    // - Destructured map params ({x, y}) → synthetic __dest_N__ param + prepended assignments
     let mut params = Vec::new();
     let mut seen_variadic = false;
-    
+    let mut dest_stmts: Vec<Statement> = Vec::new(); // prepended to body for destructured params
+
     if !parser.check(crate::lexer::token::TokenKind::RightParen) {
         loop {
             // Skip whitespace/newlines before parameter
-            while !parser.is_at_end() && 
+            while !parser.is_at_end() &&
                   (parser.peek().kind == crate::lexer::token::TokenKind::Newline ||
                    parser.peek().kind == crate::lexer::token::TokenKind::Whitespace) {
                 parser.advance();
             }
-            
+
             // Check if we're at the end of parameters
             if parser.check(crate::lexer::token::TokenKind::RightParen) {
                 break;
             }
-            
+
+            // Destructured map parameter: {x, y} or {x: alias, y}
+            if parser.check(crate::lexer::token::TokenKind::LeftBrace) {
+                parser.advance(); // consume `{`
+                let dest_name = format!("__dest_{}__", params.len());
+                let mut fields: Vec<String> = Vec::new();
+                while !parser.check(crate::lexer::token::TokenKind::RightBrace) && !parser.is_at_end() {
+                    let field = parser.expect_identifier()?;
+                    fields.push(field);
+                    if parser.check(crate::lexer::token::TokenKind::Comma) {
+                        parser.advance();
+                    } else {
+                        break;
+                    }
+                }
+                parser.expect(crate::lexer::token::TokenKind::RightBrace)?;
+                // Generate: store → field → __dest_N__["field"] for each field
+                for field in &fields {
+                    let key_expr = crate::parser::ast::Expression::Literal(
+                        crate::parser::ast::Literal::String(field.clone())
+                    );
+                    let index_expr = crate::parser::ast::Expression::Index {
+                        target: Box::new(crate::parser::ast::Expression::Identifier(dest_name.clone())),
+                        index: Box::new(key_expr),
+                        span: crate::parser::ast::Span::default(),
+                    };
+                    dest_stmts.push(Statement::Assignment {
+                        pattern: crate::parser::ast::Pattern::Identifier(field.clone()),
+                        type_annotation: None,
+                        value: index_expr,
+                        span: crate::parser::ast::Span::default(),
+                    });
+                }
+                params.push(Parameter {
+                    name: dest_name,
+                    type_annotation: None,
+                    is_variadic: false,
+                    default_value: None,
+                });
+                // Handle comma separator
+                while !parser.is_at_end() &&
+                      (parser.peek().kind == crate::lexer::token::TokenKind::Newline ||
+                       parser.peek().kind == crate::lexer::token::TokenKind::Whitespace) {
+                    parser.advance();
+                }
+                if parser.check(crate::lexer::token::TokenKind::Comma) {
+                    parser.advance();
+                } else {
+                    // No comma - check if we should break (likely end of params)
+                    // Don't break, fall through to check RightParen at top of loop
+                }
+                continue;
+            }
+
             // 1. Check for variadic ... (must be before parameter name)
             let mut is_variadic = false;
             if parser.check(crate::lexer::token::TokenKind::Dot) {
@@ -241,8 +296,10 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
     // Check for return type annotation (optional -> type or just type)
     let mut return_type = None;
     
-    // Check if we have an intent declaration instead of return type
-    let has_intent = parser.check_keyword("intent") || parser.check_keyword("ai_hint") || 
+    // Check if we have a doc/hint declaration instead of return type
+    // Both canonical names (doc, hint) and legacy aliases (intent, ai_hint) are accepted
+    let has_intent = parser.check_keyword("doc") || parser.check_keyword("intent") ||
+                     parser.check_keyword("hint") || parser.check_keyword("ai_hint") ||
                      parser.check_keyword("allowed") || parser.check_keyword("forbidden");
     
     // Only try to parse return type if:
@@ -376,26 +433,26 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
     
     // Parse intent, ai_hint, allowed, forbidden declarations
     while !parser.check_keyword("end") && !parser.is_at_end() {
-        // Check for intent declaration
-        if parser.check_keyword("intent") {
+        // Check for doc/intent declaration (doc is canonical; intent is legacy alias)
+        if parser.check_keyword("doc") || parser.check_keyword("intent") {
             parser.advance();
             parser.expect_arrow()?;
             if parser.check(crate::lexer::token::TokenKind::String) {
                 intent = Some(parser.peek().value.clone());
                 parser.advance();
             } else {
-                return parser.error("intent requires a string value");
+                return parser.error("doc requires a string value");
             }
         }
-        // Check for ai_hint declaration
-        else if parser.check_keyword("ai_hint") || parser.check_keyword("ai-hint") || parser.check_keyword("aihint") {
+        // Check for hint/ai_hint declaration (hint is canonical; ai_hint is legacy alias)
+        else if parser.check_keyword("hint") || parser.check_keyword("ai_hint") || parser.check_keyword("ai-hint") || parser.check_keyword("aihint") {
             parser.advance();
             parser.expect_arrow()?;
             if parser.check(crate::lexer::token::TokenKind::String) {
                 ai_hint = Some(parser.peek().value.clone());
                 parser.advance();
             } else {
-                return parser.error("ai_hint requires a string value");
+                return parser.error("hint requires a string value");
             }
         }
         // Check for allowed actions declaration
@@ -491,19 +548,20 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
         }
     }
     
-    let mut body = Vec::new();
+    // Prepend destructured-param assignments to the body
+    let mut body: Vec<Statement> = dest_stmts;
     loop {
         // Skip newlines and whitespace before checking for end
-        while !parser.is_at_end() && 
+        while !parser.is_at_end() &&
               (parser.peek().kind == crate::lexer::token::TokenKind::Newline ||
                parser.peek().kind == crate::lexer::token::TokenKind::Whitespace) {
             parser.advance();
         }
-        
+
         if parser.check_keyword("end") {
             break;
         }
-        
+
         if let Some(stmt) = parser.parse_statement()? {
             body.push(stmt);
         } else {
@@ -538,11 +596,23 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
 }
 
 pub fn parse_return(parser: &mut Parser) -> Result<Option<Statement>, String> {
+    use crate::parser::ast::{Expression, Span};
     let start_token = parser.peek().clone();
     parser.expect_keyword("return")?;
     let value = if !parser.check_keyword("end") && !parser.is_at_end() {
         parser.skip_optional_arrow(); // Optional arrow before value
-        Some(crate::parser::expressions::operators::parse_expression(parser)?)
+        let first = crate::parser::expressions::operators::parse_expression(parser)?;
+        // Multi-return: `return → a, b` auto-wraps as an array
+        if parser.check(crate::lexer::token::TokenKind::Comma) {
+            let mut elements = vec![first];
+            while parser.check(crate::lexer::token::TokenKind::Comma) {
+                parser.advance(); // consume comma
+                elements.push(crate::parser::expressions::operators::parse_expression(parser)?);
+            }
+            Some(Expression::Array { elements, span: Span::default() })
+        } else {
+            Some(first)
+        }
     } else {
         None
     };

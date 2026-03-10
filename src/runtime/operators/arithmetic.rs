@@ -20,7 +20,9 @@ impl ArithmeticOps {
 
     fn add(left: &Value, right: &Value) -> Result<Value, RuntimeError> {
         match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
+            (Value::Integer(a), Value::Integer(b)) => a.checked_add(*b)
+                .map(Value::Integer)
+                .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} + {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + *b as f64)),
@@ -38,7 +40,9 @@ impl ArithmeticOps {
 
     fn subtract(left: &Value, right: &Value) -> Result<Value, RuntimeError> {
         match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
+            (Value::Integer(a), Value::Integer(b)) => a.checked_sub(*b)
+                .map(Value::Integer)
+                .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} - {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - *b as f64)),
@@ -48,7 +52,9 @@ impl ArithmeticOps {
 
     fn multiply(left: &Value, right: &Value) -> Result<Value, RuntimeError> {
         match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
+            (Value::Integer(a), Value::Integer(b)) => a.checked_mul(*b)
+                .map(Value::Integer)
+                .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} * {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * *b as f64)),
@@ -110,8 +116,13 @@ impl ArithmeticOps {
             (Value::Integer(a), Value::Integer(b)) => {
                 if *b < 0 {
                     Err(RuntimeError::new("Negative exponent not supported for integers".to_string()))
+                } else if *b > 62 {
+                    // Exponents > 62 will almost certainly overflow i64
+                    Err(RuntimeError::new(format!("Integer overflow: {} ** {}", a, b)))
                 } else {
-                    Ok(Value::Integer(a.pow(*b as u32)))
+                    a.checked_pow(*b as u32)
+                        .map(Value::Integer)
+                        .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} ** {}", a, b)))
                 }
             }
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(*b))),

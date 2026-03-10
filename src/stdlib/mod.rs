@@ -65,20 +65,50 @@ impl StdLib {
         Self::call_function_with_permission_checker_internal(name, args, exec_allowed, executor, permission_checker)
     }
     
-    /// Call function with executor that implements both FunctionExecutor and PermissionChecker
-    /// This version properly handles the borrow checker by restructuring the permission check
+    /// Call function with executor that implements both FunctionExecutor and PermissionChecker.
+    ///
+    /// Permission checking is done inline here (immutable borrow) before the mutable call,
+    /// which avoids the Rust borrow-checker conflict between `&dyn PermissionChecker` and
+    /// `&mut E` pointing at the same value.
     pub fn call_function_with_combined_traits<E>(name: &str, args: &[crate::runtime::Value], exec_allowed: bool, executor: Option<&mut E>)
     -> Result<crate::runtime::Value, crate::runtime::RuntimeError>
     where
         E: FunctionExecutor + PermissionChecker,
     {
-        // Extract permission checker from executor if possible
-        // Since executor implements PermissionChecker, we can use it for permission checking
-        // But we need to handle borrow checker: can't use &mut and & at the same time
-        // Solution: Use executor as permission checker directly by checking permissions inline
-        // For now, pass None and permission checking will be added incrementally
-        // TODO: Implement proper permission checking extraction without borrow issues
-        // Workaround: Pass executor, and stdlib functions can check permissions using executor if it implements PermissionChecker
+        use crate::runtime::permissions::PermissionResource;
+
+        // Determine if this call touches a permission-gated resource and check upfront
+        // using an immutable reborrow of executor (before the mutable call below).
+        if let Some(ref exec) = executor {
+            let resource = if name.starts_with("http") || name.starts_with("tcp") || name == "udp_send" || name == "resolve" {
+                Some(PermissionResource::Network("connect".to_string()))
+            } else if name.starts_with("read") || name.starts_with("write") || name.starts_with("file") ||
+                      name.starts_with("list") || name == "is_file" || name == "is_dir" ||
+                      name == "mkdir" || name == "rmdir" || name == "delete" ||
+                      name == "append_file" || name == "copy_file" || name == "move_file" ||
+                      name == "temp_file" || name == "watch_file" || name == "symlink_create" {
+                let action = if name.starts_with("read") || name.starts_with("list") || name == "is_file" || name == "is_dir" {
+                    "read"
+                } else if name == "delete" || name == "rmdir" {
+                    "delete"
+                } else {
+                    "write"
+                };
+                Some(PermissionResource::FileSystem(action.to_string()))
+            } else if name == "exec" || name == "spawn" || name == "kill" || name == "pipe_exec" || name == "signal_send" {
+                Some(PermissionResource::Process(vec![name.to_string()]))
+            } else if name == "getenv" || name == "setenv" {
+                Some(PermissionResource::System("env".to_string()))
+            } else {
+                None
+            };
+            if let Some(res) = resource {
+                exec.check_permission(&res, None)?;
+            }
+        }
+
+        // Now call the internal routing without a separate permission_checker reference
+        // (resources gated above; stdlib modules receive None and skip their own check).
         Self::call_function_with_permission_checker_internal(name, args, exec_allowed, executor, None)
     }
     
@@ -104,18 +134,38 @@ impl StdLib {
            name == "split" || name == "join" || name == "replace" || name == "trim" ||
            name == "substring" || name == "indexOf" || name == "startsWith" || name == "endsWith" ||
            name == "toUpper" || name == "toLower" ||
-           name == "sort" || name == "reverse" || name == "concat" {
+           name == "sort" || name == "reverse" || name == "concat" ||
+           name == "ok" || name == "err" || name == "is_ok" || name == "is_err" ||
+           name == "unwrap" || name == "unwrap_or" ||
+           name == "base32_encode" || name == "base32_decode" ||
+           name == "html_escape" ||
+           name.starts_with("toml_") ||
+           name.starts_with("csv_") ||
+           name == "xml_parse" ||
+           name.starts_with("yaml_") ||
+           name == "math_random_float" {
             CoreLib::call_function(name, args, executor)
-        } else if name.starts_with("sha") || name.starts_with("random") || name == "encrypt" || name == "decrypt" {
+        } else if name.starts_with("sha") || name.starts_with("random") || name == "encrypt" || name == "decrypt"
+                  || name == "md5" || name == "base64_encode" || name == "base64_decode"
+                  || name == "hmac_sha256" || name == "uuid_v4" || name == "secure_compare"
+                  || name == "pbkdf2" || name == "bcrypt_hash" || name == "bcrypt_verify"
+                  || name == "ed25519_sign" || name == "ed25519_verify"
+                  || name == "rsa_generate" || name == "rsa_sign" || name == "rsa_verify" {
             CryptoLib::call_function(name, args)
         } else if name.starts_with("http") || name.starts_with("tcp") || name == "udp_send" || name == "resolve" {
             NetLib::call_function(name, args, effective_permission_checker)
         } else if name.starts_with("read") || name.starts_with("write") || name.starts_with("file") || name.starts_with("list") ||
                   name == "is_file" || name == "is_dir" || name == "mkdir" || name == "rmdir" || name == "delete" ||
-                  name == "append_file" || name == "copy_file" || name == "move_file" || name == "rename_file" {
+                  name == "append_file" || name == "copy_file" || name == "move_file" || name == "rename_file"
+                  || name == "temp_file" || name == "watch_file" || name == "symlink_create"
+                  || name == "zip_create" || name == "zip_extract" {
             IOLib::call_function(name, args, effective_permission_checker)
         } else if name == "getenv" || name == "setenv" || name == "platform" || name == "arch" || name == "exec" ||
-                  name == "exit" || name == "args" || name == "cwd" {
+                  name == "exit" || name == "args" || name == "cwd"
+                  || name == "env_list" || name == "signal_send" || name == "pipe_exec"
+                  || name == "which" || name == "is_root" || name == "cpu_count"
+                  || name == "memory_available" || name == "disk_space"
+                  || name == "os_name" || name == "os_version" {
             SysLib::call_function(name, args, exec_allowed, effective_permission_checker)
         } else if name == "now" || (name == "sleep" && args.len() == 1) {
             TimeLib::call_function(name, args)

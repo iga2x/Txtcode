@@ -133,6 +133,69 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
             None
         };
         
+        // Check for struct literal: StructName { field: value, ... }
+        // Only when expr is an Identifier, next is '{', and lookahead shows 'ident:'
+        if parser.check(crate::lexer::token::TokenKind::LeftBrace) {
+            if let Expression::Identifier(ref struct_name) = expr {
+                // Lookahead: is this { identifier : ... }? (struct literal vs map/set/block)
+                let brace_pos = parser.position; // points to '{'
+                let mut peek = brace_pos + 1;
+                // skip whitespace/newlines
+                while peek < parser.tokens.len() && matches!(parser.tokens[peek].kind,
+                    crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+                    peek += 1;
+                }
+                let is_struct_literal = {
+                    // Empty struct: { }
+                    let is_empty = peek < parser.tokens.len() &&
+                        parser.tokens[peek].kind == crate::lexer::token::TokenKind::RightBrace;
+                    // Non-empty struct: { identifier : ... }
+                    let has_field = peek + 1 < parser.tokens.len() &&
+                        parser.tokens[peek].kind == crate::lexer::token::TokenKind::Identifier &&
+                        parser.tokens[peek + 1].kind == crate::lexer::token::TokenKind::Colon;
+                    is_empty || has_field
+                };
+                if is_struct_literal {
+                    let name = struct_name.clone();
+                    parser.advance(); // consume '{'
+                    // skip whitespace
+                    while !parser.is_at_end() && matches!(parser.peek().kind,
+                        crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+                        parser.advance();
+                    }
+                    let mut fields = Vec::new();
+                    while !parser.check(crate::lexer::token::TokenKind::RightBrace) && !parser.is_at_end() {
+                        let field_name = parser.expect_identifier()?;
+                        parser.expect(crate::lexer::token::TokenKind::Colon)?;
+                        let value = crate::parser::expressions::operators::parse_expression(parser)?;
+                        fields.push((field_name, value));
+                        // skip whitespace
+                        while !parser.is_at_end() && matches!(parser.peek().kind,
+                            crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+                            parser.advance();
+                        }
+                        if parser.check(crate::lexer::token::TokenKind::Comma) {
+                            parser.advance();
+                            // skip whitespace after comma
+                            while !parser.is_at_end() && matches!(parser.peek().kind,
+                                crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+                                parser.advance();
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    parser.expect(crate::lexer::token::TokenKind::RightBrace)?;
+                    expr = Expression::StructLiteral {
+                        name,
+                        fields,
+                        span: Span::default(),
+                    };
+                    continue;
+                }
+            }
+        }
+
         if parser.check(crate::lexer::token::TokenKind::LeftParen) {
             expr = finish_call(parser, expr, type_args)?;
         } else if parser.check(crate::lexer::token::TokenKind::LeftBracket) {

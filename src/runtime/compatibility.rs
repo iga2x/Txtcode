@@ -512,6 +512,8 @@ pub struct MigrationReport {
     pub transformations_applied: Vec<String>,
     pub warnings: Vec<DeprecationWarning>,
     pub errors: Vec<String>,
+    /// Regenerated source code after migration (Some only when dry_run=false)
+    pub generated_source: Option<String>,
 }
 
 impl MigrationReport {
@@ -522,6 +524,7 @@ impl MigrationReport {
             transformations_applied: Vec::new(),
             warnings: Vec::new(),
             errors: Vec::new(),
+            generated_source: None,
         }
     }
 

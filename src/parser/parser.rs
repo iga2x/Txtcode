@@ -82,7 +82,7 @@ impl Parser {
                     }
                     "store" => crate::parser::statements::assignment::parse_store(self),
                     "print" => crate::parser::statements::assignment::parse_print(self),
-                    "define" => crate::parser::statements::functions::parse_define(self),
+                    "define" | "async" => crate::parser::statements::functions::parse_define(self),
                     "return" => crate::parser::statements::functions::parse_return(self),
                     "if" => crate::parser::statements::control::parse_if(self),
                     "while" => crate::parser::statements::control::parse_while(self),
@@ -126,6 +126,66 @@ impl Parser {
                 if self.check_keyword("catch") || self.check_keyword("finally") || self.check_keyword("end") {
                     return Ok(None);
                 }
+
+                // Check for compound assignment: x += expr, x -= expr, etc.
+                if token_kind == crate::lexer::token::TokenKind::Identifier {
+                    let next_pos = self.position + 1;
+                    if next_pos < self.tokens.len() {
+                        let next_kind = &self.tokens[next_pos].kind;
+                        let compound_op = match next_kind {
+                            crate::lexer::token::TokenKind::PlusAssign => Some(BinaryOperator::Add),
+                            crate::lexer::token::TokenKind::MinusAssign => Some(BinaryOperator::Subtract),
+                            crate::lexer::token::TokenKind::StarAssign => Some(BinaryOperator::Multiply),
+                            crate::lexer::token::TokenKind::SlashAssign => Some(BinaryOperator::Divide),
+                            crate::lexer::token::TokenKind::PercentAssign => Some(BinaryOperator::Modulo),
+                            crate::lexer::token::TokenKind::PowerAssign => Some(BinaryOperator::Power),
+                            crate::lexer::token::TokenKind::BitAndAssign => Some(BinaryOperator::BitwiseAnd),
+                            crate::lexer::token::TokenKind::BitOrAssign => Some(BinaryOperator::BitwiseOr),
+                            crate::lexer::token::TokenKind::BitXorAssign => Some(BinaryOperator::BitwiseXor),
+                            _ => None,
+                        };
+                        if let Some(op) = compound_op {
+                            let start_token = self.peek().clone();
+                            let name = self.expect_identifier()?;
+                            self.advance(); // consume compound-assign token
+                            let value = self.parse_expression()?;
+                            let span = token_span_to_ast_span(&start_token);
+                            return Ok(Some(Statement::CompoundAssignment { name, op, value, span }));
+                        }
+
+                        // Check for type alias: type → name → target
+                        if token_value == "type" && *next_kind == crate::lexer::token::TokenKind::Arrow {
+                            let start_token = self.peek().clone();
+                            self.advance(); // consume "type"
+                            self.advance(); // consume →
+                            let alias_name = self.expect_identifier()?;
+                            self.skip_optional_arrow();
+                            // Parse target as identifier or type keyword
+                            let target = if self.check(crate::lexer::token::TokenKind::Identifier) || self.check(crate::lexer::token::TokenKind::Keyword) {
+                                let t = self.peek().value.clone();
+                                self.advance();
+                                t
+                            } else {
+                                return self.error("Expected type name after type alias arrow");
+                            };
+                            let span = token_span_to_ast_span(&start_token);
+                            return Ok(Some(Statement::TypeAlias { name: alias_name, target, span }));
+                        }
+
+                        // Check for named error: error → name → message
+                        if token_value == "error" && *next_kind == crate::lexer::token::TokenKind::Arrow {
+                            let start_token = self.peek().clone();
+                            self.advance(); // consume "error"
+                            self.advance(); // consume →
+                            let error_name = self.expect_identifier()?;
+                            self.skip_optional_arrow();
+                            let message = self.parse_expression()?;
+                            let span = token_span_to_ast_span(&start_token);
+                            return Ok(Some(Statement::NamedError { name: error_name, message, span }));
+                        }
+                    }
+                }
+
                 if let Ok(expr) = self.parse_expression() {
                     Ok(Some(Statement::Expression(expr)))
                 } else {

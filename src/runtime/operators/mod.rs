@@ -56,6 +56,13 @@ impl OperatorRegistry {
                     Ok(left.clone())
                 }
             }
+            BinaryOperator::Pipe => {
+                // Pipe: left |> right_func — right must be callable
+                // This path is only hit for complex rhs (non-identifier); simple pipes are desugared at parse time.
+                Err(RuntimeError::new(
+                    "Pipe operator |> with complex right-hand side is not supported. Use a named function.".to_string()
+                ))
+            }
         }
     }
 

@@ -35,6 +35,7 @@ pub trait ExpressionVM {
     fn map_stdlib_to_action(&self, name: &str, args: &[Value]) -> Option<(String, String)>;
     fn check_intent(&self, function_name: &str, action: &str, resource: &str) -> Result<(), RuntimeError>;
     fn call_stack_current_frame(&self) -> Option<&crate::runtime::core::CallFrame>;
+    fn call_stack_depth(&self) -> usize;
     fn call_stack_push(&mut self, frame: crate::runtime::core::CallFrame);
     fn call_stack_pop(&mut self);
     fn audit_trail_log_action(&mut self, action: String, resource: String, context: Option<String>, result: crate::runtime::audit::AuditResult, ai_metadata: Option<&crate::runtime::audit::AIMetadata>);
@@ -174,6 +175,28 @@ impl ExpressionEvaluator {
                     .map(|a| Self::evaluate(vm, a))
                     .collect::<Result<_, _>>()?;
                 function_calls::call_method_on_value(vm, obj_val, method, &args)
+            }
+            Expression::StructLiteral { name, fields, .. } => {
+                // Look up struct definition
+                let struct_def = vm.struct_defs().get(name).cloned();
+                let mut field_map = HashMap::new();
+                for (field_name, field_expr) in fields {
+                    let val = Self::evaluate(vm, field_expr)?;
+                    field_map.insert(field_name.clone(), val);
+                }
+                // Validate fields if struct def exists
+                if let Some(def) = &struct_def {
+                    for (def_field, _) in def {
+                        if !field_map.contains_key(def_field) {
+                            field_map.insert(def_field.clone(), Value::Null);
+                        }
+                    }
+                }
+                Ok(Value::Struct(name.clone(), field_map))
+            }
+            Expression::Spread { value, .. } => {
+                // Spread outside an array literal context — evaluate inner value
+                Self::evaluate(vm, value)
             }
         }
     }

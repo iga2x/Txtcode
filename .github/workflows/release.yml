@@ -62,9 +62,37 @@ jobs:
           cp target/${{ matrix.target }}/release/txtcode${{ matrix.ext }} \
              ${{ matrix.artifact }}${{ matrix.ext }}
 
+      - name: Import GPG key
+        if: env.GPG_PRIVATE_KEY != ''
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      - name: Sign binary (GPG)
+        if: env.GPG_PRIVATE_KEY != '' && runner.os != 'Windows'
+        run: |
+          gpg --batch --yes --armor --detach-sign \
+              ${{ matrix.artifact }}${{ matrix.ext }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      - name: Compute SHA256 checksum
+        shell: bash
+        run: |
+          sha256sum ${{ matrix.artifact }}${{ matrix.ext }} \
+            > ${{ matrix.artifact }}${{ matrix.ext }}.sha256 2>/dev/null || \
+          shasum -a 256 ${{ matrix.artifact }}${{ matrix.ext }} \
+            > ${{ matrix.artifact }}${{ matrix.ext }}.sha256
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact }}${{ matrix.ext }}
+          files: |
+            ${{ matrix.artifact }}${{ matrix.ext }}
+            ${{ matrix.artifact }}${{ matrix.ext }}.sha256
+            ${{ matrix.artifact }}${{ matrix.ext }}.asc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

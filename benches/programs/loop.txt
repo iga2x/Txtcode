@@ -1,0 +1,9 @@
+## Loop benchmark — sum 1 to 1000
+##
+store → total → 0
+store → i → 0
+while → i < 1000
+  store → total → total + i
+  store → i → i + 1
+end
+print → total

@@ -1,0 +1,105 @@
+## File Processing — read, transform, write
+##
+## Run with: txtcode examples/file_processing.tc
+##
+## Covers: string operations, loops, functions, collections
+
+# ── Word frequency counter ────────────────────────────────────────────────────
+# Simulates processing text content line by line
+
+define → count_words → (text)
+  store → counts → {}
+  store → words → split(text, " ")
+  for → word in words
+    store → w → lower(trim(word))
+    if → w != ""
+      if → has_key(counts, w)
+        store → counts[w] → counts[w] + 1
+      else
+        store → counts[w] → 1
+      end
+    end
+  end
+  return → counts
+end
+
+define → top_words → (counts, n)
+  store → results → []
+  for → word in keys(counts)
+    push(results, [counts[word], word])
+  end
+  sort(results)
+  reverse(results)
+  return → slice(results, 0, n)
+end
+
+# ── CSV row parser ────────────────────────────────────────────────────────────
+
+define → parse_csv_row → (line)
+  return → split(line, ",")
+end
+
+define → parse_csv → (text)
+  store → rows → split(text, "\n")
+  store → result → []
+  store → headers → []
+
+  store → first → true
+  for → row in rows
+    store → r → trim(row)
+    if → r == ""
+      continue
+    end
+    store → cells → parse_csv_row(r)
+    if → first
+      store → headers → cells
+      store → first → false
+    else
+      store → record → {}
+      store → i → 0
+      for → cell in cells
+        if → i < len(headers)
+          store → record[headers[i]] → trim(cell)
+        end
+        store → i → i + 1
+      end
+      push(result, record)
+    end
+  end
+  return → result
+end
+
+# ── Demo ──────────────────────────────────────────────────────────────────────
+
+store → sample_text → "the quick brown fox jumps over the lazy dog the fox"
+store → freq → count_words(sample_text)
+print → "Word frequencies:"
+for → word in keys(freq)
+  print → "  " + word + ": " + freq[word]
+end
+
+store → csv_data → "name,age,city\nAlice,30,London\nBob,25,Paris\nCarol,35,Berlin"
+store → records → parse_csv(csv_data)
+print → "\nParsed CSV records:"
+for → record in records
+  print → "  " + record["name"] + " (age " + record["age"] + ") from " + record["city"]
+end
+
+# ── Stats helper ──────────────────────────────────────────────────────────────
+
+define → stats → (numbers)
+  store → total → 0
+  store → n → len(numbers)
+  for → x in numbers
+    store → total → total + x
+  end
+  store → mean → total / n
+  return → {"count": n, "sum": total, "mean": mean}
+end
+
+store → data → [12, 45, 7, 89, 23, 56, 34, 11, 78, 62]
+store → s → stats(data)
+print → "\nData stats:"
+print → "  count: " + s["count"]
+print → "  sum:   " + s["sum"]
+print → "  mean:  " + s["mean"]

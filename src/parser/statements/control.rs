@@ -151,17 +151,32 @@ pub fn parse_do_while(parser: &mut Parser) -> Result<Option<Statement>, String> 
     parser.expect_keyword("do")?;
     
     let mut body = Vec::new();
-    while !parser.is_at_end() && !parser.check_keyword("while") {
+    loop {
+        // Skip newlines/whitespace before checking for the closing `while` keyword
+        while !parser.is_at_end() &&
+              (parser.peek().kind == crate::lexer::token::TokenKind::Newline ||
+               parser.peek().kind == crate::lexer::token::TokenKind::Whitespace) {
+            parser.advance();
+        }
+        if parser.is_at_end() || parser.check_keyword("while") {
+            break;
+        }
         if let Some(stmt) = parser.parse_statement()? {
             body.push(stmt);
         } else {
             break;
         }
     }
-    
+
     parser.expect_keyword("while")?;
     parser.skip_optional_arrow(); // Optional arrow before condition
     let condition = crate::parser::expressions::operators::parse_expression(parser)?;
+    // Skip newlines between condition and closing `end`
+    while !parser.is_at_end() &&
+          (parser.peek().kind == crate::lexer::token::TokenKind::Newline ||
+           parser.peek().kind == crate::lexer::token::TokenKind::Whitespace) {
+        parser.advance();
+    }
     parser.expect_keyword("end")?;
     
     let span = token_span_to_ast_span(&start_token);

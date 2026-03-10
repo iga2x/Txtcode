@@ -77,11 +77,15 @@ impl Lexer {
             }
             // Operators
             '+' => {
-                // Check for increment operator (++)
+                // Check for increment operator (++) or compound assign (+=)
                 if self.peek() == Some('+') {
                     self.advance(); // Advance past first '+'
                     self.advance(); // Advance past second '+'
                     Token::new(TokenKind::Increment, "++".to_string(), (start_line, start_col))
+                } else if self.peek() == Some('=') {
+                    self.advance(); // Advance past '+'
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::PlusAssign, "+=".to_string(), (start_line, start_col))
                 } else {
                     self.advance(); // Advance past '+'
                     Token::new(TokenKind::Plus, String::from(ch), (start_line, start_col))
@@ -98,6 +102,10 @@ impl Lexer {
                     self.advance(); // Advance past first '-'
                     self.advance(); // Advance past second '-'
                     Token::new(TokenKind::Decrement, "--".to_string(), (start_line, start_col))
+                } else if self.peek() == Some('=') {
+                    self.advance(); // Advance past '-'
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::MinusAssign, "-=".to_string(), (start_line, start_col))
                 } else {
                     self.advance(); // Advance past '-'
                     Token::new(TokenKind::Minus, String::from(ch), (start_line, start_col))
@@ -110,23 +118,50 @@ impl Lexer {
                 Token::new(TokenKind::Arrow, "→".to_string(), (start_line, start_col))
             }
             '*' => {
-                // Check next character before advancing
+                // Check next character before advancing: **, **=, *=, *
                 if self.peek() == Some('*') {
                     self.advance(); // Advance past first '*'
                     self.advance(); // Advance past second '*'
-                    Token::new(TokenKind::Power, "**".to_string(), (start_line, start_col))
+                    // Check for **=
+                    if self.position < self.source.len() {
+                        let rem = &self.source[self.position..];
+                        if rem.starts_with('=') {
+                            self.advance(); // Advance past '='
+                            Token::new(TokenKind::PowerAssign, "**=".to_string(), (start_line, start_col))
+                        } else {
+                            Token::new(TokenKind::Power, "**".to_string(), (start_line, start_col))
+                        }
+                    } else {
+                        Token::new(TokenKind::Power, "**".to_string(), (start_line, start_col))
+                    }
+                } else if self.peek() == Some('=') {
+                    self.advance(); // Advance past '*'
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::StarAssign, "*=".to_string(), (start_line, start_col))
                 } else {
                     self.advance(); // Advance past '*'
                     Token::new(TokenKind::Star, String::from(ch), (start_line, start_col))
                 }
             }
             '/' => {
-                self.advance();
-                Token::new(TokenKind::Slash, String::from(ch), (start_line, start_col))
+                if self.peek() == Some('=') {
+                    self.advance(); // Advance past '/'
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::SlashAssign, "/=".to_string(), (start_line, start_col))
+                } else {
+                    self.advance();
+                    Token::new(TokenKind::Slash, String::from(ch), (start_line, start_col))
+                }
             }
             '%' => {
-                self.advance();
-                Token::new(TokenKind::Percent, String::from(ch), (start_line, start_col))
+                if self.peek() == Some('=') {
+                    self.advance(); // Advance past '%'
+                    self.advance(); // Advance past '='
+                    Token::new(TokenKind::PercentAssign, "%=".to_string(), (start_line, start_col))
+                } else {
+                    self.advance();
+                    Token::new(TokenKind::Percent, String::from(ch), (start_line, start_col))
+                }
             }
             '<' => {
                 // Check next character before advancing
@@ -180,7 +215,7 @@ impl Lexer {
                 }
             }
             '?' => {
-                // Check for null coalesce (??) or optional chain (?.)
+                // Check for null coalesce (??) or optional chain (?.) or standalone ?
                 if self.peek() == Some('?') {
                     self.advance(); // Advance past first '?'
                     self.advance(); // Advance past second '?'
@@ -190,7 +225,8 @@ impl Lexer {
                     self.advance(); // Advance past '.'
                     Token::new(TokenKind::OptionalChain, "?.".to_string(), (start_line, start_col))
                 } else {
-                    return Err(format!("Unexpected character: {} (use ?? for null coalesce or ?. for optional chaining)", ch));
+                    self.advance(); // Advance past '?'
+                    Token::new(TokenKind::QuestionMark, "?".to_string(), (start_line, start_col))
                 }
             }
             '&' => {
@@ -199,6 +235,9 @@ impl Lexer {
                 if next == Some('&') {
                     self.advance();
                     Token::new(TokenKind::And, "&&".to_string(), (start_line, start_col))
+                } else if next == Some('=') {
+                    self.advance();
+                    Token::new(TokenKind::BitAndAssign, "&=".to_string(), (start_line, start_col))
                 } else {
                     Token::new(TokenKind::BitAnd, String::from(ch), (start_line, start_col))
                 }
@@ -206,16 +245,28 @@ impl Lexer {
             '|' => {
                 self.advance();
                 let next = self.source[self.position..].chars().next();
-                if next == Some('|') {
+                if next == Some('>') {
+                    self.advance();
+                    Token::new(TokenKind::Pipe, "|>".to_string(), (start_line, start_col))
+                } else if next == Some('|') {
                     self.advance();
                     Token::new(TokenKind::Or, "||".to_string(), (start_line, start_col))
+                } else if next == Some('=') {
+                    self.advance();
+                    Token::new(TokenKind::BitOrAssign, "|=".to_string(), (start_line, start_col))
                 } else {
                     Token::new(TokenKind::BitOr, String::from(ch), (start_line, start_col))
                 }
             }
             '^' => {
                 self.advance();
-                Token::new(TokenKind::BitXor, String::from(ch), (start_line, start_col))
+                let next = self.source[self.position..].chars().next();
+                if next == Some('=') {
+                    self.advance();
+                    Token::new(TokenKind::BitXorAssign, "^=".to_string(), (start_line, start_col))
+                } else {
+                    Token::new(TokenKind::BitXor, String::from(ch), (start_line, start_col))
+                }
             }
             '~' => {
                 self.advance();
@@ -260,11 +311,23 @@ impl Lexer {
             }
             '.' => {
                 self.advance();
-                Token::new(TokenKind::Dot, String::from(ch), (start_line, start_col))
+                // Check for spread: ...
+                if self.source[self.position..].starts_with("..") {
+                    self.advance(); // consume second .
+                    self.advance(); // consume third .
+                    Token::new(TokenKind::Spread, "...".to_string(), (start_line, start_col))
+                } else {
+                    Token::new(TokenKind::Dot, String::from(ch), (start_line, start_col))
+                }
             }
             // String and char literals
             '"' => {
-                self.read_string(ch)?
+                // Check for multiline string: """..."""
+                if self.source[self.position..].starts_with("\"\"\"") {
+                    self.read_multiline_string()?
+                } else {
+                    self.read_string(ch)?
+                }
             }
             '\'' => {
                 // Check if it's a char literal (single character) or string literal
@@ -274,9 +337,21 @@ impl Lexer {
             '0'..='9' => {
                 self.read_number()?
             }
-            // Identifiers and keywords
+            // Identifiers and keywords (also raw strings: r"...", f-strings: f"...")
             'a'..='z' | 'A'..='Z' | '_' => {
-                self.read_identifier()?
+                // Check for raw string: r"..."
+                if ch == 'r' && self.peek() == Some('"') {
+                    self.advance(); // consume 'r'
+                    self.read_raw_string()?
+                } else if ch == 'f' && (self.peek() == Some('"') || self.peek() == Some('\'')) {
+                    // f-string prefix: f"..." or f'...' — consume 'f' and read as normal string
+                    // The string reader already marks strings with { } as InterpolatedString
+                    self.advance(); // consume 'f'
+                    let quote = self.source[self.position..].chars().next().unwrap_or('"');
+                    self.read_string(quote)?
+                } else {
+                    self.read_identifier()?
+                }
             }
             _ => {
                 return Err(format!("Unexpected character: {} at line {}:{}", ch, self.line, self.column));
@@ -588,6 +663,11 @@ impl Lexer {
                 Some(c) => c,
                 None => break,
             };
+            if ch == '_' {
+                // Number separator: skip underscore (e.g., 1_000_000)
+                self.advance();
+                continue;
+            }
             if ch.is_ascii_digit() {
                 value.push(ch);
                 self.advance();
@@ -637,6 +717,79 @@ impl Lexer {
         };
         
         Ok(Token::new(kind, value, (start_line, start_col)))
+    }
+
+    /// Read a raw string literal: r"..." — no escape processing
+    fn read_raw_string(&mut self) -> Result<Token, String> {
+        let start_line = self.line;
+        let start_col = self.column;
+        self.advance(); // Skip opening quote
+        let mut value = String::new();
+        let mut found_closing = false;
+
+        while self.position < self.source.len() {
+            let remaining = &self.source[self.position..];
+            let ch = match remaining.chars().next() {
+                Some(c) => c,
+                None => break,
+            };
+            if ch == '"' {
+                self.advance();
+                found_closing = true;
+                break;
+            } else {
+                value.push(ch);
+                self.advance();
+            }
+        }
+
+        if !found_closing {
+            return Err(format!("Unterminated raw string literal at line {}, column {}", start_line, start_col));
+        }
+
+        Ok(Token::new(TokenKind::String, value, (start_line, start_col)))
+    }
+
+    /// Read a multiline string literal: """..."""
+    fn read_multiline_string(&mut self) -> Result<Token, String> {
+        let start_line = self.line;
+        let start_col = self.column;
+        // Consume opening """
+        self.advance();
+        self.advance();
+        self.advance();
+        let mut value = String::new();
+        let mut found_closing = false;
+
+        while self.position < self.source.len() {
+            // Check for closing """
+            if self.source[self.position..].starts_with("\"\"\"") {
+                self.advance();
+                self.advance();
+                self.advance();
+                found_closing = true;
+                break;
+            }
+            let remaining = &self.source[self.position..];
+            let ch = match remaining.chars().next() {
+                Some(c) => c,
+                None => break,
+            };
+            value.push(ch);
+            self.advance();
+        }
+
+        if !found_closing {
+            return Err(format!("Unterminated multiline string literal at line {}, column {}", start_line, start_col));
+        }
+
+        // Multiline strings may contain unescaped { for interpolation
+        let has_interpolation = value.contains('{');
+        if has_interpolation {
+            Ok(Token::new(TokenKind::InterpolatedString, value, (start_line, start_col)))
+        } else {
+            Ok(Token::new(TokenKind::String, value, (start_line, start_col)))
+        }
     }
 
     fn read_identifier(&mut self) -> Result<Token, String> {
