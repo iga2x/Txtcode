@@ -1,11 +1,11 @@
 #!/usr/bin/env sh
 # ─────────────────────────────────────────────────────────────────────────────
-# Txt-code Installer
-# Usage: curl -sSf https://raw.githubusercontent.com/iga2x/txtcode/main/install.sh | sh
+# Txt-code Installer  (case-sensitive repo: iga2x/Txtcode)
+# Usage: curl -sSf https://raw.githubusercontent.com/iga2x/Txtcode/main/install.sh | sh
 # ─────────────────────────────────────────────────────────────────────────────
 set -e
 
-REPO="iga2x/txtcode"
+REPO="iga2x/Txtcode"
 BIN_NAME="txtcode"
 INSTALL_DIR="${TXTCODE_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${TXTCODE_VERSION:-latest}"
@@ -29,145 +29,181 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 
 case "$OS" in
-    Linux*)   OS_NAME="linux" ;;
-    Darwin*)  OS_NAME="macos" ;;
+    Linux*)              OS_NAME="linux" ;;
+    Darwin*)             OS_NAME="macos" ;;
     MINGW*|MSYS*|CYGWIN*) OS_NAME="windows" ;;
-    *)        error "Unsupported operating system: $OS" ;;
+    *)                   error "Unsupported operating system: $OS" ;;
 esac
 
 case "$ARCH" in
-    x86_64|amd64) ARCH_NAME="x86_64" ;;
-    aarch64|arm64) ARCH_NAME="aarch64" ;;
-    armv7*) ARCH_NAME="armv7" ;;
-    *) warn "Unknown architecture: $ARCH — will attempt source build" ;;
+    x86_64|amd64)  ARCH_NAME="x86_64" ;;
+    aarch64|arm64) ARCH_NAME="arm64" ;;
+    *)             ARCH_NAME="" ;;
 esac
 
-info "System: ${OS_NAME} / ${ARCH_NAME}"
+info "System: ${OS_NAME} / ${ARCH_NAME:-unknown}"
 
 # ── Install directory ─────────────────────────────────────────────────────────
 mkdir -p "$INSTALL_DIR"
 
-# ── Try to download pre-built binary first ────────────────────────────────────
-download_prebuilt() {
-    if [ "$VERSION" = "latest" ]; then
-        RELEASE_URL="https://api.github.com/repos/${REPO}/releases/latest"
-        if command -v curl >/dev/null 2>&1; then
-            TAG=$(curl -sSf "$RELEASE_URL" 2>/dev/null | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
-        elif command -v wget >/dev/null 2>&1; then
-            TAG=$(wget -qO- "$RELEASE_URL" 2>/dev/null | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
-        fi
-        VERSION="${TAG:-}"
-    fi
-
-    if [ -z "$VERSION" ]; then
-        return 1
-    fi
-
-    ASSET_NAME="${BIN_NAME}-${OS_NAME}-${ARCH_NAME}"
-    if [ "$OS_NAME" = "windows" ]; then
-        ASSET_NAME="${ASSET_NAME}.exe"
-    fi
-
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET_NAME}"
-    DEST="${INSTALL_DIR}/${BIN_NAME}"
-
-    info "Downloading ${BIN_NAME} ${VERSION}..."
+# ── Helper: download a URL to a file ─────────────────────────────────────────
+download() {
+    URL="$1"; DEST="$2"
     if command -v curl >/dev/null 2>&1; then
-        curl -sSfL "$DOWNLOAD_URL" -o "$DEST" 2>/dev/null || return 1
+        curl -sSfL "$URL" -o "$DEST"
     elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$DEST" "$DOWNLOAD_URL" 2>/dev/null || return 1
+        wget -qO "$DEST" "$URL"
     else
+        error "Neither curl nor wget found. Please install one and retry."
+    fi
+}
+
+# ── Safe binary install (handles "text file busy" on running binary) ──────────
+install_binary() {
+    SRC="$1"; DEST="$2"
+    # Remove existing binary first — avoids ETXTBSY on Linux
+    rm -f "$DEST"
+    cp "$SRC" "$DEST"
+    chmod 755 "$DEST"
+}
+
+# ── Resolve latest tag from GitHub API ───────────────────────────────────────
+resolve_version() {
+    API="https://api.github.com/repos/${REPO}/releases/latest"
+    if command -v curl >/dev/null 2>&1; then
+        TAG=$(curl -sSf "$API" 2>/dev/null | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    else
+        TAG=$(wget -qO- "$API" 2>/dev/null | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    fi
+    printf '%s' "$TAG"
+}
+
+# ── Download pre-built package ────────────────────────────────────────────────
+download_prebuilt() {
+    if [ -z "$ARCH_NAME" ]; then
+        warn "Architecture '$ARCH' not supported by pre-built packages."
         return 1
     fi
 
-    chmod +x "$DEST"
+    if [ "$VERSION" = "latest" ]; then
+        info "Resolving latest release..."
+        VERSION="$(resolve_version)"
+        if [ -z "$VERSION" ]; then
+            warn "Could not resolve latest version from GitHub API."
+            return 1
+        fi
+    fi
+
+    info "Found release: ${VERSION}"
+
+    # Package name mirrors release.yml artifact names
+    if [ "$OS_NAME" = "windows" ]; then
+        PKG="${BIN_NAME}-${OS_NAME}-${ARCH_NAME}.zip"
+    else
+        PKG="${BIN_NAME}-${OS_NAME}-${ARCH_NAME}.tar.gz"
+    fi
+
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PKG}"
+    TMP_DIR="$(mktemp -d)"
+    TMP_PKG="${TMP_DIR}/${PKG}"
+
+    info "Downloading ${PKG} from ${VERSION}..."
+    download "$DOWNLOAD_URL" "$TMP_PKG" || {
+        warn "Pre-built package not found: ${DOWNLOAD_URL}"
+        rm -rf "$TMP_DIR"
+        return 1
+    }
+
+    # Extract
+    if [ "$OS_NAME" = "windows" ]; then
+        command -v unzip >/dev/null 2>&1 || error "unzip not found. Install it and retry."
+        unzip -q "$TMP_PKG" -d "$TMP_DIR"
+        install_binary "${TMP_DIR}/${BIN_NAME}.exe" "${INSTALL_DIR}/${BIN_NAME}.exe"
+    else
+        tar -xzf "$TMP_PKG" -C "$TMP_DIR"
+        install_binary "${TMP_DIR}/${BIN_NAME}" "${INSTALL_DIR}/${BIN_NAME}"
+    fi
+
+    rm -rf "$TMP_DIR"
     return 0
 }
 
-# ── Build from source ─────────────────────────────────────────────────────────
+# ── Build from source (fallback) ──────────────────────────────────────────────
 build_from_source() {
-    if ! command -v cargo >/dev/null 2>&1; then
-        error "cargo not found. Install Rust first: https://rustup.rs\nThen re-run this installer."
-    fi
+    command -v cargo >/dev/null 2>&1 || \
+        error "cargo not found. Install Rust from https://rustup.rs then retry."
 
     info "Building from source (this takes a minute)..."
-
     TMP_DIR="$(mktemp -d)"
-    trap 'rm -rf "$TMP_DIR"' EXIT
 
     if command -v git >/dev/null 2>&1; then
-        git clone --depth 1 "https://github.com/${REPO}.git" "$TMP_DIR/txtcode" >/dev/null 2>&1 \
-            || error "Failed to clone repository"
-        BUILD_DIR="$TMP_DIR/txtcode"
+        git clone --depth 1 "https://github.com/${REPO}.git" "$TMP_DIR/src" >/dev/null 2>&1 \
+            || error "Failed to clone repository."
+        BUILD_DIR="$TMP_DIR/src"
     else
-        # Download tarball
-        TARBALL_URL="https://github.com/${REPO}/archive/refs/heads/main.tar.gz"
+        TARBALL="https://github.com/${REPO}/archive/refs/heads/main.tar.gz"
         info "Downloading source tarball..."
-        if command -v curl >/dev/null 2>&1; then
-            curl -sSfL "$TARBALL_URL" | tar -xz -C "$TMP_DIR" || error "Failed to download source"
-        else
-            wget -qO- "$TARBALL_URL" | tar -xz -C "$TMP_DIR" || error "Failed to download source"
-        fi
-        BUILD_DIR="$TMP_DIR/txtcode-main"
+        download "$TARBALL" "$TMP_DIR/src.tar.gz"
+        tar -xzf "$TMP_DIR/src.tar.gz" -C "$TMP_DIR"
+        BUILD_DIR="$(ls -d "$TMP_DIR"/Txtcode-* 2>/dev/null | head -1)"
+        [ -n "$BUILD_DIR" ] || error "Failed to locate extracted source."
     fi
 
     (cd "$BUILD_DIR" && cargo build --release --quiet) \
-        || error "Build failed. Check the output above for details."
+        || error "Build failed."
 
-    cp "$BUILD_DIR/target/release/${BIN_NAME}" "${INSTALL_DIR}/${BIN_NAME}"
-    chmod +x "${INSTALL_DIR}/${BIN_NAME}"
+    install_binary "${BUILD_DIR}/target/release/${BIN_NAME}" "${INSTALL_DIR}/${BIN_NAME}"
+    rm -rf "$TMP_DIR"
 }
 
-# ── Try pre-built, fall back to source ───────────────────────────────────────
+# ── Main: try pre-built, fall back to source ──────────────────────────────────
 if download_prebuilt; then
-    success "Downloaded pre-built binary"
+    success "Installed pre-built binary"
 else
-    warn "No pre-built binary found for ${OS_NAME}/${ARCH_NAME}"
-    info  "Building from source instead..."
+    warn "No pre-built binary available for ${OS_NAME}/${ARCH_NAME:-unknown}."
+    info  "Falling back to build from source..."
     build_from_source
-    success "Built from source"
+    success "Built and installed from source"
 fi
 
-# ── Verify the binary ─────────────────────────────────────────────────────────
-if ! "${INSTALL_DIR}/${BIN_NAME}" --version >/dev/null 2>&1; then
-    error "Installed binary failed to run. Please report this issue."
-fi
+# ── Verify ────────────────────────────────────────────────────────────────────
+DEST="${INSTALL_DIR}/${BIN_NAME}"
+"$DEST" --version >/dev/null 2>&1 || error "Installed binary failed to run."
+INSTALLED_VERSION=$("$DEST" --version 2>/dev/null || echo "unknown")
+success "Installed ${INSTALLED_VERSION} → ${DEST}"
 
-INSTALLED_VERSION=$("${INSTALL_DIR}/${BIN_NAME}" --version 2>/dev/null || echo "unknown")
-success "Installed ${INSTALLED_VERSION} to ${INSTALL_DIR}/${BIN_NAME}"
-
-# ── Create global data directories ────────────────────────────────────────────
-TXTCODE_HOME="$HOME/.txtcode"
+# ── Create data directories ───────────────────────────────────────────────────
+TXTCODE_HOME="${TXTCODE_HOME:-$HOME/.txtcode}"
 mkdir -p "${TXTCODE_HOME}/cache" "${TXTCODE_HOME}/packages" "${TXTCODE_HOME}/logs"
-success "Created ${TXTCODE_HOME}/"
+success "Data dir: ${TXTCODE_HOME}/"
 
 # ── Add to PATH ───────────────────────────────────────────────────────────────
 PATH_LINE="export PATH=\"\$HOME/.local/bin:\$PATH\" # txtcode"
 
 add_to_shell() {
     FILE="$1"
-    if [ -f "$FILE" ]; then
-        if ! grep -q "txtcode" "$FILE" 2>/dev/null; then
-            printf "\n%s\n" "$PATH_LINE" >> "$FILE"
-            success "Added PATH entry to ~/${FILE##*/}"
-        fi
+    if [ -f "$FILE" ] && ! grep -q "# txtcode" "$FILE" 2>/dev/null; then
+        printf "\n%s\n" "$PATH_LINE" >> "$FILE"
+        success "Added PATH entry to ${FILE##*/}"
     fi
 }
 
 case "$SHELL" in
-    */zsh)   add_to_shell "$HOME/.zshrc"; add_to_shell "$HOME/.zprofile" ;;
-    */bash)  add_to_shell "$HOME/.bashrc"; add_to_shell "$HOME/.bash_profile" ;;
-    */fish)  mkdir -p "$HOME/.config/fish"
-             echo "set -gx PATH \$HOME/.local/bin \$PATH # txtcode" >> "$HOME/.config/fish/config.fish"
-             success "Added PATH entry to fish config" ;;
-    *)       add_to_shell "$HOME/.profile" ;;
+    */zsh)  add_to_shell "$HOME/.zshrc"; add_to_shell "$HOME/.zprofile" ;;
+    */bash) add_to_shell "$HOME/.bashrc"; add_to_shell "$HOME/.bash_profile" ;;
+    */fish) mkdir -p "$HOME/.config/fish"
+            grep -q "# txtcode" "$HOME/.config/fish/config.fish" 2>/dev/null || \
+            printf "\nset -gx PATH \$HOME/.local/bin \$PATH # txtcode\n" \
+                >> "$HOME/.config/fish/config.fish"
+            success "Added PATH entry to fish/config.fish" ;;
+    *)      add_to_shell "$HOME/.profile" ;;
 esac
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 printf "\n${BOLD}${GREEN}Installation complete!${RESET}\n\n"
-printf "  Restart your terminal or run:\n"
-printf "    ${BOLD}source ~/.bashrc${RESET}   (bash)\n"
-printf "    ${BOLD}source ~/.zshrc${RESET}    (zsh)\n\n"
+printf "  Reload your shell or run:\n"
+printf "    ${BOLD}source ~/.zshrc${RESET}    (zsh)\n"
+printf "    ${BOLD}source ~/.bashrc${RESET}   (bash)\n\n"
 printf "  Then try:\n"
 printf "    ${BOLD}txtcode --version${RESET}\n"
 printf "    ${BOLD}txtcode repl${RESET}\n\n"

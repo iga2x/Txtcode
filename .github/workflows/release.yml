@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'   # triggers on git tag like: git tag v0.1.0 && git push --tags
+      - 'v*'
 
 jobs:
   build:
@@ -15,26 +15,31 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: txtcode-linux-x86_64
+            pkg: txtcode-linux-x86_64.tar.gz
             ext: ""
 
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             artifact: txtcode-linux-arm64
+            pkg: txtcode-linux-arm64.tar.gz
             ext: ""
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: txtcode-windows-x86_64
+            pkg: txtcode-windows-x86_64.zip
             ext: ".exe"
 
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: txtcode-macos-x86_64
+            pkg: txtcode-macos-x86_64.tar.gz
             ext: ""
 
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: txtcode-macos-arm64
+            pkg: txtcode-macos-arm64.tar.gz
             ext: ""
 
     steps:
@@ -56,43 +61,33 @@ jobs:
         if: runner.os != 'Windows'
         run: strip target/${{ matrix.target }}/release/txtcode
 
-      - name: Rename binary
+      - name: Package (Linux / macOS → .tar.gz)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
-          cp target/${{ matrix.target }}/release/txtcode${{ matrix.ext }} \
-             ${{ matrix.artifact }}${{ matrix.ext }}
+          cp target/${{ matrix.target }}/release/txtcode txtcode
+          tar -czf ${{ matrix.pkg }} txtcode
+          rm txtcode
 
-      - name: Import GPG key
-        if: env.GPG_PRIVATE_KEY != ''
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-
-      - name: Sign binary (GPG)
-        if: env.GPG_PRIVATE_KEY != '' && runner.os != 'Windows'
+      - name: Package (Windows → .zip)
+        if: runner.os == 'Windows'
+        shell: bash
         run: |
-          gpg --batch --yes --armor --detach-sign \
-              ${{ matrix.artifact }}${{ matrix.ext }}
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          cp target/${{ matrix.target }}/release/txtcode.exe txtcode.exe
+          7z a ${{ matrix.pkg }} txtcode.exe
+          rm txtcode.exe
 
       - name: Compute SHA256 checksum
         shell: bash
         run: |
-          sha256sum ${{ matrix.artifact }}${{ matrix.ext }} \
-            > ${{ matrix.artifact }}${{ matrix.ext }}.sha256 2>/dev/null || \
-          shasum -a 256 ${{ matrix.artifact }}${{ matrix.ext }} \
-            > ${{ matrix.artifact }}${{ matrix.ext }}.sha256
+          sha256sum ${{ matrix.pkg }} > ${{ matrix.pkg }}.sha256 2>/dev/null || \
+          shasum -a 256 ${{ matrix.pkg }} > ${{ matrix.pkg }}.sha256
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ matrix.artifact }}${{ matrix.ext }}
-            ${{ matrix.artifact }}${{ matrix.ext }}.sha256
-            ${{ matrix.artifact }}${{ matrix.ext }}.asc
+            ${{ matrix.pkg }}
+            ${{ matrix.pkg }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
