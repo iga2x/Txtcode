@@ -7,87 +7,208 @@ on:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+
+          # ── Linux x86_64 ─────────────────────────────────────────────────
+          - label: linux-x86_64
+            os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: txtcode-linux-x86_64
-            pkg: txtcode-linux-x86_64.tar.gz
-            ext: ""
+            arch_deb: amd64
 
-          - os: ubuntu-latest
+          # ── Linux ARM64 ──────────────────────────────────────────────────
+          - label: linux-arm64
+            os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact: txtcode-linux-arm64
-            pkg: txtcode-linux-arm64.tar.gz
-            ext: ""
+            arch_deb: arm64
+            cross_pkg: gcc-aarch64-linux-gnu
 
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: txtcode-windows-x86_64
-            pkg: txtcode-windows-x86_64.zip
-            ext: ".exe"
-
-          - os: macos-latest
+          # ── macOS x86_64 ─────────────────────────────────────────────────
+          - label: macos-x86_64
+            os: macos-latest
             target: x86_64-apple-darwin
-            artifact: txtcode-macos-x86_64
-            pkg: txtcode-macos-x86_64.tar.gz
-            ext: ""
 
-          - os: macos-latest
+          # ── macOS ARM64 (Apple Silicon) ───────────────────────────────────
+          - label: macos-arm64
+            os: macos-latest
             target: aarch64-apple-darwin
-            artifact: txtcode-macos-arm64
-            pkg: txtcode-macos-arm64.tar.gz
-            ext: ""
+
+          # ── Windows x86_64 ───────────────────────────────────────────────
+          - label: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Install cross-compile tools (Linux ARM)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: sudo apt-get install -y gcc-aarch64-linux-gnu
+        if: matrix.cross_pkg != ''
+        run: sudo apt-get install -y ${{ matrix.cross_pkg }}
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Strip binary (Linux/macOS)
+      # ── Strip (Linux / macOS) ──────────────────────────────────────────────
+      - name: Strip binary
         if: runner.os != 'Windows'
         run: strip target/${{ matrix.target }}/release/txtcode
 
-      - name: Package (Linux / macOS → .tar.gz)
-        if: runner.os != 'Windows'
+      # ── Get version from Cargo.toml ────────────────────────────────────────
+      - name: Get version
+        id: ver
         shell: bash
         run: |
-          cp target/${{ matrix.target }}/release/txtcode txtcode
-          tar -czf ${{ matrix.pkg }} txtcode
-          rm txtcode
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Package (Windows → .zip)
+      # ═══════════════════════════════════════════════════════════════════════
+      # LINUX packages: .tar.gz  +  .deb
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: Package Linux → .tar.gz
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          V=${{ steps.ver.outputs.version }}
+          PKG="txtcode-${V}-${{ matrix.label }}.tar.gz"
+          cp target/${{ matrix.target }}/release/txtcode txtcode
+          tar -czf "$PKG" txtcode
+          rm txtcode
+          echo "TAR_PKG=$PKG" >> "$GITHUB_ENV"
+          sha256sum "$PKG" > "${PKG}.sha256"
+
+      - name: Package Linux → .deb
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          V=${{ steps.ver.outputs.version }}
+          ARCH=${{ matrix.arch_deb }}
+          PKG_DIR="deb_pkg"
+          DEB_NAME="txtcode_${V}_${ARCH}.deb"
+
+          mkdir -p "${PKG_DIR}/DEBIAN"
+          mkdir -p "${PKG_DIR}/usr/local/bin"
+          mkdir -p "${PKG_DIR}/usr/share/doc/txtcode"
+
+          cp target/${{ matrix.target }}/release/txtcode "${PKG_DIR}/usr/local/bin/txtcode"
+
+          cat > "${PKG_DIR}/DEBIAN/control" << EOF
+          Package: txtcode
+          Version: ${V}
+          Architecture: ${ARCH}
+          Maintainer: iga2x <noreply@github.com>
+          Homepage: https://github.com/iga2x/Txtcode
+          Description: Txt-code Programming Language
+           A scripting language with arrow-based syntax, virtual environments,
+           bytecode compilation, and a built-in package manager.
+          EOF
+
+          cat > "${PKG_DIR}/DEBIAN/postinst" << 'EOF'
+          #!/bin/sh
+          set -e
+          echo "Txt-code installed. Run: txtcode --version"
+          EOF
+          chmod 755 "${PKG_DIR}/DEBIAN/postinst"
+
+          cat > "${PKG_DIR}/usr/share/doc/txtcode/copyright" << EOF
+          Txt-code v${V}
+          https://github.com/iga2x/Txtcode
+          EOF
+
+          dpkg-deb --build "$PKG_DIR" "$DEB_NAME"
+          echo "DEB_PKG=$DEB_NAME" >> "$GITHUB_ENV"
+          sha256sum "$DEB_NAME" > "${DEB_NAME}.sha256"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # macOS package: .tar.gz
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: Package macOS → .tar.gz
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          V=${{ steps.ver.outputs.version }}
+          PKG="txtcode-${V}-${{ matrix.label }}.tar.gz"
+          cp target/${{ matrix.target }}/release/txtcode txtcode
+          tar -czf "$PKG" txtcode
+          rm txtcode
+          echo "TAR_PKG=$PKG" >> "$GITHUB_ENV"
+          shasum -a 256 "$PKG" > "${PKG}.sha256"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # Windows package: .zip  (binary + install.bat)
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: Package Windows → .zip
         if: runner.os == 'Windows'
         shell: bash
         run: |
+          V=${{ steps.ver.outputs.version }}
+          PKG="txtcode-${V}-${{ matrix.label }}.zip"
           cp target/${{ matrix.target }}/release/txtcode.exe txtcode.exe
-          7z a ${{ matrix.pkg }} txtcode.exe
-          rm txtcode.exe
 
-      - name: Compute SHA256 checksum
-        shell: bash
-        run: |
-          sha256sum ${{ matrix.pkg }} > ${{ matrix.pkg }}.sha256 2>/dev/null || \
-          shasum -a 256 ${{ matrix.pkg }} > ${{ matrix.pkg }}.sha256
+          cat > install.bat << 'EOF'
+          @echo off
+          setlocal
+          set DEST=%LOCALAPPDATA%\Programs\txtcode
+          mkdir "%DEST%" 2>nul
+          copy /Y txtcode.exe "%DEST%\txtcode.exe" >nul
+          echo.
+          echo  Txt-code installed to %DEST%
+          echo  Add %DEST% to your PATH to use txtcode from any terminal.
+          echo.
+          pause
+          EOF
 
-      - name: Upload to GitHub Release
+          cat > uninstall.bat << 'EOF'
+          @echo off
+          set DEST=%LOCALAPPDATA%\Programs\txtcode
+          rmdir /S /Q "%DEST%" 2>nul
+          echo Txt-code uninstalled.
+          pause
+          EOF
+
+          7z a "$PKG" txtcode.exe install.bat uninstall.bat
+          echo "ZIP_PKG=$PKG" >> "$GITHUB_ENV"
+          sha256sum "$PKG" > "${PKG}.sha256"
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # Upload all produced packages to the GitHub Release
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: Upload Linux packages
+        if: runner.os == 'Linux'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ matrix.pkg }}
-            ${{ matrix.pkg }}.sha256
+            ${{ env.TAR_PKG }}
+            ${{ env.TAR_PKG }}.sha256
+            ${{ env.DEB_PKG }}
+            ${{ env.DEB_PKG }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS packages
+        if: runner.os == 'macOS'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.TAR_PKG }}
+            ${{ env.TAR_PKG }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows packages
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ZIP_PKG }}
+            ${{ env.ZIP_PKG }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
