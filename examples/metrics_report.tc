@@ -1,0 +1,104 @@
+## Metrics Report — group, aggregate, and summarize time-series data
+##
+## Run with: txtcode run examples/metrics_report.tc
+##
+## Covers: map-based grouping, array accumulation, stats (min/max/sum/mean),
+##          try/catch for key-existence check, named functions, for loops
+
+# ── Key-existence helper (map["key"] throws if missing) ─────────────────────
+
+define → map_has → (m, key)
+  store → result → false
+  try
+    store → _ → m[key]
+    store → result → true
+  catch e
+    store → result → false
+  end
+  return → result
+end
+
+# ── Stats for an array of numbers ────────────────────────────────────────────
+
+define → summarize → (values)
+  store → n → len(values)
+  store → total → 0
+  store → mn → values[0]
+  store → mx → values[0]
+  for → v in values
+    store → total → total + v
+    if → v < mn
+      store → mn → v
+    end
+    if → v > mx
+      store → mx → v
+    end
+  end
+  store → avg → total / n
+  store → result → {"_": ""}
+  store → result["count"] → n
+  store → result["sum"] → total
+  store → result["mean"] → avg
+  store → result["min"] → mn
+  store → result["max"] → mx
+  return → result
+end
+
+# ── Grouping engine ───────────────────────────────────────────────────────────
+
+define → group_metrics → (data_points)
+  ## data_points: array of [metric_name, value] pairs
+  ## Returns: map of name → [values...], plus ordered keys list
+  store → groups → {"_": ""}
+  store → group_keys → []
+
+  for → point in data_points
+    store → name → point[0]
+    store → value → point[1]
+
+    if → map_has(groups, name) == false
+      store → groups[name] → []
+      store → group_keys → concat(group_keys, [name])
+    end
+
+    store → groups[name] → concat(groups[name], [value])
+  end
+
+  store → result → {"_": ""}
+  store → result["groups"] → groups
+  store → result["keys"] → group_keys
+  return → result
+end
+
+# ── Report printer ────────────────────────────────────────────────────────────
+
+define → print_report → (grouped)
+  store → groups → grouped["groups"]
+  store → keys → grouped["keys"]
+
+  print → "╔══════════════════════════════════════════╗"
+  print → "║         Metrics Summary Report           ║"
+  print → "╚══════════════════════════════════════════╝"
+  print → ""
+
+  for → name in keys
+    store → values → groups[name]
+    store → s → summarize(values)
+    print → "  " + name
+    print → "    samples : " + s["count"]
+    print → "    min     : " + s["min"]
+    print → "    max     : " + s["max"]
+    print → "    mean    : " + s["mean"]
+    print → "    total   : " + s["sum"]
+    print → ""
+  end
+end
+
+# ── Sample data: [metric_name, value] pairs ──────────────────────────────────
+
+store → readings → [["cpu_pct", 12], ["mem_mb", 512], ["cpu_pct", 18], ["latency_ms", 42], ["mem_mb", 530], ["cpu_pct", 35], ["latency_ms", 38], ["cpu_pct", 27], ["mem_mb", 498], ["latency_ms", 55], ["cpu_pct", 41], ["latency_ms", 31], ["mem_mb", 545], ["cpu_pct", 19], ["latency_ms", 48], ["mem_mb", 511], ["cpu_pct", 28], ["disk_io_mb", 120], ["disk_io_mb", 95], ["disk_io_mb", 143]]
+
+store → grouped → group_metrics(readings)
+print_report(grouped)
+
+print → "Total data points: " + len(readings)

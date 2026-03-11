@@ -1,0 +1,114 @@
+## Directory Summary — scan a directory tree and report file sizes
+##
+## Run with: txtcode run --allow-fs . examples/directory_summary.tc
+##
+## Covers: filesystem (list_dir, file_size, file_exists), try/catch,
+##          sorting via nested arrays, map() with named functions,
+##          permission-guarded I/O, formatted output
+
+# ── File size formatter ──────────────────────────────────────────────────────
+
+define → format_size → (bytes)
+  store → result → bytes + " B"
+  if → bytes >= 1024
+    store → kb → bytes / 1024
+    store → result → kb + " KB"
+  end
+  if → bytes >= 1048576
+    store → mb → bytes / 1048576
+    store → result → mb + " MB"
+  end
+  return → result
+end
+
+# ── Scan a directory — returns list of [path, size] pairs ───────────────────
+
+define → scan_dir → (root)
+  store → entries → []
+  store → total_bytes → 0
+  store → skipped → 0
+  store → paths → list_dir(root)
+
+  for → p in paths
+    ## Only include regular files (skip subdirectories by requiring an extension)
+    if → indexOf(p, ".") >= 0
+      try
+        store → sz → file_size(p)
+        store → entries → concat(entries, [[p, sz]])
+        store → total_bytes → total_bytes + sz
+      catch e
+        store → skipped → skipped + 1
+      end
+    else
+      store → skipped → skipped + 1
+    end
+  end
+
+  store → result → {"_": ""}
+  store → result["entries"] → entries
+  store → result["total"] → total_bytes
+  store → result["skipped"] → skipped
+  return → result
+end
+
+# ── Find largest N files ─────────────────────────────────────────────────────
+
+define → top_n_files → (entries, n)
+  ## Simple selection: find max n times
+  store → remaining → entries
+  store → top → []
+  store → count → 0
+
+  while → count < n and len(remaining) > 0
+    store → max_idx → 0
+    store → max_sz → remaining[0][1]
+    store → i → 0
+    for → e in remaining
+      if → e[1] > max_sz
+        store → max_sz → e[1]
+        store → max_idx → i
+      end
+      store → i → i + 1
+    end
+    store → top → concat(top, [remaining[max_idx]])
+    ## Remove the max entry
+    store → before → array_slice(remaining, 0, max_idx)
+    store → after → array_slice(remaining, max_idx + 1, len(remaining))
+    store → remaining → concat(before, after)
+    store → count → count + 1
+  end
+
+  return → top
+end
+
+# ── Demo ─────────────────────────────────────────────────────────────────────
+
+store → target → "examples"
+
+print → "Scanning: " + target + "/"
+print → "──────────────────────────────────────"
+
+store → scan → scan_dir(target)
+store → entries → scan["entries"]
+store → total → scan["total"]
+store → skipped → scan["skipped"]
+
+print → "Files found : " + len(entries)
+if → skipped > 0
+  print → "Skipped     : " + skipped + " (directories or unreadable)"
+end
+print → "Total size  : " + format_size(total)
+print → ""
+print → "Largest files:"
+
+store → top5 → top_n_files(entries, 5)
+for → entry in top5
+  store → path → entry[0]
+  store → sz → entry[1]
+  ## Show just the filename (last segment after /)
+  store → parts → split(path, "/")
+  store → fname → parts[len(parts) - 1]
+  print → "  " + format_size(sz) + "  " + fname
+end
+
+print → "──────────────────────────────────────"
