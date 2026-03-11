@@ -1,5 +1,6 @@
 // Capability module - capability definitions and management
-// Network, WiFi, BLE, filesystem capabilities
+// Network and filesystem capabilities are used by the runtime permission system.
+// WiFi and BLE capability modules are experimental stubs (no runtime integration in v0.4).
 
 pub mod net;
 pub mod wifi;

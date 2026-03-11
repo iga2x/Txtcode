@@ -6,7 +6,7 @@ Thank you for your interest in contributing to Txt-code!
 
 ```bash
 # Clone the repository
-git clone https://github.com/txtcode/txtcode.git
+git clone https://github.com/iga2x/txtcode.git
 cd txtcode
 
 # Build the project

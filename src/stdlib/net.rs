@@ -188,7 +188,7 @@ impl NetLib {
             "websocket_connect" => {
                 Err(RuntimeError::new(
                     "websocket_connect: WebSocket support is not built in by default. \
-                     It is planned for v0.4. Track progress at: https://github.com/iga2x/txtcode/issues".to_string()
+                     It is planned for v0.5. Track progress at: https://github.com/iga2x/txtcode/issues".to_string()
                 ))
             }
             "tcp_connect" => {

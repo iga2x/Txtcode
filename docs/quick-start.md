@@ -7,7 +7,7 @@
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Clone and build Txt-code
-git clone https://github.com/txtcode/txtcode.git
+git clone https://github.com/iga2x/txtcode.git
 cd txtcode
 cargo build --release
 ```

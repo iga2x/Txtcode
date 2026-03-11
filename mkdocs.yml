@@ -1,8 +1,8 @@
 site_name: Txt-code Documentation
 site_description: A simple, memorable, security-focused programming language
-site_url: https://txtcode.github.io/txtcode
-repo_url: https://github.com/txtcode/txtcode
-repo_name: txtcode/txtcode
+site_url: https://iga2x.github.io/txtcode
+repo_url: https://github.com/iga2x/txtcode
+repo_name: iga2x/txtcode
 edit_uri: edit/main/docs/
 
 theme:
@@ -47,4 +47,4 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/txtcode/txtcode
+      link: https://github.com/iga2x/txtcode

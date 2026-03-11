@@ -163,7 +163,7 @@ impl PolicyEngine {
                 action: action.to_string(),
                 limit: self.policy.get_rate_limit(action).cloned()
                     .unwrap_or_else(|| RateLimit::new(1000, 3600)),
-                wait_seconds: 0, // TODO: extract from error message
+                wait_seconds: 0, // Returns 0 — precise wait time extraction deferred to v0.5
             }),
         }
     }
