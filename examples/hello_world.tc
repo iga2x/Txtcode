@@ -13,7 +13,7 @@ print → "Hello, " + name + "!"
 
 # ── String building ──────────────────────────────────────────────────────────
 
-store → version → "0.1.0"
+store → version → "0.4.0"
 print → "Txt-code " + version + " — running on a new language"
 
 # ── Functions ────────────────────────────────────────────────────────────────

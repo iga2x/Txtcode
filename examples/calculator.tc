@@ -1,35 +1,44 @@
-# Calculator in Txt-code
-# Demonstrates functions, pattern matching, and basic arithmetic
+## Calculator — arithmetic via match dispatch
+##
+## Run with: txtcode examples/calculator.tc
+##
+## Covers: functions, match statement, arithmetic, error handling
+##
+## Note (v0.4): return → inside a match case does not propagate to the caller.
+## Workaround: use store → result → inside cases, return → result at the end.
 
 define → calculate → (a, op, b)
+  store → result → null
+
   match → op
     case → "+"
-      return → a + b
+      store → result → a + b
     case → "-"
-      return → a - b
+      store → result → a - b
     case → "*"
-      return → a * b
+      store → result → a * b
     case → "/"
       if → b == 0
-        return → "Error: division by zero"
+        store → result → "Error: division by zero"
+      else
+        store → result → a / b
       end
-      return → a / b
     case → "%"
-      return → a % b
+      store → result → a % b
     case → "**"
-      return → a ** b
+      store → result → a ** b
     case → _
-      return → "Error: unknown operator"
+      store → result → "Error: unknown operator '" + op + "'"
   end
+
+  return → result
 end
 
-# Basic operations
 print → calculate(10, "+", 5)
 print → calculate(10, "-", 3)
-print → calculate(6, "*", 7)
+print → calculate(6,  "*", 7)
 print → calculate(15, "/", 4)
 print → calculate(17, "%", 5)
-print → calculate(2, "**", 8)
-
-# Division by zero is handled safely
+print → calculate(2,  "**", 8)
 print → calculate(10, "/", 0)
+print → calculate(5,  "?", 3)

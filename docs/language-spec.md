@@ -1128,6 +1128,38 @@ informed decisions about running Txt-code scripts.
 | **Memory limits** | No explicit heap limit; bounded by host OS only | Future |
 | **`?()` optional call on non-null non-function** | Raises RuntimeError in bytecode VM | v0.5 |
 | **Source comments in migrate** | `#` comments are not preserved through AST printer | v0.4 |
+| **`return →` inside nested blocks** | Does not propagate through `match`, `if`, or `for` to caller | v0.5 |
+
+### F.2a Known Runtime Limitation — `return →` in Nested Blocks
+
+In v0.4, `return →` only propagates to the caller when it appears **at the top level of the
+function body**. A `return →` inside a `match` case, `if` branch, `for` loop, or `try` block
+is silently swallowed — execution continues after the enclosing block, and the function returns
+whatever its final top-level expression evaluates to (`null` if nothing else).
+
+**Does not work:**
+```txtcode
+define → f → (x)
+  if → x > 0
+    return → "positive"   ## BUG: not propagated to caller
+  end
+  return → "other"
+end
+```
+
+**Workaround — store then return at top level:**
+```txtcode
+define → f → (x)
+  store → result → "other"
+  if → x > 0
+    store → result → "positive"
+  end
+  return → result           ## OK: top-level return
+end
+```
+
+The same pattern applies to `match` cases and `try`/`catch` bodies. Always accumulate the
+result in a variable and place a single `return → result` as the last statement of the function.
 
 ### F.3 Safe Mode Guarantees
 

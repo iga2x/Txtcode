@@ -1,39 +1,13 @@
-## File Processing — read, transform, write
+## File Processing — text transformation and stats
 ##
 ## Run with: txtcode examples/file_processing.tc
 ##
-## Covers: string operations, loops, functions, collections
+## Covers: string operations, split, trim, toLower, sort, loops, functions, stats
+##
+## Note (v0.4): push() and has_key() are not in the stdlib.
+## Use concat(arr, [item]) to build arrays, and map key assignment to track counts.
 
-# ── Word frequency counter ────────────────────────────────────────────────────
-# Simulates processing text content line by line
-
-define → count_words → (text)
-  store → counts → {}
-  store → words → split(text, " ")
-  for → word in words
-    store → w → lower(trim(word))
-    if → w != ""
-      if → has_key(counts, w)
-        store → counts[w] → counts[w] + 1
-      else
-        store → counts[w] → 1
-      end
-    end
-  end
-  return → counts
-end
-
-define → top_words → (counts, n)
-  store → results → []
-  for → word in keys(counts)
-    push(results, [counts[word], word])
-  end
-  sort(results)
-  reverse(results)
-  return → slice(results, 0, n)
-end
-
-# ── CSV row parser ────────────────────────────────────────────────────────────
+# ── CSV row parser ─────────────────────────────────────────────────────────────
 
 define → parse_csv_row → (line)
   return → split(line, ",")
@@ -43,8 +17,8 @@ define → parse_csv → (text)
   store → rows → split(text, "\n")
   store → result → []
   store → headers → []
-
   store → first → true
+
   for → row in rows
     store → r → trim(row)
     if → r == ""
@@ -55,7 +29,7 @@ define → parse_csv → (text)
       store → headers → cells
       store → first → false
     else
-      store → record → {}
+      store → record → {"_": ""}
       store → i → 0
       for → cell in cells
         if → i < len(headers)
@@ -63,29 +37,13 @@ define → parse_csv → (text)
         end
         store → i → i + 1
       end
-      push(result, record)
+      store → result → concat(result, [record])
     end
   end
   return → result
 end
 
-# ── Demo ──────────────────────────────────────────────────────────────────────
-
-store → sample_text → "the quick brown fox jumps over the lazy dog the fox"
-store → freq → count_words(sample_text)
-print → "Word frequencies:"
-for → word in keys(freq)
-  print → "  " + word + ": " + freq[word]
-end
-
-store → csv_data → "name,age,city\nAlice,30,London\nBob,25,Paris\nCarol,35,Berlin"
-store → records → parse_csv(csv_data)
-print → "\nParsed CSV records:"
-for → record in records
-  print → "  " + record["name"] + " (age " + record["age"] + ") from " + record["city"]
-end
-
-# ── Stats helper ──────────────────────────────────────────────────────────────
+# ── Stats helper ───────────────────────────────────────────────────────────────
 
 define → stats → (numbers)
   store → total → 0
@@ -94,12 +52,47 @@ define → stats → (numbers)
     store → total → total + x
   end
   store → mean → total / n
-  return → {"count": n, "sum": total, "mean": mean}
+  store → sorted → sort(numbers)
+  store → minimum → sorted[0]
+  store → maximum → sorted[n - 1]
+  return → {"count": n, "sum": total, "mean": mean, "min": minimum, "max": maximum}
+end
+
+# ── Tokenizer — split text into cleaned word list ──────────────────────────────
+
+define → tokenize → (text)
+  store → raw → split(text, " ")
+  store → words → []
+  for → w in raw
+    store → clean → toLower(trim(w))
+    if → clean != ""
+      store → words → concat(words, [clean])
+    end
+  end
+  return → words
+end
+
+# ── Demo ───────────────────────────────────────────────────────────────────────
+
+store → csv_data → "name,age,city\nAlice,30,London\nBob,25,Paris\nCarol,35,Berlin"
+store → records → parse_csv(csv_data)
+print → "Parsed CSV records:"
+for → record in records
+  print → "  " + record["name"] + " (age " + record["age"] + ") from " + record["city"]
 end
 
 store → data → [12, 45, 7, 89, 23, 56, 34, 11, 78, 62]
 store → s → stats(data)
-print → "\nData stats:"
+print → ""
+print → "Data stats:"
 print → "  count: " + s["count"]
 print → "  sum:   " + s["sum"]
 print → "  mean:  " + s["mean"]
+print → "  min:   " + s["min"]
+print → "  max:   " + s["max"]
+
+store → sentence → "The quick brown fox jumps over the lazy dog"
+store → tokens → tokenize(sentence)
+print → ""
+print → "Token count: " + len(tokens)
+print → "Sorted: " + join(sort(tokens), ", ")

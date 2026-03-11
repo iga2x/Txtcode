@@ -1,0 +1,93 @@
+## Pipeline — sequential task runner with error reporting
+##
+## Run with: txtcode run examples/pipeline.tc
+##
+## Covers: functions, try/catch, for loops, nested arrays, concat,
+##          store+return pattern, stats, string formatting
+
+# ── Task definitions — [name, command_string, expect_success] ───────────────
+# Each entry: [task_name, description, simulate_pass]
+
+store → tasks → [["lint", "Run code style checks", true], ["typecheck", "Run static type analysis", true], ["unit-tests", "Run unit test suite (132 tests)", true], ["build", "Compile release binary", true], ["integ-tests", "Run integration tests", false], ["package", "Bundle release artifacts", true]]
+
+# ── A task runner that simulates pass/fail ──────────────────────────────────
+
+define → run_task → (name, description, should_pass)
+  store → result → "PASS"
+  print → "  ► " + name + " — " + description
+  if → should_pass == false
+    store → result → "FAIL"
+  end
+  return → result
+end
+
+define → status_icon → (status)
+  store → icon → "✓"
+  if → status == "FAIL"
+    store → icon → "✗"
+  end
+  return → icon
+end
+
+# ── Pipeline runner ─────────────────────────────────────────────────────────
+
+define → run_pipeline → (task_list)
+  store → results → []
+  store → pass_count → 0
+  store → fail_count → 0
+  store → failed_tasks → []
+  store → aborted → false
+
+  print → "╔═══════════════════════════════════════╗"
+  print → "║      Txtcode CI Pipeline v0.4         ║"
+  print → "╚═══════════════════════════════════════╝"
+  print → ""
+  print → "Running " + len(task_list) + " tasks..."
+  print → ""
+
+  for → task in task_list
+    store → task_name → task[0]
+    store → task_desc → task[1]
+    store → task_pass → task[2]
+
+    if → aborted == false
+      store → outcome → run_task(task_name, task_desc, task_pass)
+      store → icon → status_icon(outcome)
+      store → results → concat(results, [icon + " " + task_name + ": " + outcome])
+
+      if → outcome == "PASS"
+        store → pass_count → pass_count + 1
+      end
+      if → outcome == "FAIL"
+        store → fail_count → fail_count + 1
+        store → failed_tasks → concat(failed_tasks, [task_name])
+        store → aborted → true
+      end
+    else
+      store → results → concat(results, ["  " + task_name + ": SKIPPED"])
+    end
+  end
+
+  print → ""
+  print → "───────────────────────────────────────"
+  print → "  Pipeline Results"
+  print → "───────────────────────────────────────"
+
+  for → r in results
+    print → "  " + r
+  end
+
+  print → "───────────────────────────────────────"
+
+  if → fail_count == 0
+    print → "  STATUS: PASSED (" + pass_count + "/" + len(task_list) + " tasks)"
+  end
+  if → fail_count > 0
+    print → "  STATUS: FAILED — blocked on: " + failed_tasks[0]
+    print → "  Passed: " + pass_count + "  Failed: " + fail_count
+  end
+
+  print → "───────────────────────────────────────"
+end
+
+run_pipeline(tasks)
