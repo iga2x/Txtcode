@@ -1,11 +1,10 @@
-use crate::runtime::core::{Value, ScopeManager};
-use crate::runtime::errors::RuntimeError;
 use super::VirtualMachine;
+use crate::runtime::core::{ScopeManager, Value};
+use crate::runtime::errors::RuntimeError;
 use crate::runtime::permissions::PermissionResource;
 use std::path::PathBuf;
 
 /// Core VirtualMachine functionality (constructors, variables, scopes)
-
 impl VirtualMachine {
     pub fn new() -> Self {
         Self {
@@ -64,12 +63,12 @@ impl VirtualMachine {
             capability_manager: crate::capability::CapabilityManager::new(),
             active_capability: None,
         };
-        
+
         // If safe_mode is enabled, deny exec by default
         if safe_mode {
             vm.deny_permission(PermissionResource::System("exec".to_string()), None);
         }
-        
+
         vm
     }
 
@@ -85,15 +84,20 @@ impl VirtualMachine {
     /// Set a variable in the current scope (or create new scope if needed)
     /// If variable exists in an outer scope, update it there instead
     pub(super) fn set_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError> {
-        self.scope_manager.set_variable(name, value)
+        self.scope_manager
+            .set_variable(name, value)
             .map_err(|e| self.create_error(e))
+    }
+
+    /// Public: define a global variable (used by REPL to inject `_` last result)
+    pub fn define_global(&mut self, name: String, value: Value) {
+        let _ = self.scope_manager.set_variable(name, value);
     }
 
     /// Set a const variable (immutable)
     pub(super) fn set_const(&mut self, name: String, value: Value) {
         self.scope_manager.set_const(name, value);
     }
-
 
     /// Push a new scope
     pub(super) fn push_scope(&mut self) {
@@ -107,11 +111,10 @@ impl VirtualMachine {
 
     pub fn set_exec_allowed(&mut self, allowed: bool) {
         self.exec_allowed = allowed;
-        
+
         // Map to permissions for backward compatibility
         if !allowed {
             self.deny_permission(PermissionResource::System("exec".to_string()), None);
         }
     }
 }
-

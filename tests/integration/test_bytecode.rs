@@ -1,13 +1,14 @@
+use txtcode::compiler::bytecode::BytecodeCompiler;
 /// Bytecode VM integration tests (v0.4)
 ///
 /// Verifies all previously-stubbed features in the bytecode compiler + VM:
 /// Ternary, Await, Set, Lambda, MethodCall, Slice, IndexAssignment,
 /// CompoundAssignment, else-if chains, SetIndex, SetField.
-
 use txtcode::lexer::Lexer;
+use txtcode::parser::ast::{
+    BinaryOperator, Expression, Literal, Pattern, Program, Span, Statement,
+};
 use txtcode::parser::Parser;
-use txtcode::parser::ast::{Expression, Statement, Literal, Program, Span, BinaryOperator, Pattern};
-use txtcode::compiler::bytecode::BytecodeCompiler;
 use txtcode::runtime::bytecode_vm::BytecodeVM;
 use txtcode::runtime::core::Value;
 use txtcode::runtime::errors::RuntimeError;
@@ -18,6 +19,7 @@ use txtcode::runtime::errors::RuntimeError;
 
 /// Compile Txt-code source and execute via bytecode VM.
 /// Use `return → value` at the end of source to get a specific value back.
+#[allow(clippy::result_large_err)]
 fn compile_and_run(source: &str) -> Result<Value, RuntimeError> {
     let mut lexer = Lexer::new(source.to_string());
     let tokens = lexer.tokenize().unwrap();
@@ -34,6 +36,7 @@ fn run_ok(source: &str) -> Value {
 }
 
 /// Compile and run a manually-constructed AST Program directly.
+#[allow(clippy::result_large_err)]
 fn run_ast(program: Program) -> Result<Value, RuntimeError> {
     let mut compiler = BytecodeCompiler::new();
     let bytecode = compiler.compile(&program);
@@ -67,7 +70,10 @@ fn assign(name: &str, value: Expression) -> Statement {
 }
 
 fn ret(value: Expression) -> Statement {
-    Statement::Return { value: Some(value), span: default_span() }
+    Statement::Return {
+        value: Some(value),
+        span: default_span(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -77,14 +83,12 @@ fn ret(value: Expression) -> Statement {
 #[test]
 fn test_bytecode_ternary_true_branch() {
     let prog = Program {
-        statements: vec![
-            ret(Expression::Ternary {
-                condition: Box::new(lit_bool(true)),
-                true_expr: Box::new(lit_int(42)),
-                false_expr: Box::new(lit_int(0)),
-                span: default_span(),
-            }),
-        ],
+        statements: vec![ret(Expression::Ternary {
+            condition: Box::new(lit_bool(true)),
+            true_expr: Box::new(lit_int(42)),
+            false_expr: Box::new(lit_int(0)),
+            span: default_span(),
+        })],
     };
     assert_eq!(run_ast(prog).unwrap(), Value::Integer(42));
 }
@@ -92,14 +96,12 @@ fn test_bytecode_ternary_true_branch() {
 #[test]
 fn test_bytecode_ternary_false_branch() {
     let prog = Program {
-        statements: vec![
-            ret(Expression::Ternary {
-                condition: Box::new(lit_bool(false)),
-                true_expr: Box::new(lit_int(42)),
-                false_expr: Box::new(lit_int(99)),
-                span: default_span(),
-            }),
-        ],
+        statements: vec![ret(Expression::Ternary {
+            condition: Box::new(lit_bool(false)),
+            true_expr: Box::new(lit_int(42)),
+            false_expr: Box::new(lit_int(99)),
+            span: default_span(),
+        })],
     };
     assert_eq!(run_ast(prog).unwrap(), Value::Integer(99));
 }
@@ -116,12 +118,15 @@ fn test_bytecode_ternary_computed_condition() {
     let prog = Program {
         statements: vec![
             assign("a", lit_int(10)),
-            assign("result", Expression::Ternary {
-                condition: Box::new(condition),
-                true_expr: Box::new(lit_int(1)),
-                false_expr: Box::new(lit_int(0)),
-                span: default_span(),
-            }),
+            assign(
+                "result",
+                Expression::Ternary {
+                    condition: Box::new(condition),
+                    true_expr: Box::new(lit_int(1)),
+                    false_expr: Box::new(lit_int(0)),
+                    span: default_span(),
+                },
+            ),
             ret(ident("result")),
         ],
     };
@@ -327,7 +332,10 @@ fn test_bytecode_method_array_join() {
 
 #[test]
 fn test_bytecode_method_map_len() {
-    assert_eq!(run_ok("return → {\"x\": 1, \"y\": 2}.len()"), Value::Integer(2));
+    assert_eq!(
+        run_ok("return → {\"x\": 1, \"y\": 2}.len()"),
+        Value::Integer(2)
+    );
 }
 
 #[test]
@@ -457,7 +465,14 @@ fn test_bytecode_optional_chain_null_safe() {
 #[test]
 fn test_bytecode_slice_open_start() {
     let val = run_ok("store → a → [1, 2, 3, 4, 5]\nreturn → a[0:3]");
-    assert_eq!(val, Value::Array(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)]));
+    assert_eq!(
+        val,
+        Value::Array(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+            Value::Integer(3)
+        ])
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -467,25 +482,38 @@ fn test_bytecode_slice_open_start() {
 #[test]
 fn test_bytecode_spread_concat_arrays() {
     let val = run_ok("store → a → [1, 2]\nstore → b → [3, 4]\nreturn → [...a, ...b]");
-    assert_eq!(val, Value::Array(vec![
-        Value::Integer(1), Value::Integer(2),
-        Value::Integer(3), Value::Integer(4),
-    ]));
+    assert_eq!(
+        val,
+        Value::Array(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+            Value::Integer(3),
+            Value::Integer(4),
+        ])
+    );
 }
 
 #[test]
 fn test_bytecode_spread_with_literal_elements() {
     let val = run_ok("store → a → [2, 3]\nreturn → [1, ...a, 4]");
-    assert_eq!(val, Value::Array(vec![
-        Value::Integer(1), Value::Integer(2),
-        Value::Integer(3), Value::Integer(4),
-    ]));
+    assert_eq!(
+        val,
+        Value::Array(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+            Value::Integer(3),
+            Value::Integer(4),
+        ])
+    );
 }
 
 #[test]
 fn test_bytecode_spread_empty_array() {
     let val = run_ok("store → a → []\nreturn → [1, ...a, 2]");
-    assert_eq!(val, Value::Array(vec![Value::Integer(1), Value::Integer(2)]));
+    assert_eq!(
+        val,
+        Value::Array(vec![Value::Integer(1), Value::Integer(2)])
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -496,14 +524,20 @@ fn test_bytecode_spread_empty_array() {
 fn test_bytecode_multi_return_as_array() {
     // return → a, b auto-wraps as [a, b]
     let val = run_ok("return → 1, 2, 3");
-    assert_eq!(val, Value::Array(vec![
-        Value::Integer(1), Value::Integer(2), Value::Integer(3),
-    ]));
+    assert_eq!(
+        val,
+        Value::Array(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+            Value::Integer(3),
+        ])
+    );
 }
 
 #[test]
 fn test_bytecode_multi_return_from_function() {
-    let val = run_ok(r#"
+    let val = run_ok(
+        r#"
 define → minmax → (arr)
   store → lo → arr[0]
   store → hi → arr[0]
@@ -518,8 +552,12 @@ define → minmax → (arr)
   return → lo, hi
 end
 return → minmax([3, 1, 4, 1, 5, 9, 2, 6])
-"#);
-    assert_eq!(val, Value::Array(vec![Value::Integer(1), Value::Integer(9)]));
+"#,
+    );
+    assert_eq!(
+        val,
+        Value::Array(vec![Value::Integer(1), Value::Integer(9)])
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -528,23 +566,27 @@ return → minmax([3, 1, 4, 1, 5, 9, 2, 6])
 
 #[test]
 fn test_bytecode_destructured_map_arg() {
-    let val = run_ok(r#"
+    let val = run_ok(
+        r#"
 define → greet → ({name, age})
   return → name
 end
 return → greet({"name": "Alice", "age": 30})
-"#);
+"#,
+    );
     assert_eq!(val, Value::String("Alice".to_string()));
 }
 
 #[test]
 fn test_bytecode_destructured_multi_field() {
-    let val = run_ok(r#"
+    let val = run_ok(
+        r#"
 define → sum_coords → ({x, y})
   return → x + y
 end
 return → sum_coords({"x": 10, "y": 20})
-"#);
+"#,
+    );
     assert_eq!(val, Value::Integer(30));
 }
 
@@ -555,29 +597,34 @@ return → sum_coords({"x": 10, "y": 20})
 #[test]
 fn test_bytecode_async_function_runs_synchronously() {
     // async/await runs synchronously in v0.4 — no crash, returns value
-    let val = run_ok(r#"
+    let val = run_ok(
+        r#"
 async → define → fetch → (x)
   return → x + 1
 end
 return → fetch(41)
-"#);
+"#,
+    );
     assert_eq!(val, Value::Integer(42));
 }
 
 #[test]
 fn test_bytecode_increment_on_index_errors_cleanly() {
     // ++arr[0] should surface a clear RuntimeError, not silently do nothing
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
 store → arr → [1, 2, 3]
 ++arr[0]
 return → arr[0]
-"#);
+"#,
+    );
     assert!(result.is_err(), "expected RuntimeError for ++arr[index]");
     let err = result.unwrap_err();
     let msg = format!("{}", err);
     assert!(
         msg.contains("++") || msg.contains("operator") || msg.contains("variable"),
-        "error message should mention the operator: {}", msg
+        "error message should mention the operator: {}",
+        msg
     );
 }
 
@@ -585,52 +632,303 @@ return → arr[0]
 fn test_bytecode_optional_call_on_function() {
     // func?.() where func is a real function value should call it
     // Functions are callable directly; ?.() on a string name looks up and calls
-    let val = run_ok(r#"
+    let val = run_ok(
+        r#"
 define → double → (x)
   return → x * 2
 end
 return → double(5)
-"#);
+"#,
+    );
     assert_eq!(val, Value::Integer(10));
 }
 
 #[test]
 fn test_bytecode_optional_call_on_null_returns_null() {
     // null?.() should return null without error
-    let val = run_ok(r#"
+    let val = run_ok(
+        r#"
 store → f → null
 return → f?.()
-"#);
+"#,
+    );
     assert_eq!(val, Value::Null);
 }
 
 #[test]
 fn test_bytecode_pipe_identifier_rhs() {
     // Simple pipe: 5 |> double (identifier RHS — desugars at parse time)
-    let val = run_ok(r#"
+    let val = run_ok(
+        r#"
 define → double → (x)
   return → x * 2
 end
 return → 5 |> double
-"#);
+"#,
+    );
     assert_eq!(val, Value::Integer(10));
 }
 
 #[test]
 fn test_bytecode_call_depth_limit() {
     // Recursive function should hit call depth limit at 50, not 100
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
 define → recurse → (n)
   return → recurse(n + 1)
 end
 return → recurse(0)
-"#);
+"#,
+    );
     assert!(result.is_err(), "expected call depth RuntimeError");
     let msg = format!("{}", result.unwrap_err());
     assert!(
-        msg.contains("call") || msg.contains("depth") || msg.contains("stack") || msg.contains("recursion"),
-        "error should mention call depth: {}", msg
+        msg.contains("call")
+            || msg.contains("depth")
+            || msg.contains("stack")
+            || msg.contains("recursion"),
+        "error should mention call depth: {}",
+        msg
     );
+}
+
+// ---------------------------------------------------------------------------
+// Control-flow signal regression tests (mirrors test_runtime.rs suite)
+// Bytecode VM uses Jump-based control flow, not signals, so these also guard
+// against any future regression where a signal leaks into the bytecode path.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_bytecode_return_inside_if() {
+    // `return` inside an `if` branch must exit the function, not just the branch.
+    let val = run_ok(
+        "define → f → (x)\n  if → x > 0\n    return → 1\n  end\n  return → 0\nend\nreturn → f(5)\n",
+    );
+    assert_eq!(
+        val,
+        Value::Integer(1),
+        "return inside if should exit function"
+    );
+}
+
+#[test]
+fn test_bytecode_return_inside_else() {
+    let val = run_ok(
+        "define → f → (x)\n  if → x > 0\n    return → 1\n  else\n    return → -1\n  end\n  return → 0\nend\nreturn → f(-3)\n",
+    );
+    assert_eq!(
+        val,
+        Value::Integer(-1),
+        "return inside else should exit function"
+    );
+}
+
+#[test]
+fn test_bytecode_return_inside_for() {
+    // `return` inside a `for` loop must exit the function immediately.
+    let val = run_ok(
+        "define → first_pos → (arr)\n  for → x in arr\n    if → x > 0\n      return → x\n    end\n  end\n  return → -1\nend\nreturn → first_pos([0, -2, 3, 4])\n",
+    );
+    assert_eq!(
+        val,
+        Value::Integer(3),
+        "return inside for should exit function"
+    );
+}
+
+#[test]
+fn test_bytecode_return_inside_while() {
+    let val = run_ok(
+        "define → countdown → (n)\n  store → i → n\n  while → i > 0\n    if → i == 3\n      return → i\n    end\n    store → i → i - 1\n  end\n  return → 0\nend\nreturn → countdown(5)\n",
+    );
+    assert_eq!(
+        val,
+        Value::Integer(3),
+        "return inside while should exit function"
+    );
+}
+
+#[test]
+fn test_bytecode_return_inside_try() {
+    // `return` inside a try block must exit the function; the catch must NOT run.
+    let val = run_ok(
+        "define → f → ()\n  try\n    return → 42\n  catch e\n    return → -1\n  end\n  return → 0\nend\nreturn → f()\n",
+    );
+    assert_eq!(
+        val,
+        Value::Integer(42),
+        "return inside try should exit function, not trigger catch"
+    );
+}
+
+#[test]
+fn test_bytecode_try_catch_genuine_error() {
+    // A genuine runtime error (undefined variable) must be caught.
+    let val = run_ok(
+        "define → f → ()\n  try\n    store → x → undefined_var\n    return → 0\n  catch e\n    return → 99\n  end\nend\nreturn → f()\n",
+    );
+    assert_eq!(
+        val,
+        Value::Integer(99),
+        "genuine error inside try should be caught"
+    );
+}
+
+#[test]
+fn test_bytecode_break_in_for() {
+    // `break` inside a for loop exits the loop; execution continues after.
+    let val = run_ok(
+        "store → found → -1\nfor → x in [1, 2, 3, 4, 5]\n  if → x == 3\n    store → found → x\n    break\n  end\nend\nreturn → found\n",
+    );
+    assert_eq!(val, Value::Integer(3), "break should exit for loop");
+}
+
+#[test]
+fn test_bytecode_continue_in_for() {
+    // `continue` skips the rest of the current iteration.
+    let val = run_ok(
+        "store → sum → 0\nfor → x in [1, 2, 3, 4, 5]\n  if → x == 3\n    continue\n  end\n  store → sum → sum + x\nend\nreturn → sum\n",
+    );
+    assert_eq!(
+        val,
+        Value::Integer(12),
+        "continue should skip iteration (1+2+4+5=12)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Stale catch-frame regression tests
+// Verify that SetupCatch frames pushed inside a callee are NOT left on the
+// catch_stack when the callee returns.  Before the fix (catch_depth field on
+// call_stack frames), the stale frame would intercept the *caller's* genuine
+// errors and silently absorb them.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_bytecode_stale_catch_frame_after_return_from_try() {
+    // Callee has a try block but returns from inside it.
+    // After it returns, the caller triggers a genuine error.
+    // Without the fix the stale SetupCatch frame would swallow the error.
+    let result = compile_and_run(
+        r#"
+define → callee → ()
+  try
+    return → 42
+  catch e
+    return → -1
+  end
+end
+store → x → callee()
+return → undefined_var
+"#,
+    );
+    assert!(
+        result.is_err(),
+        "caller's undefined-var error must not be swallowed by callee's stale catch frame"
+    );
+}
+
+#[test]
+fn test_bytecode_stale_catch_frame_caller_can_catch_own_error() {
+    // Callee returns from inside try.  Caller wraps its own call in try-catch.
+    // The caller's catch block must fire, not the callee's stale frame.
+    let val = run_ok(
+        r#"
+define → callee → ()
+  try
+    return → 10
+  catch e
+    return → -1
+  end
+end
+store → result → 0
+try
+  store → x → callee()
+  store → bad → undefined_var
+catch e
+  store → result → 99
+end
+return → result
+"#,
+    );
+    assert_eq!(
+        val,
+        Value::Integer(99),
+        "caller's own catch block must fire"
+    );
+}
+
+#[test]
+fn test_bytecode_break_inside_try() {
+    // break inside a try block must exit the loop, not be caught.
+    let val = run_ok(
+        r#"
+store → acc → 0
+for → i in [1, 2, 3]
+  try
+    if → i == 2
+      break
+    end
+    store → acc → i
+  catch e
+    store → acc → -1
+  end
+end
+return → acc
+"#,
+    );
+    assert_eq!(
+        val,
+        Value::Integer(1),
+        "break inside try must exit loop without catch firing"
+    );
+}
+
+#[test]
+fn test_bytecode_continue_inside_try() {
+    // continue inside a try block must skip to next iteration, not be caught.
+    let val = run_ok(
+        r#"
+store → acc → 0
+for → i in [1, 2, 3]
+  try
+    if → i == 2
+      continue
+    end
+    store → acc → acc + i
+  catch e
+    store → acc → -1
+  end
+end
+return → acc
+"#,
+    );
+    assert_eq!(
+        val,
+        Value::Integer(4),
+        "continue inside try must skip iteration without catch firing"
+    );
+}
+
+#[test]
+fn test_bytecode_nested_try_inner_caught_outer_clean() {
+    // Inner try catches its own error; outer try should not see it.
+    let val = run_ok(
+        r#"
+store → result → 0
+try
+  try
+    store → x → undefined_inner
+  catch e
+    store → result → 1
+  end
+catch e
+  store → result → -1
+end
+return → result
+"#,
+    );
+    assert_eq!(val, Value::Integer(1), "inner try must catch its own error");
 }
 
 #[test]

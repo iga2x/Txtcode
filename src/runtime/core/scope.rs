@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 pub struct ScopeManager {
     globals: HashMap<String, Value>,
     scopes: Vec<HashMap<String, Value>>, // Stack of local scopes
-    const_vars: HashSet<String>, // Track const variables (globals only for now)
+    const_vars: HashSet<String>,         // Track const variables (globals only for now)
 }
 
 impl ScopeManager {
@@ -32,12 +32,13 @@ impl ScopeManager {
     /// Set a variable in the current scope (or create new scope if needed)
     /// If variable exists in an outer scope, update it there instead
     /// Returns error if trying to reassign a const variable
+    #[allow(clippy::map_entry)]
     pub fn set_variable(&mut self, name: String, value: Value) -> Result<(), String> {
         // Check if it's a const variable
         if self.const_vars.contains(&name) {
             return Err(format!("Cannot reassign const variable '{}'", name));
         }
-        
+
         // First, check if variable exists in any scope (from most recent to oldest)
         for scope in self.scopes.iter_mut().rev() {
             if scope.contains_key(&name) {
@@ -45,13 +46,13 @@ impl ScopeManager {
                 return Ok(());
             }
         }
-        
+
         // Check globals
         if self.globals.contains_key(&name) {
             self.globals.insert(name, value);
             return Ok(());
         }
-        
+
         // Variable doesn't exist, create in current scope
         if let Some(scope) = self.scopes.last_mut() {
             // Set in current local scope
@@ -102,7 +103,7 @@ impl ScopeManager {
     pub fn globals_mut(&mut self) -> &mut HashMap<String, Value> {
         &mut self.globals
     }
-    
+
     /// Remove const flag if variable exists (used for imports)
     pub fn remove_const_if_exists(&mut self, name: &str) {
         self.const_vars.remove(name);
@@ -114,4 +115,3 @@ impl Default for ScopeManager {
         Self::new()
     }
 }
-

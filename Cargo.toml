@@ -1,6 +1,6 @@
 [package]
 name = "txtcode"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 authors = ["MD POOR"]
 description = "Txt-code: A simple, memorable, security-focused programming language"
@@ -63,35 +63,27 @@ regex = "1.10"
 # Semantic versioning
 semver = "1.0"
 
-# Optional: zip archive support (feature-gated)
-zip = { version = "2.1", optional = true }
+# Archive / serialization formats (always included)
+zip = "2.1"
+quick-xml = "0.31"
+serde_yaml = "0.9"
 
-# Optional: XML parsing (feature-gated)
-quick-xml = { version = "0.31", optional = true }
+# Password hashing
+bcrypt = "0.15"
 
-# Optional: YAML support (feature-gated)
-serde_yaml = { version = "0.9", optional = true }
+# RSA cryptography
+rsa = { version = "0.9", features = ["sha2"] }
 
 # System calls (Unix)
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# LLVM (for native code generation) - optional
-# llvm-sys = "170"
-
-# WebAssembly - optional
-# wasm-bindgen = "0.2"
-# wasm-pack = "0.12"
-
 [features]
-# Enable zip archive support in stdlib
-zip-support = ["dep:zip"]
-# Enable XML parsing in stdlib
-xml-support = ["dep:quick-xml"]
-# Enable YAML support in stdlib
-yaml-support = ["dep:serde_yaml"]
-# Enable all optional stdlib features
-full-stdlib = ["zip-support", "xml-support", "yaml-support"]
+# Legacy feature names kept for backwards compatibility (now no-ops — all included by default)
+zip-support = []
+xml-support = []
+yaml-support = []
+full-stdlib = []
 
 [dev-dependencies]
 criterion = "0.5"

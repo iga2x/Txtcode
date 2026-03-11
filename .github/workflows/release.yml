@@ -71,19 +71,32 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       # ═══════════════════════════════════════════════════════════════════════
-      # LINUX packages: .tar.gz  +  .deb
+      # LINUX packages: .tar.gz  +  .deb  +  bare binary (for self-update)
       # ═══════════════════════════════════════════════════════════════════════
       - name: Package Linux → .tar.gz
         if: runner.os == 'Linux'
         shell: bash
         run: |
           V=${{ steps.ver.outputs.version }}
-          PKG="txtcode-${V}-${{ matrix.label }}.tar.gz"
+          LABEL=${{ matrix.label }}
+          PKG="txtcode-${V}-${LABEL}.tar.gz"
+          BARE="txtcode-${V}-${LABEL}"
+
           cp target/${{ matrix.target }}/release/txtcode txtcode
-          tar -czf "$PKG" txtcode
+
+          # Bundle: binary + install.sh (from pkg/) + uninstall.sh (from repo root)
+          tar -czf "$PKG" txtcode pkg/install.sh uninstall.sh \
+            --transform "s|pkg/install.sh|install.sh|" \
+            --transform "s|uninstall.sh|uninstall.sh|"
+
           rm txtcode
           echo "TAR_PKG=$PKG" >> "$GITHUB_ENV"
           sha256sum "$PKG" > "${PKG}.sha256"
+
+          # Bare binary for self-update (no extraction needed)
+          cp target/${{ matrix.target }}/release/txtcode "$BARE"
+          echo "BARE_BIN=$BARE" >> "$GITHUB_ENV"
+          sha256sum "$BARE" > "${BARE}.sha256"
 
       - name: Package Linux → .deb
         if: runner.os == 'Linux'
@@ -118,6 +131,15 @@ jobs:
           EOF
           chmod 755 "${PKG_DIR}/DEBIAN/postinst"
 
+          # postrm runs on dpkg --purge to clean up global data
+          cat > "${PKG_DIR}/DEBIAN/postrm" << 'EOF'
+          #!/bin/sh
+          if [ "$1" = "purge" ]; then
+            rm -rf "${HOME}/.txtcode" 2>/dev/null || true
+          fi
+          EOF
+          chmod 755 "${PKG_DIR}/DEBIAN/postrm"
+
           cat > "${PKG_DIR}/usr/share/doc/txtcode/copyright" << EOF
           Txt-code v${V}
           https://github.com/iga2x/Txtcode
@@ -128,22 +150,40 @@ jobs:
           sha256sum "$DEB_NAME" > "${DEB_NAME}.sha256"
 
       # ═══════════════════════════════════════════════════════════════════════
-      # macOS package: .tar.gz
+      # macOS package: .tar.gz  +  bare binary (for self-update)
       # ═══════════════════════════════════════════════════════════════════════
       - name: Package macOS → .tar.gz
         if: runner.os == 'macOS'
         shell: bash
         run: |
           V=${{ steps.ver.outputs.version }}
-          PKG="txtcode-${V}-${{ matrix.label }}.tar.gz"
+          LABEL=${{ matrix.label }}
+          PKG="txtcode-${V}-${LABEL}.tar.gz"
+          BARE="txtcode-${V}-${LABEL}"
+
           cp target/${{ matrix.target }}/release/txtcode txtcode
-          tar -czf "$PKG" txtcode
-          rm txtcode
+          cp pkg/install.sh install.sh
+          cp uninstall.sh uninstall.sh
+
+          # macOS tar doesn't support --transform, use a staging dir
+          mkdir -p stage
+          cp txtcode stage/txtcode
+          cp pkg/install.sh stage/install.sh
+          cp uninstall.sh stage/uninstall.sh
+          tar -czf "$PKG" -C stage .
+
+          rm -rf stage txtcode install.sh uninstall.sh
           echo "TAR_PKG=$PKG" >> "$GITHUB_ENV"
           shasum -a 256 "$PKG" > "${PKG}.sha256"
 
+          # Bare binary for self-update
+          cp target/${{ matrix.target }}/release/txtcode "$BARE"
+          echo "BARE_BIN=$BARE" >> "$GITHUB_ENV"
+          shasum -a 256 "$BARE" > "${BARE}.sha256"
+
       # ═══════════════════════════════════════════════════════════════════════
-      # Windows package: .zip  (binary + install.bat)
+      # Windows package: .zip  (binary + install.bat + uninstall.bat)
+      #                + bare .exe  (for self-update)
       # ═══════════════════════════════════════════════════════════════════════
       - name: Package Windows → .zip
         if: runner.os == 'Windows'
@@ -151,32 +191,112 @@ jobs:
         run: |
           V=${{ steps.ver.outputs.version }}
           PKG="txtcode-${V}-${{ matrix.label }}.zip"
+          BARE_EXE="txtcode-${V}-${{ matrix.label }}.exe"
+
           cp target/${{ matrix.target }}/release/txtcode.exe txtcode.exe
 
+          # install.bat — copies binary to %LOCALAPPDATA%\Programs\txtcode
+          # and permanently adds it to the user PATH via registry
           cat > install.bat << 'EOF'
           @echo off
-          setlocal
-          set DEST=%LOCALAPPDATA%\Programs\txtcode
-          mkdir "%DEST%" 2>nul
-          copy /Y txtcode.exe "%DEST%\txtcode.exe" >nul
+          setlocal enabledelayedexpansion
+
           echo.
-          echo  Txt-code installed to %DEST%
-          echo  Add %DEST% to your PATH to use txtcode from any terminal.
+          echo  Txt-code Installer
+          echo  ==================
+          echo.
+
+          set "DEST=%LOCALAPPDATA%\Programs\txtcode"
+          echo  Installing to: %DEST%
+          echo.
+
+          mkdir "%DEST%" 2>nul
+          copy /Y "%~dp0txtcode.exe" "%DEST%\txtcode.exe" >nul
+          if errorlevel 1 (
+            echo  ERROR: Could not copy binary to %DEST%
+            pause
+            exit /b 1
+          )
+
+          :: Add to user PATH via registry (avoids setx 1024-char limit)
+          for /f "skip=2 tokens=3*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do (
+            set "OLD_PATH=%%a %%b"
+          )
+          set "OLD_PATH=!OLD_PATH: =!"
+          echo !OLD_PATH! | findstr /C:"%DEST%" >nul 2>&1
+          if errorlevel 1 (
+            if defined OLD_PATH (
+              reg add "HKCU\Environment" /v PATH /t REG_EXPAND_SZ /d "%DEST%;!OLD_PATH!" /f >nul
+            ) else (
+              reg add "HKCU\Environment" /v PATH /t REG_EXPAND_SZ /d "%DEST%" /f >nul
+            )
+            echo  Added %DEST% to your PATH.
+            echo  Restart your terminal for the PATH change to take effect.
+          ) else (
+            echo  PATH already contains %DEST%
+          )
+
+          echo.
+          "%DEST%\txtcode.exe" --version
+          echo.
+          echo  Installation complete! Open a new terminal and run: txtcode repl
           echo.
           pause
           EOF
 
+          # uninstall.bat — removes binary dir and PATH entry
           cat > uninstall.bat << 'EOF'
           @echo off
-          set DEST=%LOCALAPPDATA%\Programs\txtcode
-          rmdir /S /Q "%DEST%" 2>nul
-          echo Txt-code uninstalled.
+          setlocal enabledelayedexpansion
+
+          echo.
+          echo  Txt-code Uninstaller
+          echo  ====================
+          echo.
+
+          set "DEST=%LOCALAPPDATA%\Programs\txtcode"
+          echo  This will remove: %DEST%
+          echo.
+          set /p "CONFIRM=Proceed? [y/N]: "
+          if /i not "%CONFIRM%"=="y" (
+            echo Uninstall cancelled.
+            pause
+            exit /b 0
+          )
+
+          :: Remove from user PATH via registry
+          for /f "skip=2 tokens=3*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do (
+            set "OLD_PATH=%%a %%b"
+          )
+          set "NEW_PATH=!OLD_PATH:%DEST%;=!"
+          set "NEW_PATH=!NEW_PATH:;%DEST%=!"
+          set "NEW_PATH=!NEW_PATH:%DEST%=!"
+          if not "!NEW_PATH!"=="!OLD_PATH!" (
+            reg add "HKCU\Environment" /v PATH /t REG_EXPAND_SZ /d "!NEW_PATH!" /f >nul
+            echo  Removed from PATH.
+          )
+
+          :: Remove directory
+          if exist "%DEST%" (
+            rmdir /S /Q "%DEST%"
+            echo  Removed %DEST%
+          ) else (
+            echo  %DEST% not found, may already be removed.
+          )
+
+          echo.
+          echo  Txt-code uninstalled.
           pause
           EOF
 
           7z a "$PKG" txtcode.exe install.bat uninstall.bat
           echo "ZIP_PKG=$PKG" >> "$GITHUB_ENV"
           sha256sum "$PKG" > "${PKG}.sha256"
+
+          # Bare .exe for self-update
+          cp txtcode.exe "$BARE_EXE"
+          echo "BARE_EXE=$BARE_EXE" >> "$GITHUB_ENV"
+          sha256sum "$BARE_EXE" > "${BARE_EXE}.sha256"
 
       # ═══════════════════════════════════════════════════════════════════════
       # Upload all produced packages to the GitHub Release
@@ -190,6 +310,8 @@ jobs:
             ${{ env.TAR_PKG }}.sha256
             ${{ env.DEB_PKG }}
             ${{ env.DEB_PKG }}.sha256
+            ${{ env.BARE_BIN }}
+            ${{ env.BARE_BIN }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -200,6 +322,8 @@ jobs:
           files: |
             ${{ env.TAR_PKG }}
             ${{ env.TAR_PKG }}.sha256
+            ${{ env.BARE_BIN }}
+            ${{ env.BARE_BIN }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -210,5 +334,7 @@ jobs:
           files: |
             ${{ env.ZIP_PKG }}
             ${{ env.ZIP_PKG }}.sha256
+            ${{ env.BARE_EXE }}
+            ${{ env.BARE_EXE }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

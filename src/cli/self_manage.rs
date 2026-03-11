@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // txtcode self uninstall
@@ -12,8 +12,8 @@ pub fn self_uninstall(yes: bool) -> Result<(), Box<dyn std::error::Error>> {
     println!("╚══════════════════════════════════════════╝\n");
 
     // Locate the running binary
-    let bin_path = std::env::current_exe()
-        .map_err(|e| format!("Cannot locate txtcode binary: {}", e))?;
+    let bin_path =
+        std::env::current_exe().map_err(|e| format!("Cannot locate txtcode binary: {}", e))?;
 
     // Locate global data directory
     let global_data = dirs::home_dir()
@@ -27,7 +27,10 @@ pub fn self_uninstall(yes: bool) -> Result<(), Box<dyn std::error::Error>> {
     println!("     Keeps   : ~/.txtcode/  and all project .txtcode-env/ dirs\n");
     println!("  2) Binary + global data");
     println!("     Removes : {}", bin_path.display());
-    println!("     Removes : {}  (config, cache, logs, global packages)", global_data.display());
+    println!(
+        "     Removes : {}  (config, cache, logs, global packages)",
+        global_data.display()
+    );
     println!("     Keeps   : All project .txtcode-env/ dirs untouched\n");
     println!("  3) Complete wipe          (everything)");
     println!("     Removes : {}", bin_path.display());
@@ -49,7 +52,7 @@ pub fn self_uninstall(yes: bool) -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
         match trimmed.parse::<u8>() {
-            Ok(n) if n >= 1 && n <= 3 => n,
+            Ok(n) if (1..=3).contains(&n) => n,
             _ => {
                 eprintln!("Invalid choice. Uninstall cancelled.");
                 return Ok(());
@@ -126,6 +129,27 @@ pub fn self_uninstall(yes: bool) -> Result<(), Box<dyn std::error::Error>> {
     // Remove PATH entries from shell config files
     clean_path_entries();
 
+    // Check for other copies of the binary in standard locations
+    let other_copies = find_other_binaries(&bin_path);
+    if !other_copies.is_empty() {
+        println!("\nAlso found in other locations:");
+        for p in &other_copies {
+            println!("  - {}", p.display());
+        }
+        print!("Remove these too? [y/N]: ");
+        io::stdout().flush()?;
+        let mut ans = String::new();
+        io::stdin().read_line(&mut ans)?;
+        if ans.trim().eq_ignore_ascii_case("y") {
+            for p in &other_copies {
+                match fs::remove_file(p) {
+                    Ok(_) => println!("  ✓ Removed {}", p.display()),
+                    Err(e) => eprintln!("  ✗ Could not remove {}: {}", p.display(), e),
+                }
+            }
+        }
+    }
+
     // Remove binary last (after it, this process ends)
     println!("  ✓ Removing binary: {}", bin_path.display());
     // We schedule binary removal after the process exits using a temp shell script
@@ -144,6 +168,22 @@ pub fn self_uninstall(yes: bool) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Find other copies of the txtcode binary in standard install locations,
+/// excluding the one currently running.
+fn find_other_binaries(current: &PathBuf) -> Vec<PathBuf> {
+    let home = dirs::home_dir().unwrap_or_default();
+    let candidates = [
+        PathBuf::from("/usr/local/bin/txtcode"),
+        PathBuf::from("/usr/bin/txtcode"),
+        home.join(".local/bin/txtcode"),
+        home.join(".cargo/bin/txtcode"),
+    ];
+    candidates
+        .into_iter()
+        .filter(|p| p.exists() && p != current)
+        .collect()
+}
+
 /// Walk the user's home directory looking for .txtcode-env/ directories.
 fn find_project_envs() -> Vec<PathBuf> {
     let home = match dirs::home_dir() {
@@ -157,7 +197,9 @@ fn find_project_envs() -> Vec<PathBuf> {
 }
 
 fn walk_for_envs(dir: &std::path::Path, found: &mut Vec<PathBuf>, depth: usize) {
-    if depth > 8 { return; } // don't go too deep
+    if depth > 8 {
+        return;
+    } // don't go too deep
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -184,14 +226,20 @@ fn clean_path_entries() {
     };
 
     let shell_files = [
-        ".bashrc", ".bash_profile", ".zshrc", ".zprofile", ".profile",
+        ".bashrc",
+        ".bash_profile",
+        ".zshrc",
+        ".zprofile",
+        ".profile",
     ];
 
     let marker = "# txtcode";
 
     for filename in &shell_files {
         let path = home.join(filename);
-        if !path.exists() { continue; }
+        if !path.exists() {
+            continue;
+        }
         let content = match fs::read_to_string(&path) {
             Ok(c) => c,
             Err(_) => continue,
@@ -218,7 +266,7 @@ fn clean_path_entries() {
 /// On Unix: write a tiny shell script that sleeps 1s then removes the binary,
 /// then exec it in the background and exit this process.
 /// On Windows: use a scheduled rename trick.
-fn remove_binary_deferred(bin_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn remove_binary_deferred(bin_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     {
         let tmp = std::env::temp_dir().join("txtcode_remove.sh");
@@ -231,9 +279,7 @@ fn remove_binary_deferred(bin_path: &PathBuf) -> Result<(), Box<dyn std::error::
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))?;
         // Run in background and exit
-        std::process::Command::new("sh")
-            .arg(&tmp)
-            .spawn()?;
+        std::process::Command::new("sh").arg(&tmp).spawn()?;
     }
     #[cfg(not(unix))]
     {
@@ -242,8 +288,17 @@ fn remove_binary_deferred(bin_path: &PathBuf) -> Result<(), Box<dyn std::error::
         let _ = fs::rename(bin_path, &tmp_path);
         // Schedule deletion - best effort
         std::process::Command::new("cmd")
-            .args(["/C", "ping", "-n", "2", "127.0.0.1", ">nul", "&",
-                   "del", &tmp_path.to_string_lossy()])
+            .args([
+                "/C",
+                "ping",
+                "-n",
+                "2",
+                "127.0.0.1",
+                ">nul",
+                "&",
+                "del",
+                &tmp_path.to_string_lossy(),
+            ])
             .spawn()?;
     }
     Ok(())
@@ -260,61 +315,181 @@ pub fn self_update() -> Result<(), Box<dyn std::error::Error>> {
 
     let current_version = env!("CARGO_PKG_VERSION");
     println!("Current version : v{}", current_version);
-    println!("Checking for updates...\n");
+    print!("Checking for updates... ");
+    io::stdout().flush()?;
 
-    // Fetch latest version from GitHub releases API
-    let latest = fetch_latest_version();
-
-    match latest {
-        Ok(latest_version) => {
-            println!("Latest version  : v{}", latest_version);
-            if latest_version == current_version {
-                println!("\nYou are already on the latest version.");
-                return Ok(());
-            }
-            println!("\nNew version available: v{} → v{}", current_version, latest_version);
-            println!("\nTo update, run:");
-            println!("  curl -sSf https://raw.githubusercontent.com/iga2x/txtcode/main/install.sh | sh");
-            println!("\nOr if you installed from source:");
-            println!("  cd /path/to/txtcode && git pull && cargo install --path .");
+    let latest_version = match fetch_latest_version() {
+        Ok(v) => {
+            println!("done.");
+            v
         }
         Err(_) => {
-            println!("Could not reach GitHub to check for updates.");
-            println!("Check your internet connection or visit:");
-            println!("  https://github.com/iga2x/txtcode/releases");
+            println!("failed.");
+            println!("Could not reach GitHub. Check your connection or visit:");
+            println!("  https://github.com/iga2x/Txtcode/releases");
+            return Ok(());
         }
+    };
+
+    println!("Latest version  : v{}", latest_version);
+
+    // Compare using semver
+    let cur = semver::Version::parse(current_version).unwrap_or(semver::Version::new(0, 0, 0));
+    let lat = semver::Version::parse(&latest_version).unwrap_or(semver::Version::new(0, 0, 0));
+
+    if lat <= cur {
+        println!("\nYou are already on the latest version.");
+        return Ok(());
     }
 
+    println!(
+        "\nNew version available: v{} → v{}",
+        current_version, latest_version
+    );
+
+    // Detect platform label (matches release asset naming)
+    let label = match detect_platform_label() {
+        Ok(l) => l,
+        Err(e) => {
+            println!("\nCannot auto-update on this platform: {}", e);
+            println!("Download manually: https://github.com/iga2x/Txtcode/releases");
+            return Ok(());
+        }
+    };
+
+    // Build URL for the bare binary asset
+    let ext = if cfg!(windows) { ".exe" } else { "" };
+    let filename = format!("txtcode-{}-{}{}", latest_version, label, ext);
+    let url = format!(
+        "https://github.com/iga2x/Txtcode/releases/download/v{}/{}",
+        latest_version, filename
+    );
+
+    println!("Downloading {} ...", filename);
+
+    let tmp = std::env::temp_dir().join(&filename);
+    if let Err(e) = download_file(&url, &tmp) {
+        println!("Download failed: {}", e);
+        println!("Download manually: https://github.com/iga2x/Txtcode/releases");
+        return Ok(());
+    }
+
+    // Make executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))?;
+    }
+
+    let current_bin = std::env::current_exe()?;
+    println!("Replacing: {}", current_bin.display());
+
+    // Check if we can write to the current binary location
+    if let Err(e) = fs::OpenOptions::new().write(true).open(&current_bin) {
+        println!("\nNo write permission to {}: {}", current_bin.display(), e);
+        println!("Try: sudo txtcode self update");
+        let _ = fs::remove_file(&tmp);
+        return Ok(());
+    }
+
+    apply_update_deferred(&current_bin, &tmp)?;
+
+    println!(
+        "\nUpdate scheduled. Restart txtcode to use v{}.",
+        latest_version
+    );
+    Ok(())
+}
+
+fn detect_platform_label() -> Result<String, Box<dyn std::error::Error>> {
+    let os = match std::env::consts::OS {
+        "linux" => "linux",
+        "macos" => "macos",
+        "windows" => "windows",
+        other => return Err(format!("unsupported OS '{}'", other).into()),
+    };
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        "aarch64" => "arm64",
+        other => return Err(format!("unsupported arch '{}'", other).into()),
+    };
+    Ok(format!("{}-{}", os, arch))
+}
+
+fn download_file(url: &str, dest: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write as IoWrite;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
+        .build()?;
+
+    let resp = client.get(url).send()?;
+    if !resp.status().is_success() {
+        return Err(format!("server returned HTTP {}", resp.status()).into());
+    }
+
+    let bytes = resp.bytes()?;
+    let mut file = fs::File::create(dest)?;
+    file.write_all(&bytes)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn apply_update_deferred(current: &Path, new_bin: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let tmp_script = std::env::temp_dir().join("txtcode_update.sh");
+    let script = format!(
+        "#!/bin/sh\nsleep 1\ncp -f \"{}\" \"{}\"\nchmod 755 \"{}\"\nrm -f \"$0\"\n",
+        new_bin.display(),
+        current.display(),
+        current.display()
+    );
+    fs::write(&tmp_script, &script)?;
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&tmp_script, fs::Permissions::from_mode(0o755))?;
+    std::process::Command::new("sh").arg(&tmp_script).spawn()?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn apply_update_deferred(
+    current: &PathBuf,
+    new_bin: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let tmp_script = std::env::temp_dir().join("txtcode_update.bat");
+    let script = format!(
+        "@echo off\nping -n 2 127.0.0.1 >nul\ncopy /Y \"{}\" \"{}\" >nul\ndel \"%~f0\"\n",
+        new_bin.display(),
+        current.display()
+    );
+    fs::write(&tmp_script, &script)?;
+    std::process::Command::new("cmd")
+        .args(["/C", &tmp_script.to_string_lossy()])
+        .spawn()?;
     Ok(())
 }
 
 fn fetch_latest_version() -> Result<String, Box<dyn std::error::Error>> {
-    // Use reqwest blocking to hit GitHub API
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
-            .build()?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
+        .build()?;
 
-        let resp = client
-            .get("https://api.github.com/repos/iga2x/txtcode/releases/latest")
-            .send()
-            .await?;
+    let resp = client
+        .get("https://api.github.com/repos/iga2x/Txtcode/releases/latest")
+        .send()?;
 
-        let json: serde_json::Value = resp.json().await?;
-        let tag = json["tag_name"]
-            .as_str()
-            .unwrap_or("")
-            .trim_start_matches('v')
-            .to_string();
+    let json: serde_json::Value = resp.json()?;
+    let tag = json["tag_name"]
+        .as_str()
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .to_string();
 
-        if tag.is_empty() {
-            Err("No release tag found".into())
-        } else {
-            Ok(tag)
-        }
-    })
+    if tag.is_empty() {
+        Err("No release tag found".into())
+    } else {
+        Ok(tag)
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,33 +1,32 @@
 // Virtual Machine - modularized into focused components
 // Submodules: core, helpers, permissions, intent, capabilities, audit, policy, modules
 
+mod audit;
+mod capabilities;
 mod core;
 mod helpers;
-mod permissions;
 mod intent;
-mod capabilities;
-mod audit;
-mod policy;
 mod modules;
+mod permissions;
+mod policy;
 
+use crate::capability::CapabilityManager;
 use crate::parser::ast::*;
-use crate::typecheck::types::Type;
+use crate::policy::PolicyEngine;
+use crate::runtime::async_executor::AsyncExecutor;
+use crate::runtime::audit::{AIMetadata, AuditTrail};
+use crate::runtime::core::{CallFrame, CallStack, ScopeManager, Value};
+use crate::runtime::errors::RuntimeError;
+use crate::runtime::execution::{
+    ControlFlowExecutor, ControlFlowVM, StatementExecutor, StatementVM,
+};
+use crate::runtime::gc::GarbageCollector;
+use crate::runtime::intent::IntentChecker;
+use crate::runtime::module::ModuleResolver;
+use crate::runtime::permissions::{PermissionManager, PermissionResource};
 use crate::stdlib::FunctionExecutor;
 use crate::tools::logger::{log_debug, log_warn};
-use crate::runtime::gc::GarbageCollector;
-use crate::runtime::core::{Value, ScopeManager, CallStack, CallFrame};
-use crate::runtime::errors::RuntimeError;
-use crate::runtime::module::ModuleResolver;
-use crate::runtime::async_executor::AsyncExecutor;
-use crate::runtime::permissions::{PermissionManager, PermissionResource};
-use crate::runtime::audit::{AuditTrail, AIMetadata};
-use crate::policy::PolicyEngine;
-use crate::runtime::intent::IntentChecker;
-use crate::capability::CapabilityManager;
-use crate::runtime::execution::{
-    StatementExecutor, StatementVM,
-    ControlFlowExecutor, ControlFlowVM,
-};
+use crate::typecheck::types::Type;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -48,14 +47,14 @@ pub struct VirtualMachine {
     safe_mode: bool,
     debug: bool,
     verbose: bool,
-    exec_allowed: bool,  // Keep for backward compatibility, but deprecate
+    exec_allowed: bool, // Keep for backward compatibility, but deprecate
     permission_manager: PermissionManager,
-    audit_trail: AuditTrail,  // NEW: Audit trail for all actions
-    ai_metadata: AIMetadata,  // NEW: AI metadata tracking
-    policy_engine: PolicyEngine,  // NEW: Policy engine for rate limiting and execution control
-    intent_checker: IntentChecker,  // NEW: Intent enforcement system
-    capability_manager: CapabilityManager,  // NEW: Capability token system
-    active_capability: Option<String>,  // NEW: Active capability token in current scope
+    audit_trail: AuditTrail,               // NEW: Audit trail for all actions
+    ai_metadata: AIMetadata,               // NEW: AI metadata tracking
+    policy_engine: PolicyEngine, // NEW: Policy engine for rate limiting and execution control
+    intent_checker: IntentChecker, // NEW: Intent enforcement system
+    capability_manager: CapabilityManager, // NEW: Capability token system
+    active_capability: Option<String>, // NEW: Active capability token in current scope
 }
 
 impl VirtualMachine {
@@ -90,47 +89,80 @@ impl VirtualMachine {
     pub fn interpret(&mut self, program: &Program) -> Result<Value, RuntimeError> {
         // Start execution timer for max execution time checking
         self.policy_engine.start_execution();
-        
+
         // Check AI allowance before execution if AI metadata is present
         if !self.ai_metadata.is_empty() {
             self.check_ai_allowed()?;
         }
-        
+
         for statement in &program.statements {
             // Check max execution time periodically
             self.check_max_execution_time()?;
-            
+
             self.execute_statement(statement)?;
             // Periodic garbage collection
             // Note: scopes() returns a slice, but collect expects a Vec reference
             // We need to pass the scopes as a reference to a Vec
             let scopes_vec: Vec<_> = self.scope_manager.scopes().to_vec();
-            self.gc.collect(&self.stack, self.scope_manager.globals(), &scopes_vec);
+            self.gc
+                .collect(&self.stack, self.scope_manager.globals(), &scopes_vec);
         }
         Ok(Value::Null)
+    }
+
+    /// Like interpret, but returns the last expression's value (for REPL display).
+    pub fn interpret_repl(&mut self, program: &Program) -> Result<Value, RuntimeError> {
+        self.policy_engine.start_execution();
+        if !self.ai_metadata.is_empty() {
+            self.check_ai_allowed()?;
+        }
+        let mut last = Value::Null;
+        for statement in &program.statements {
+            self.check_max_execution_time()?;
+            let val = self.execute_statement(statement)?;
+            if !matches!(val, Value::Null) {
+                last = val;
+            }
+            let scopes_vec: Vec<_> = self.scope_manager.scopes().to_vec();
+            self.gc
+                .collect(&self.stack, self.scope_manager.globals(), &scopes_vec);
+        }
+        Ok(last)
     }
 
     fn execute_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError> {
         // Route control flow statements to ControlFlowExecutor
         match stmt {
-            Statement::If { condition, then_branch, else_branch, .. } => {
-                ControlFlowExecutor::execute_if(self, condition, then_branch, else_branch)
-            }
-            Statement::While { condition, body, .. } => {
-                ControlFlowExecutor::execute_while(self, condition, body)
-            }
-            Statement::DoWhile { body, condition, .. } => {
-                ControlFlowExecutor::execute_do_while(self, body, condition)
-            }
-            Statement::For { variable, iterable, body, .. } => {
-                ControlFlowExecutor::execute_for(self, variable, iterable, body)
-            }
-            Statement::Match { value, cases, default, .. } => {
-                ControlFlowExecutor::execute_match(self, value, cases, default)
-            }
-            Statement::Try { body, catch, finally, .. } => {
-                ControlFlowExecutor::execute_try(self, body, catch, finally)
-            }
+            Statement::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => ControlFlowExecutor::execute_if(self, condition, then_branch, else_branch),
+            Statement::While {
+                condition, body, ..
+            } => ControlFlowExecutor::execute_while(self, condition, body),
+            Statement::DoWhile {
+                body, condition, ..
+            } => ControlFlowExecutor::execute_do_while(self, body, condition),
+            Statement::For {
+                variable,
+                iterable,
+                body,
+                ..
+            } => ControlFlowExecutor::execute_for(self, variable, iterable, body),
+            Statement::Match {
+                value,
+                cases,
+                default,
+                ..
+            } => ControlFlowExecutor::execute_match(self, value, cases, default),
+            Statement::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => ControlFlowExecutor::execute_try(self, body, catch, finally),
             Statement::Repeat { count, body, .. } => {
                 ControlFlowExecutor::execute_repeat(self, count, body)
             }
@@ -144,7 +176,6 @@ impl VirtualMachine {
         use crate::runtime::execution::expressions::ExpressionEvaluator;
         ExpressionEvaluator::evaluate(self, expr)
     }
-
 }
 
 impl Default for VirtualMachine {
@@ -193,7 +224,12 @@ impl StatementVM for VirtualMachine {
         self.struct_defs.insert(name, fields);
     }
 
-    fn execute_import(&mut self, modules: &[String], from: &Option<String>, alias: &Option<String>) -> Result<Value, RuntimeError> {
+    fn execute_import(
+        &mut self,
+        modules: &[String],
+        from: &Option<String>,
+        alias: &Option<String>,
+    ) -> Result<Value, RuntimeError> {
         // Methods from impl VirtualMachine blocks in submodules are merged
         VirtualMachine::execute_import(self, modules, from, alias)
     }
@@ -208,12 +244,20 @@ impl StatementVM for VirtualMachine {
         VirtualMachine::set_const(self, name, value)
     }
 
-    fn grant_permission(&mut self, resource: crate::runtime::permissions::PermissionResource, scope: Option<String>) {
+    fn grant_permission(
+        &mut self,
+        resource: crate::runtime::permissions::PermissionResource,
+        scope: Option<String>,
+    ) {
         // Methods from impl VirtualMachine blocks in submodules are merged
         VirtualMachine::grant_permission(self, resource, scope)
     }
 
-    fn register_function_intent(&mut self, name: String, declaration: crate::runtime::intent::IntentDeclaration) {
+    fn register_function_intent(
+        &mut self,
+        name: String,
+        declaration: crate::runtime::intent::IntentDeclaration,
+    ) {
         // Methods from impl VirtualMachine blocks in submodules are merged
         VirtualMachine::register_function_intent(self, name, declaration)
     }
@@ -261,14 +305,26 @@ impl crate::stdlib::capabilities::CapabilityExecutor for VirtualMachine {
         granted_by: Option<String>,
         ai_metadata: Option<AIMetadata>,
     ) -> String {
-        VirtualMachine::grant_capability(self, resource, action, scope, expires_in, granted_by, ai_metadata)
+        VirtualMachine::grant_capability(
+            self,
+            resource,
+            action,
+            scope,
+            expires_in,
+            granted_by,
+            ai_metadata,
+        )
     }
 
     fn use_capability(&mut self, token_id: String) -> Result<(), RuntimeError> {
         VirtualMachine::use_capability(self, token_id)
     }
 
-    fn revoke_capability(&mut self, token_id: &str, reason: Option<String>) -> Result<(), RuntimeError> {
+    fn revoke_capability(
+        &mut self,
+        token_id: &str,
+        reason: Option<String>,
+    ) -> Result<(), RuntimeError> {
         VirtualMachine::revoke_capability(self, token_id, reason)
     }
 
@@ -278,7 +334,11 @@ impl crate::stdlib::capabilities::CapabilityExecutor for VirtualMachine {
 }
 
 impl crate::stdlib::permission_checker::PermissionChecker for VirtualMachine {
-    fn check_permission(&self, resource: &PermissionResource, scope: Option<&str>) -> Result<(), RuntimeError> {
+    fn check_permission(
+        &self,
+        resource: &PermissionResource,
+        scope: Option<&str>,
+    ) -> Result<(), RuntimeError> {
         VirtualMachine::check_permission(self, resource, scope)
     }
 }
@@ -290,12 +350,13 @@ impl FunctionExecutor for VirtualMachine {
                 let params = params.clone();
                 let body = body.clone();
                 let captured_env = captured_env.clone();
-                
+
                 log_debug(&format!(
                     "Calling function value '{}' with {} arguments",
-                    name, args.len()
+                    name,
+                    args.len()
                 ));
-                
+
                 // Guard against unbounded recursion.
                 // Kept at 50 in debug mode — larger enums use more Rust stack per frame.
                 const MAX_CALL_DEPTH: usize = 50;
@@ -312,7 +373,7 @@ impl FunctionExecutor for VirtualMachine {
                     line: 0,
                     column: 0,
                 });
-                
+
                 // Push captured environment as a scope (for closures) - BEFORE parameters
                 if !captured_env.is_empty() {
                     self.push_scope();
@@ -320,16 +381,16 @@ impl FunctionExecutor for VirtualMachine {
                         self.set_variable(var_name.clone(), var_value.clone())?;
                     }
                 }
-                
+
                 // Push new scope for function parameters
                 self.push_scope();
-                
+
                 // Use a closure to ensure cleanup on early return
                 let result = (|| -> Result<Value, RuntimeError> {
                     // Bind arguments with variadic support
                     let mut arg_index = 0;
                     let args_len = args.len();
-                    
+
                     for param in &params {
                         if param.is_variadic {
                             // Collect all remaining arguments into an array for variadic parameter
@@ -349,17 +410,22 @@ impl FunctionExecutor for VirtualMachine {
                                 arg_index += 1;
                             } else {
                                 return Err(self.create_error(format!(
-                                    "Missing required parameter: {}", param.name
+                                    "Missing required parameter: {}",
+                                    param.name
                                 )));
                             }
                         }
                     }
-                    
+
                     // Check if there are extra arguments after all parameters are bound
                     if arg_index < args_len {
-                        log_warn(&format!("Extra arguments provided to function '{}' ({} unused)", name, args_len - arg_index));
+                        log_warn(&format!(
+                            "Extra arguments provided to function '{}' ({} unused)",
+                            name,
+                            args_len - arg_index
+                        ));
                     }
-                    
+
                     let mut result = Value::Null;
                     for stmt in &body {
                         if let Statement::Return { value, .. } = stmt {
@@ -372,17 +438,17 @@ impl FunctionExecutor for VirtualMachine {
                         }
                         self.execute_statement(stmt)?;
                     }
-                    
+
                     Ok(result)
                 })();
-                
+
                 // Always clean up scope and call frame, even on error
                 self.pop_scope();
                 if !captured_env.is_empty() {
                     self.pop_scope(); // Pop captured environment scope too
                 }
                 self.call_stack.pop();
-                
+
                 result
             }
             _ => Err(RuntimeError::new("Expected function value".to_string())),
@@ -390,48 +456,57 @@ impl FunctionExecutor for VirtualMachine {
     }
 }
 
-// Implement ExpressionVM trait for VirtualMachine  
+// Implement ExpressionVM trait for VirtualMachine
 impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
     fn get_variable(&self, name: &str) -> Option<Value> {
         VirtualMachine::get_variable(self, name)
     }
-    
+
     fn set_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError> {
         VirtualMachine::set_variable(self, name, value)
     }
-    
+
     fn push_scope(&mut self) {
         VirtualMachine::push_scope(self)
     }
-    
+
     fn pop_scope(&mut self) {
         VirtualMachine::pop_scope(self)
     }
-    
+
     fn create_error(&self, message: String) -> RuntimeError {
         VirtualMachine::create_error(self, message)
     }
-    
-    fn check_permission_with_audit(&mut self, resource: &crate::runtime::permissions::PermissionResource, scope: Option<&str>) -> Result<(), RuntimeError> {
+
+    fn check_permission_with_audit(
+        &mut self,
+        resource: &crate::runtime::permissions::PermissionResource,
+        scope: Option<&str>,
+    ) -> Result<(), RuntimeError> {
         VirtualMachine::check_permission_with_audit(self, resource, scope)
     }
-    
+
     fn check_rate_limit(&mut self, action: &str) -> Result<(), RuntimeError> {
         VirtualMachine::check_rate_limit(self, action)
     }
-    
+
     fn map_stdlib_to_action(&self, name: &str, args: &[Value]) -> Option<(String, String)> {
         VirtualMachine::map_stdlib_to_action(self, name, args)
     }
-    
-    fn check_intent(&self, function_name: &str, action: &str, resource: &str) -> Result<(), RuntimeError> {
+
+    fn check_intent(
+        &self,
+        function_name: &str,
+        action: &str,
+        resource: &str,
+    ) -> Result<(), RuntimeError> {
         VirtualMachine::check_intent(self, function_name, action, resource)
     }
-    
+
     fn call_stack_current_frame(&self) -> Option<&crate::runtime::core::CallFrame> {
         self.call_stack.current_frame()
     }
-    
+
     fn call_stack_depth(&self) -> usize {
         self.call_stack.frames().len()
     }
@@ -439,67 +514,84 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
     fn call_stack_push(&mut self, frame: crate::runtime::core::CallFrame) {
         self.call_stack.push(frame)
     }
-    
+
     fn call_stack_pop(&mut self) {
         let _ = self.call_stack.pop();
     }
-    
-    fn audit_trail_log_action(&mut self, action: String, resource: String, context: Option<String>, result: crate::runtime::audit::AuditResult, ai_metadata: Option<&crate::runtime::audit::AIMetadata>) {
-        let _ = self.audit_trail.log_action(action, resource, context.as_deref().map(|s| s.to_string()), result, ai_metadata);
+
+    fn audit_trail_log_action(
+        &mut self,
+        action: String,
+        resource: String,
+        context: Option<String>,
+        result: crate::runtime::audit::AuditResult,
+        ai_metadata: Option<&crate::runtime::audit::AIMetadata>,
+    ) {
+        let _ = self.audit_trail.log_action(
+            action,
+            resource,
+            context.as_deref().map(|s| s.to_string()),
+            result,
+            ai_metadata,
+        );
     }
-    
+
     fn ai_metadata(&self) -> &crate::runtime::audit::AIMetadata {
         &self.ai_metadata
     }
-    
+
     fn struct_defs(&self) -> &HashMap<String, Vec<(String, Type)>> {
         &self.struct_defs
     }
-    
+
     fn enum_defs(&self) -> &HashMap<String, Vec<(String, Option<Expression>)>> {
         &self.enum_defs
     }
-    
+
     fn gc_register_allocation(&mut self, value: &Value) {
         self.gc.register_allocation(value)
     }
-    
+
     fn debug(&self) -> bool {
         self.debug
     }
-    
+
     fn verbose(&self) -> bool {
         self.verbose
     }
-    
+
     fn exec_allowed(&self) -> Option<bool> {
         Some(self.exec_allowed)
     }
-    
+
     fn execute_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError> {
         VirtualMachine::execute_statement(self, stmt)
     }
-    
+
     fn extract_free_variables(body: &Expression, param_names: &HashSet<String>) -> HashSet<String> {
         // Call the static method from helpers module
         // Since it's in an impl block, we can call it directly via Self
         Self::extract_free_variables(body, param_names)
     }
-    
+
     fn capture_environment(&self, var_names: &HashSet<String>) -> HashMap<String, Value> {
         // Call the instance method from helpers module
         // Since it's in an impl block, we can call it directly
         self.capture_environment(var_names)
     }
-    
-    fn handle_capability_function(&mut self, name: &str, args: &[Value]) -> Result<Option<Value>, RuntimeError> {
+
+    fn handle_capability_function(
+        &mut self,
+        name: &str,
+        args: &[Value],
+    ) -> Result<Option<Value>, RuntimeError> {
         use crate::stdlib::CapabilityLib;
         match CapabilityLib::call_function(name, args, Some(self)) {
             Ok(result) => Ok(Some(result)),
             Err(e) => Err(e),
         }
     }
-    
+
     fn call_stdlib_function(&mut self, name: &str, args: &[Value]) -> Result<Value, RuntimeError> {
         use crate::stdlib::StdLib;
         // Extract permission checker from self first (immutable borrow)
@@ -510,4 +602,3 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
         StdLib::call_function(name, args, self.exec_allowed, Some(self))
     }
 }
-

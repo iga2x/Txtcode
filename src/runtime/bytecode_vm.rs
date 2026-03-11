@@ -1,8 +1,8 @@
-use crate::compiler::bytecode::{Bytecode, Instruction, Constant};
-use crate::runtime::core::{Value, ScopeManager};
+use crate::compiler::bytecode::{Bytecode, Constant, Instruction};
+use crate::runtime::core::{ScopeManager, Value};
 use crate::runtime::errors::RuntimeError;
-use crate::runtime::permissions::{PermissionManager, Permission, PermissionResource};
-use crate::stdlib::{StdLib, FunctionExecutor, PermissionChecker};
+use crate::runtime::permissions::{Permission, PermissionManager, PermissionResource};
+use crate::stdlib::{FunctionExecutor, PermissionChecker, StdLib};
 use std::collections::HashMap;
 
 /// A catch handler frame on the catch_stack
@@ -21,8 +21,8 @@ pub struct BytecodeVM {
     scope_manager: ScopeManager,
     /// User-defined functions: name -> (param_names, body_start_ip)
     functions: HashMap<String, (Vec<String>, usize)>,
-    ip: usize, // Instruction pointer
-    call_stack: Vec<(usize, HashMap<String, Value>)>, // (return_ip, local_vars)
+    ip: usize,                                               // Instruction pointer
+    call_stack: Vec<(usize, HashMap<String, Value>, usize)>, // (return_ip, local_vars, catch_depth)
     /// Active for-loop iterators: (variable_name, items, current_index)
     for_iters: Vec<(String, Vec<Value>, usize)>,
     /// Active try-catch handlers
@@ -65,12 +65,14 @@ impl BytecodeVM {
 
     /// Grant a permission (mirrors VirtualMachine::grant_permission).
     pub fn grant_permission(&mut self, resource: PermissionResource, scope: Option<String>) {
-        self.permission_manager.grant(Permission::new(resource, scope));
+        self.permission_manager
+            .grant(Permission::new(resource, scope));
     }
 
     /// Deny a permission explicitly.
     pub fn deny_permission(&mut self, resource: PermissionResource, scope: Option<String>) {
-        self.permission_manager.deny(Permission::new(resource, scope));
+        self.permission_manager
+            .deny(Permission::new(resource, scope));
     }
 
     /// Add a directory to the module search path.
@@ -128,7 +130,7 @@ impl BytecodeVM {
         self.call_stack
             .iter()
             .enumerate()
-            .map(|(i, (return_ip, _))| format!("frame {}: return_ip={}", i, return_ip))
+            .map(|(i, (return_ip, _, _))| format!("frame {}: return_ip={}", i, return_ip))
             .collect()
     }
 
@@ -145,11 +147,17 @@ impl BytecodeVM {
             match self.execute_instruction(&instruction, &bytecode.constants) {
                 Ok(()) => {}
                 Err(e) => {
-                    // Check if there's an active catch handler
+                    // Control-flow signals (return/break/continue) must bypass try-catch entirely
+                    // and propagate directly to their respective boundary handlers.
+                    if e.is_control_flow_signal() {
+                        return Err(e);
+                    }
+                    // Check if there's an active catch handler for genuine runtime errors
                     if let Some(frame) = self.catch_stack.pop() {
                         // Bind the error message to the error variable if provided
                         if let Some(var) = frame.error_var {
-                            self.variables.insert(var, Value::String(e.message().to_string()));
+                            self.variables
+                                .insert(var, Value::String(e.message().to_string()));
                         }
                         // Jump to catch handler
                         self.ip = frame.catch_ip;
@@ -163,7 +171,11 @@ impl BytecodeVM {
         Ok(self.stack.pop().unwrap_or(Value::Null))
     }
 
-    fn execute_instruction(&mut self, inst: &Instruction, constants: &[Constant]) -> Result<(), RuntimeError> {
+    fn execute_instruction(
+        &mut self,
+        inst: &Instruction,
+        constants: &[Constant],
+    ) -> Result<(), RuntimeError> {
         match inst {
             Instruction::PushConstant(idx) => {
                 let constant = &constants[*idx];
@@ -179,19 +191,25 @@ impl BytecodeVM {
                 }
             }
             Instruction::LoadVar(name) => {
-                let value = self.variables.get(name)
+                let value = self
+                    .variables
+                    .get(name)
                     .cloned()
                     .or_else(|| self.scope_manager.get_variable(name))
                     .ok_or_else(|| RuntimeError::new(format!("Undefined variable: {}", name)))?;
                 self.stack.push(value);
             }
             Instruction::StoreVar(name) => {
-                let value = self.stack.pop()
+                let value = self
+                    .stack
+                    .pop()
                     .ok_or_else(|| RuntimeError::new("Stack underflow".to_string()))?;
                 self.variables.insert(name.clone(), value);
             }
             Instruction::LoadGlobal(name) => {
-                let value = self.scope_manager.get_variable(name)
+                let value = self
+                    .scope_manager
+                    .get_variable(name)
                     .ok_or_else(|| RuntimeError::new(format!("Undefined global: {}", name)))?
                     .clone();
                 self.stack.push(value);
@@ -202,25 +220,29 @@ impl BytecodeVM {
                 // Handle string concatenation in bytecode VM too
                 match (&a, &b) {
                     (Value::String(s), other) => {
-                        self.stack.push(Value::String(format!("{}{}", s, other.to_string())));
+                        self.stack.push(Value::String(format!("{}{}", s, other)));
                     }
                     (other, Value::String(s)) => {
-                        self.stack.push(Value::String(format!("{}{}", other.to_string(), s)));
+                        self.stack.push(Value::String(format!("{}{}", other, s)));
                     }
                     (Value::Integer(x), Value::Integer(y)) => {
-                        let result = x.checked_add(*y)
-                            .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} + {}", x, y)))?;
+                        let result = x.checked_add(*y).ok_or_else(|| {
+                            RuntimeError::new(format!("Integer overflow: {} + {}", x, y))
+                        })?;
                         self.stack.push(Value::Integer(result));
                     }
-                    _ => { self.stack.push(self.binary_op(a, b, |a, b| a + b)?); }
+                    _ => {
+                        self.stack.push(self.binary_op(a, b, |a, b| a + b)?);
+                    }
                 }
             }
             Instruction::Subtract => {
                 let b = self.pop_value()?;
                 let a = self.pop_value()?;
                 if let (Value::Integer(x), Value::Integer(y)) = (&a, &b) {
-                    let result = x.checked_sub(*y)
-                        .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} - {}", x, y)))?;
+                    let result = x.checked_sub(*y).ok_or_else(|| {
+                        RuntimeError::new(format!("Integer overflow: {} - {}", x, y))
+                    })?;
                     self.stack.push(Value::Integer(result));
                 } else {
                     self.stack.push(self.binary_op(a, b, |a, b| a - b)?);
@@ -230,8 +252,9 @@ impl BytecodeVM {
                 let b = self.pop_value()?;
                 let a = self.pop_value()?;
                 if let (Value::Integer(x), Value::Integer(y)) = (&a, &b) {
-                    let result = x.checked_mul(*y)
-                        .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} * {}", x, y)))?;
+                    let result = x.checked_mul(*y).ok_or_else(|| {
+                        RuntimeError::new(format!("Integer overflow: {} * {}", x, y))
+                    })?;
                     self.stack.push(Value::Integer(result));
                 } else {
                     self.stack.push(self.binary_op(a, b, |a, b| a * b)?);
@@ -272,10 +295,13 @@ impl BytecodeVM {
                 match (&a, &b) {
                     (Value::Integer(av), Value::Integer(bv)) => {
                         if *bv < 0 {
-                            return Err(RuntimeError::new("Negative exponent not supported for integers".to_string()));
+                            return Err(RuntimeError::new(
+                                "Negative exponent not supported for integers".to_string(),
+                            ));
                         }
-                        let result = av.checked_pow(*bv as u32)
-                            .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} ** {}", av, bv)))?;
+                        let result = av.checked_pow(*bv as u32).ok_or_else(|| {
+                            RuntimeError::new(format!("Integer overflow: {} ** {}", av, bv))
+                        })?;
                         self.stack.push(Value::Integer(result));
                     }
                     (Value::Float(av), Value::Float(bv)) => {
@@ -347,7 +373,9 @@ impl BytecodeVM {
                 if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
                     self.stack.push(Value::Integer(a_val & b_val));
                 } else {
-                    return Err(RuntimeError::new("Bitwise AND requires integers".to_string()));
+                    return Err(RuntimeError::new(
+                        "Bitwise AND requires integers".to_string(),
+                    ));
                 }
             }
             Instruction::BitOr => {
@@ -356,7 +384,9 @@ impl BytecodeVM {
                 if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
                     self.stack.push(Value::Integer(a_val | b_val));
                 } else {
-                    return Err(RuntimeError::new("Bitwise OR requires integers".to_string()));
+                    return Err(RuntimeError::new(
+                        "Bitwise OR requires integers".to_string(),
+                    ));
                 }
             }
             Instruction::BitXor => {
@@ -365,7 +395,9 @@ impl BytecodeVM {
                 if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
                     self.stack.push(Value::Integer(a_val ^ b_val));
                 } else {
-                    return Err(RuntimeError::new("Bitwise XOR requires integers".to_string()));
+                    return Err(RuntimeError::new(
+                        "Bitwise XOR requires integers".to_string(),
+                    ));
                 }
             }
             Instruction::LeftShift => {
@@ -374,7 +406,9 @@ impl BytecodeVM {
                 if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
                     self.stack.push(Value::Integer(a_val << b_val));
                 } else {
-                    return Err(RuntimeError::new("Left shift requires integers".to_string()));
+                    return Err(RuntimeError::new(
+                        "Left shift requires integers".to_string(),
+                    ));
                 }
             }
             Instruction::RightShift => {
@@ -383,7 +417,9 @@ impl BytecodeVM {
                 if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
                     self.stack.push(Value::Integer(a_val >> b_val));
                 } else {
-                    return Err(RuntimeError::new("Right shift requires integers".to_string()));
+                    return Err(RuntimeError::new(
+                        "Right shift requires integers".to_string(),
+                    ));
                 }
             }
             Instruction::BitNot => {
@@ -391,7 +427,9 @@ impl BytecodeVM {
                 if let Value::Integer(i) = val {
                     self.stack.push(Value::Integer(!i));
                 } else {
-                    return Err(RuntimeError::new("Bitwise NOT requires integer".to_string()));
+                    return Err(RuntimeError::new(
+                        "Bitwise NOT requires integer".to_string(),
+                    ));
                 }
             }
             Instruction::Jump(target) => {
@@ -426,13 +464,17 @@ impl BytecodeVM {
 
                 // Check user-defined functions first
                 if let Some((params, start_ip)) = self.functions.get(name.as_str()).cloned() {
-                    // Save caller state: return address + variable scope
+                    // Save caller state: return address + variable scope + catch stack depth.
+                    // catch_depth ensures any SetupCatch frames pushed inside the callee are
+                    // truncated on Return/ReturnValue, preventing stale catch frames from
+                    // misfiring in the caller's error handler.
+                    let catch_depth = self.catch_stack.len();
                     let saved_vars = std::mem::take(&mut self.variables);
                     // Restore closure environment (captured vars at definition time)
                     if let Some(closure_env) = self.closure_envs.get(name.as_str()).cloned() {
                         self.variables = closure_env;
                     }
-                    self.call_stack.push((self.ip, saved_vars));
+                    self.call_stack.push((self.ip, saved_vars, catch_depth));
                     // Bind arguments to parameter names (override closure vars)
                     for (param, arg) in params.iter().zip(args.iter()) {
                         self.variables.insert(param.clone(), arg.clone());
@@ -455,13 +497,18 @@ impl BytecodeVM {
 
                 // Check if a variable holds a lambda name (string -> registered function)
                 if let Some(Value::String(func_name)) = self.variables.get(name.as_str()).cloned() {
-                    if let Some((params, start_ip)) = self.functions.get(func_name.as_str()).cloned() {
+                    if let Some((params, start_ip)) =
+                        self.functions.get(func_name.as_str()).cloned()
+                    {
+                        let catch_depth = self.catch_stack.len();
                         let saved_vars = std::mem::take(&mut self.variables);
                         // Restore closure environment for lambdas
-                        if let Some(closure_env) = self.closure_envs.get(func_name.as_str()).cloned() {
+                        if let Some(closure_env) =
+                            self.closure_envs.get(func_name.as_str()).cloned()
+                        {
                             self.variables = closure_env;
                         }
-                        self.call_stack.push((self.ip, saved_vars));
+                        self.call_stack.push((self.ip, saved_vars, catch_depth));
                         for (param, arg) in params.iter().zip(args.iter()) {
                             self.variables.insert(param.clone(), arg.clone());
                         }
@@ -476,45 +523,74 @@ impl BytecodeVM {
                     safe_mode: bool,
                 }
                 impl<'a> FunctionExecutor for BcvmExecutor<'a> {
-                    fn call_function_value(&mut self, _func: &Value, _args: &[Value]) -> Result<Value, RuntimeError> {
-                        Err(RuntimeError::new("Higher-order stdlib calls not supported in bytecode VM".to_string()))
+                    fn call_function_value(
+                        &mut self,
+                        _func: &Value,
+                        _args: &[Value],
+                    ) -> Result<Value, RuntimeError> {
+                        Err(RuntimeError::new(
+                            "Higher-order stdlib calls not supported in bytecode VM".to_string(),
+                        ))
                     }
                 }
                 impl<'a> PermissionChecker for BcvmExecutor<'a> {
-                    fn check_permission(&self, resource: &PermissionResource, scope: Option<&str>) -> Result<(), RuntimeError> {
+                    fn check_permission(
+                        &self,
+                        resource: &PermissionResource,
+                        scope: Option<&str>,
+                    ) -> Result<(), RuntimeError> {
                         // Safe mode blocks process execution
                         if self.safe_mode {
                             if let PermissionResource::Process(_) = resource {
                                 return Err(RuntimeError::new(
-                                    "exec() is disabled in safe mode (--safe-mode)".to_string()
+                                    "exec() is disabled in safe mode (--safe-mode)".to_string(),
                                 ));
                             }
                         }
-                        self.pm.check(resource, scope).map_err(|e| RuntimeError::new(e.to_string()))
+                        self.pm
+                            .check(resource, scope)
+                            .map_err(|e| RuntimeError::new(e.to_string()))
                     }
                 }
 
                 let exec_allowed = !self.safe_mode;
-                let mut executor = BcvmExecutor { pm: &self.permission_manager, safe_mode: self.safe_mode };
-                match StdLib::call_function_with_combined_traits(name, &args, exec_allowed, Some(&mut executor)) {
+                let mut executor = BcvmExecutor {
+                    pm: &self.permission_manager,
+                    safe_mode: self.safe_mode,
+                };
+                match StdLib::call_function_with_combined_traits(
+                    name,
+                    &args,
+                    exec_allowed,
+                    Some(&mut executor),
+                ) {
                     Ok(result) => self.stack.push(result),
                     Err(e) => {
                         // Distinguish permission errors from "not found"
                         let msg = e.to_string();
-                        if msg.contains("Permission") || msg.contains("denied") || msg.contains("safe mode") {
+                        if msg.contains("Permission")
+                            || msg.contains("denied")
+                            || msg.contains("safe mode")
+                        {
                             return Err(RuntimeError::new(msg));
                         }
-                        return Err(RuntimeError::new(format!("Function not found: {} ({})", name, msg)));
+                        return Err(RuntimeError::new(format!(
+                            "Function not found: {} ({})",
+                            name, msg
+                        )));
                     }
                 }
             }
             Instruction::RegisterFunction(name, params, start_ip) => {
-                self.functions.insert(name.clone(), (params.clone(), *start_ip));
+                self.functions
+                    .insert(name.clone(), (params.clone(), *start_ip));
                 // Capture current environment for closure support
-                self.closure_envs.insert(name.clone(), self.variables.clone());
+                self.closure_envs
+                    .insert(name.clone(), self.variables.clone());
             }
             Instruction::Return => {
-                if let Some((return_ip, saved_vars)) = self.call_stack.pop() {
+                if let Some((return_ip, saved_vars, catch_depth)) = self.call_stack.pop() {
+                    self.catch_stack.truncate(catch_depth);
                     self.variables = saved_vars;
                     self.ip = return_ip;
                 } else {
@@ -524,7 +600,8 @@ impl BytecodeVM {
             }
             Instruction::ReturnValue => {
                 let value = self.pop_value()?;
-                if let Some((return_ip, saved_vars)) = self.call_stack.pop() {
+                if let Some((return_ip, saved_vars, catch_depth)) = self.call_stack.pop() {
+                    self.catch_stack.truncate(catch_depth);
                     self.variables = saved_vars;
                     self.stack.push(value);
                     self.ip = return_ip;
@@ -644,7 +721,9 @@ impl BytecodeVM {
                             let val = arr.get(idx).cloned().unwrap_or(Value::Null);
                             self.stack.push(val);
                         } else {
-                            return Err(RuntimeError::new("Array index must be integer".to_string()));
+                            return Err(RuntimeError::new(
+                                "Array index must be integer".to_string(),
+                            ));
                         }
                     }
                     Value::Map(ref map) => {
@@ -655,10 +734,12 @@ impl BytecodeVM {
                             return Err(RuntimeError::new("Map index must be string".to_string()));
                         }
                     }
-                    other => return Err(RuntimeError::new(format!(
-                        "Optional index (?[]) on non-indexable value: {:?}",
-                        std::mem::discriminant(&other)
-                    ))),
+                    other => {
+                        return Err(RuntimeError::new(format!(
+                            "Optional index (?[]) on non-indexable value: {:?}",
+                            std::mem::discriminant(&other)
+                        )))
+                    }
                 }
             }
             Instruction::OptionalCall(_name, arg_count) => {
@@ -672,18 +753,24 @@ impl BytecodeVM {
                     Value::Null => self.stack.push(Value::Null),
                     Value::String(func_name) => {
                         // Target is a lambda/function name string — look it up and call it
-                        if let Some((params, start_ip)) = self.functions.get(func_name.as_str()).cloned() {
+                        if let Some((params, start_ip)) =
+                            self.functions.get(func_name.as_str()).cloned()
+                        {
                             const MAX_CALL_DEPTH: usize = 50;
                             if self.call_stack.len() >= MAX_CALL_DEPTH {
                                 return Err(RuntimeError::new(format!(
-                                    "Maximum call stack depth ({}) exceeded", MAX_CALL_DEPTH
+                                    "Maximum call stack depth ({}) exceeded",
+                                    MAX_CALL_DEPTH
                                 )));
                             }
+                            let catch_depth = self.catch_stack.len();
                             let saved_vars = std::mem::take(&mut self.variables);
-                            if let Some(closure_env) = self.closure_envs.get(func_name.as_str()).cloned() {
+                            if let Some(closure_env) =
+                                self.closure_envs.get(func_name.as_str()).cloned()
+                            {
                                 self.variables = closure_env;
                             }
-                            self.call_stack.push((self.ip, saved_vars));
+                            self.call_stack.push((self.ip, saved_vars, catch_depth));
                             for (param, arg) in params.iter().zip(args.iter()) {
                                 self.variables.insert(param.clone(), arg.clone());
                             }
@@ -693,10 +780,12 @@ impl BytecodeVM {
                             self.stack.push(Value::Null);
                         }
                     }
-                    other => return Err(RuntimeError::new(format!(
-                        "Optional call (?()) requires a callable value or null, got: {}",
-                        other.to_string()
-                    ))),
+                    other => {
+                        return Err(RuntimeError::new(format!(
+                            "Optional call (?()) requires a callable value or null, got: {}",
+                            other
+                        )))
+                    }
                 }
             }
             Instruction::Label(_) => {
@@ -711,16 +800,21 @@ impl BytecodeVM {
                 let resolved = self.resolve_module(module_path)?;
                 match resolved {
                     Some(source) => {
+                        use crate::compiler::bytecode::BytecodeCompiler;
                         use crate::lexer::Lexer;
                         use crate::parser::Parser;
-                        use crate::compiler::bytecode::BytecodeCompiler;
 
                         let mut lexer = Lexer::new(source);
-                        let tokens = lexer.tokenize()
-                            .map_err(|e| RuntimeError::new(format!("Module '{}' lex error: {}", module_path, e)))?;
+                        let tokens = lexer.tokenize().map_err(|e| {
+                            RuntimeError::new(format!("Module '{}' lex error: {}", module_path, e))
+                        })?;
                         let mut parser = Parser::new(tokens);
-                        let program = parser.parse()
-                            .map_err(|e| RuntimeError::new(format!("Module '{}' parse error: {}", module_path, e)))?;
+                        let program = parser.parse().map_err(|e| {
+                            RuntimeError::new(format!(
+                                "Module '{}' parse error: {}",
+                                module_path, e
+                            ))
+                        })?;
                         let mut compiler = BytecodeCompiler::new();
                         let module_bc = compiler.compile(&program);
 
@@ -732,8 +826,12 @@ impl BytecodeVM {
                             sub_vm.permission_manager.grant(perm.clone());
                         }
                         sub_vm.module_search_paths = self.module_search_paths.clone();
-                        sub_vm.execute(&module_bc)
-                            .map_err(|e| RuntimeError::new(format!("Module '{}' runtime error: {}", module_path, e)))?;
+                        sub_vm.execute(&module_bc).map_err(|e| {
+                            RuntimeError::new(format!(
+                                "Module '{}' runtime error: {}",
+                                module_path, e
+                            ))
+                        })?;
 
                         // Merge module's variables into current scope (skip internal names)
                         for (k, v) in sub_vm.variables {
@@ -771,9 +869,11 @@ impl BytecodeVM {
                         map.insert(key.clone(), new_value);
                         self.stack.push(Value::Map(map));
                     }
-                    _ => return Err(RuntimeError::new(
-                        "SetIndex: requires array+integer or map+string".to_string()
-                    )),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "SetIndex: requires array+integer or map+string".to_string(),
+                        ))
+                    }
                 }
             }
             Instruction::SetField(name) => {
@@ -789,9 +889,12 @@ impl BytecodeVM {
                         map.insert(name.clone(), new_value);
                         self.stack.push(Value::Map(map));
                     }
-                    _ => return Err(RuntimeError::new(format!(
-                        "SetField: cannot set field '{}' on non-struct/map value", name
-                    ))),
+                    _ => {
+                        return Err(RuntimeError::new(format!(
+                            "SetField: cannot set field '{}' on non-struct/map value",
+                            name
+                        )))
+                    }
                 }
             }
 
@@ -800,12 +903,12 @@ impl BytecodeVM {
                 let iterable = self.pop_value()?;
                 let items: Vec<Value> = match iterable {
                     Value::Array(arr) => arr,
-                    Value::String(s) => s.chars()
-                        .map(|c| Value::String(c.to_string()))
-                        .collect(),
-                    _ => return Err(RuntimeError::new(
-                        "for … in requires an array or string iterable".to_string()
-                    )),
+                    Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "for … in requires an array or string iterable".to_string(),
+                        ))
+                    }
                 };
 
                 if items.is_empty() {
@@ -842,7 +945,8 @@ impl BytecodeVM {
                 }
                 // Deduplicate preserving insertion order
                 let mut seen = std::collections::HashSet::new();
-                let deduped: Vec<Value> = items.into_iter()
+                let deduped: Vec<Value> = items
+                    .into_iter()
                     .filter(|v| seen.insert(format!("{:?}", v)))
                     .collect();
                 self.stack.push(Value::Set(deduped));
@@ -856,21 +960,27 @@ impl BytecodeVM {
                 // func should be a string naming a registered function (lambda or user-defined)
                 let func_name = match &func {
                     Value::String(s) => s.clone(),
-                    other => return Err(RuntimeError::new(format!(
-                        "Pipe operator |> requires a callable on the right side, got: {}",
-                        other.to_string()
-                    ))),
+                    other => {
+                        return Err(RuntimeError::new(format!(
+                            "Pipe operator |> requires a callable on the right side, got: {}",
+                            other
+                        )))
+                    }
                 };
                 if let Some((params, start_ip)) = self.functions.get(func_name.as_str()).cloned() {
                     const MAX_CALL_DEPTH: usize = 50;
                     if self.call_stack.len() >= MAX_CALL_DEPTH {
-                        return Err(RuntimeError::new(format!("Maximum call stack depth ({}) exceeded", MAX_CALL_DEPTH)));
+                        return Err(RuntimeError::new(format!(
+                            "Maximum call stack depth ({}) exceeded",
+                            MAX_CALL_DEPTH
+                        )));
                     }
+                    let catch_depth = self.catch_stack.len();
                     let saved_vars = std::mem::take(&mut self.variables);
                     if let Some(closure_env) = self.closure_envs.get(func_name.as_str()).cloned() {
                         self.variables = closure_env;
                     }
-                    self.call_stack.push((self.ip, saved_vars));
+                    self.call_stack.push((self.ip, saved_vars, catch_depth));
                     // Bind single arg to first parameter
                     if let Some(first_param) = params.first() {
                         self.variables.insert(first_param.clone(), arg);
@@ -878,7 +988,8 @@ impl BytecodeVM {
                     self.ip = start_ip;
                 } else {
                     return Err(RuntimeError::new(format!(
-                        "Pipe operator |>: '{}' is not a defined function", func_name
+                        "Pipe operator |>: '{}' is not a defined function",
+                        func_name
                     )));
                 }
             }
@@ -886,27 +997,41 @@ impl BytecodeVM {
             // ── Spread / array mutation ───────────────────────────────────────
             Instruction::ArrayAppend => {
                 let val = self.pop_value()?;
-                let arr = self.stack.last_mut()
+                let arr = self
+                    .stack
+                    .last_mut()
                     .ok_or_else(|| RuntimeError::new("ArrayAppend: empty stack".to_string()))?;
                 match arr {
                     Value::Array(ref mut v) => v.push(val),
-                    _ => return Err(RuntimeError::new("ArrayAppend: top of stack is not an array".to_string())),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "ArrayAppend: top of stack is not an array".to_string(),
+                        ))
+                    }
                 }
             }
             Instruction::ArrayExtend => {
                 let spread = self.pop_value()?;
                 match spread {
                     Value::Array(spread_vals) => {
-                        let arr = self.stack.last_mut()
-                            .ok_or_else(|| RuntimeError::new("ArrayExtend: empty stack".to_string()))?;
+                        let arr = self.stack.last_mut().ok_or_else(|| {
+                            RuntimeError::new("ArrayExtend: empty stack".to_string())
+                        })?;
                         match arr {
                             Value::Array(ref mut v) => v.extend(spread_vals),
-                            _ => return Err(RuntimeError::new("ArrayExtend: top of stack is not an array".to_string())),
+                            _ => {
+                                return Err(RuntimeError::new(
+                                    "ArrayExtend: top of stack is not an array".to_string(),
+                                ))
+                            }
                         }
                     }
-                    other => return Err(RuntimeError::new(format!(
-                        "Spread operator requires an array, got: {}", other.to_string()
-                    ))),
+                    other => {
+                        return Err(RuntimeError::new(format!(
+                            "Spread operator requires an array, got: {}",
+                            other
+                        )))
+                    }
                 }
             }
 
@@ -959,7 +1084,9 @@ impl BytecodeVM {
                     if let Value::String(key) = key_val {
                         pairs.push((key, val));
                     } else {
-                        return Err(RuntimeError::new("Struct field key must be a string".to_string()));
+                        return Err(RuntimeError::new(
+                            "Struct field key must be a string".to_string(),
+                        ));
                     }
                 }
                 // Fields were pushed in order, popped in reverse → reverse to restore
@@ -969,7 +1096,11 @@ impl BytecodeVM {
                 let name_val = self.pop_value()?;
                 let struct_name = match name_val {
                     Value::String(s) => s,
-                    _ => return Err(RuntimeError::new("Struct name must be a string".to_string())),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "Struct name must be a string".to_string(),
+                        ))
+                    }
                 };
                 self.stack.push(Value::Struct(struct_name, fields));
             }
@@ -1001,256 +1132,340 @@ impl BytecodeVM {
                         let sliced: String = chars[s..e].iter().step_by(step).collect();
                         self.stack.push(Value::String(sliced));
                     }
-                    _ => return Err(RuntimeError::new("Slice requires array or string".to_string())),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "Slice requires array or string".to_string(),
+                        ))
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    fn dispatch_method(&mut self, obj: Value, method: &str, args: &[Value]) -> Result<Value, RuntimeError> {
+    fn dispatch_method(
+        &mut self,
+        obj: Value,
+        method: &str,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
         match &obj {
-            Value::String(s) => {
-                match method {
-                    "len" => Ok(Value::Integer(s.chars().count() as i64)),
-                    "isEmpty" => Ok(Value::Boolean(s.is_empty())),
-                    "toLower" | "to_lower" => Ok(Value::String(s.to_lowercase())),
-                    "toUpper" | "to_upper" => Ok(Value::String(s.to_uppercase())),
-                    "trim" => Ok(Value::String(s.trim().to_string())),
-                    "reverse" => Ok(Value::String(s.chars().rev().collect())),
-                    "chars" => Ok(Value::Array(s.chars().map(|c| Value::String(c.to_string())).collect())),
-                    "toInt" | "to_int" => s.trim().parse::<i64>()
-                        .map(Value::Integer)
-                        .map_err(|_| RuntimeError::new(format!("Cannot parse '{}' as integer", s))),
-                    "toFloat" | "to_float" => s.trim().parse::<f64>()
-                        .map(Value::Float)
-                        .map_err(|_| RuntimeError::new(format!("Cannot parse '{}' as float", s))),
-                    "contains" => {
-                        let pat = match args.first() {
-                            Some(Value::String(p)) => p.clone(),
-                            _ => return Err(RuntimeError::new("contains: expected string argument".to_string())),
-                        };
-                        Ok(Value::Boolean(s.contains(pat.as_str())))
+            Value::String(s) => match method {
+                "len" => Ok(Value::Integer(s.chars().count() as i64)),
+                "isEmpty" => Ok(Value::Boolean(s.is_empty())),
+                "toLower" | "to_lower" => Ok(Value::String(s.to_lowercase())),
+                "toUpper" | "to_upper" => Ok(Value::String(s.to_uppercase())),
+                "trim" => Ok(Value::String(s.trim().to_string())),
+                "reverse" => Ok(Value::String(s.chars().rev().collect())),
+                "chars" => Ok(Value::Array(
+                    s.chars().map(|c| Value::String(c.to_string())).collect(),
+                )),
+                "toInt" | "to_int" => s
+                    .trim()
+                    .parse::<i64>()
+                    .map(Value::Integer)
+                    .map_err(|_| RuntimeError::new(format!("Cannot parse '{}' as integer", s))),
+                "toFloat" | "to_float" => s
+                    .trim()
+                    .parse::<f64>()
+                    .map(Value::Float)
+                    .map_err(|_| RuntimeError::new(format!("Cannot parse '{}' as float", s))),
+                "contains" => {
+                    let pat = match args.first() {
+                        Some(Value::String(p)) => p.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "contains: expected string argument".to_string(),
+                            ))
+                        }
+                    };
+                    Ok(Value::Boolean(s.contains(pat.as_str())))
+                }
+                "startsWith" | "starts_with" => {
+                    let pat = match args.first() {
+                        Some(Value::String(p)) => p.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "startsWith: expected string argument".to_string(),
+                            ))
+                        }
+                    };
+                    Ok(Value::Boolean(s.starts_with(pat.as_str())))
+                }
+                "endsWith" | "ends_with" => {
+                    let pat = match args.first() {
+                        Some(Value::String(p)) => p.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "endsWith: expected string argument".to_string(),
+                            ))
+                        }
+                    };
+                    Ok(Value::Boolean(s.ends_with(pat.as_str())))
+                }
+                "split" => {
+                    let sep = match args.first() {
+                        Some(Value::String(p)) => p.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "split: expected string argument".to_string(),
+                            ))
+                        }
+                    };
+                    let parts: Vec<Value> = s
+                        .split(sep.as_str())
+                        .map(|p| Value::String(p.to_string()))
+                        .collect();
+                    Ok(Value::Array(parts))
+                }
+                "replace" => {
+                    let from = match args.first() {
+                        Some(Value::String(p)) => p.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "replace: expected string arguments".to_string(),
+                            ))
+                        }
+                    };
+                    let to = match args.get(1) {
+                        Some(Value::String(p)) => p.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "replace: expected 2 string arguments".to_string(),
+                            ))
+                        }
+                    };
+                    Ok(Value::String(s.replace(from.as_str(), to.as_str())))
+                }
+                "substring" | "substr" => {
+                    let start = match args.first() {
+                        Some(Value::Integer(i)) => *i as usize,
+                        _ => 0,
+                    };
+                    let end = match args.get(1) {
+                        Some(Value::Integer(i)) => *i as usize,
+                        _ => s.len(),
+                    };
+                    let chars: Vec<char> = s.chars().collect();
+                    let end = end.min(chars.len());
+                    Ok(Value::String(chars[start..end].iter().collect()))
+                }
+                "indexOf" | "index_of" => {
+                    let pat = match args.first() {
+                        Some(Value::String(p)) => p.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "indexOf: expected string argument".to_string(),
+                            ))
+                        }
+                    };
+                    match s.find(pat.as_str()) {
+                        Some(idx) => Ok(Value::Integer(idx as i64)),
+                        None => Ok(Value::Integer(-1)),
                     }
-                    "startsWith" | "starts_with" => {
-                        let pat = match args.first() {
-                            Some(Value::String(p)) => p.clone(),
-                            _ => return Err(RuntimeError::new("startsWith: expected string argument".to_string())),
-                        };
-                        Ok(Value::Boolean(s.starts_with(pat.as_str())))
+                }
+                "repeat" => {
+                    let n = match args.first() {
+                        Some(Value::Integer(i)) => *i as usize,
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "repeat: expected integer argument".to_string(),
+                            ))
+                        }
+                    };
+                    Ok(Value::String(s.repeat(n)))
+                }
+                "padStart" | "pad_start" => {
+                    let n = match args.first() {
+                        Some(Value::Integer(i)) => *i as usize,
+                        _ => {
+                            return Err(RuntimeError::new("padStart: expected integer".to_string()))
+                        }
+                    };
+                    let pad = match args.get(1) {
+                        Some(Value::String(p)) => p.chars().next().unwrap_or(' '),
+                        _ => ' ',
+                    };
+                    let chars: Vec<char> = s.chars().collect();
+                    if chars.len() >= n {
+                        return Ok(Value::String(s.clone()));
                     }
-                    "endsWith" | "ends_with" => {
-                        let pat = match args.first() {
-                            Some(Value::String(p)) => p.clone(),
-                            _ => return Err(RuntimeError::new("endsWith: expected string argument".to_string())),
-                        };
-                        Ok(Value::Boolean(s.ends_with(pat.as_str())))
+                    let pad_n = n - chars.len();
+                    Ok(Value::String(
+                        std::iter::repeat_n(pad, pad_n).chain(chars).collect(),
+                    ))
+                }
+                "padEnd" | "pad_end" => {
+                    let n = match args.first() {
+                        Some(Value::Integer(i)) => *i as usize,
+                        _ => return Err(RuntimeError::new("padEnd: expected integer".to_string())),
+                    };
+                    let pad = match args.get(1) {
+                        Some(Value::String(p)) => p.chars().next().unwrap_or(' '),
+                        _ => ' ',
+                    };
+                    let chars: Vec<char> = s.chars().collect();
+                    if chars.len() >= n {
+                        return Ok(Value::String(s.clone()));
                     }
-                    "split" => {
-                        let sep = match args.first() {
-                            Some(Value::String(p)) => p.clone(),
-                            _ => return Err(RuntimeError::new("split: expected string argument".to_string())),
-                        };
-                        let parts: Vec<Value> = s.split(sep.as_str())
-                            .map(|p| Value::String(p.to_string()))
-                            .collect();
-                        Ok(Value::Array(parts))
+                    let pad_n = n - chars.len();
+                    Ok(Value::String(
+                        chars
+                            .into_iter()
+                            .chain(std::iter::repeat_n(pad, pad_n))
+                            .collect(),
+                    ))
+                }
+                _ => Err(RuntimeError::new(format!(
+                    "Unknown string method: {}",
+                    method
+                ))),
+            },
+            Value::Array(arr) => match method {
+                "len" => Ok(Value::Integer(arr.len() as i64)),
+                "isEmpty" | "is_empty" => Ok(Value::Boolean(arr.is_empty())),
+                "first" => arr
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| RuntimeError::new("Array is empty".to_string())),
+                "last" => arr
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| RuntimeError::new("Array is empty".to_string())),
+                "contains" => {
+                    let target = args.first().ok_or_else(|| {
+                        RuntimeError::new("contains: expected argument".to_string())
+                    })?;
+                    Ok(Value::Boolean(arr.contains(target)))
+                }
+                "indexOf" | "index_of" => {
+                    let target = args.first().ok_or_else(|| {
+                        RuntimeError::new("indexOf: expected argument".to_string())
+                    })?;
+                    match arr.iter().position(|v| v == target) {
+                        Some(i) => Ok(Value::Integer(i as i64)),
+                        None => Ok(Value::Integer(-1)),
                     }
-                    "replace" => {
-                        let from = match args.first() {
-                            Some(Value::String(p)) => p.clone(),
-                            _ => return Err(RuntimeError::new("replace: expected string arguments".to_string())),
-                        };
-                        let to = match args.get(1) {
-                            Some(Value::String(p)) => p.clone(),
-                            _ => return Err(RuntimeError::new("replace: expected 2 string arguments".to_string())),
-                        };
-                        Ok(Value::String(s.replace(from.as_str(), to.as_str())))
+                }
+                "join" => {
+                    let sep = match args.first() {
+                        Some(Value::String(s)) => s.clone(),
+                        _ => ",".to_string(),
+                    };
+                    let joined = arr
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(&sep);
+                    Ok(Value::String(joined))
+                }
+                "reverse" => {
+                    let mut rev = arr.clone();
+                    rev.reverse();
+                    Ok(Value::Array(rev))
+                }
+                "sort" => {
+                    let mut sorted = arr.clone();
+                    sorted.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+                    Ok(Value::Array(sorted))
+                }
+                "push" => {
+                    let val = args
+                        .first()
+                        .ok_or_else(|| RuntimeError::new("push: expected argument".to_string()))?
+                        .clone();
+                    let mut new_arr = arr.clone();
+                    new_arr.push(val);
+                    Ok(Value::Array(new_arr))
+                }
+                "pop" => {
+                    if arr.is_empty() {
+                        return Err(RuntimeError::new("pop: array is empty".to_string()));
                     }
-                    "substring" | "substr" => {
-                        let start = match args.first() {
-                            Some(Value::Integer(i)) => *i as usize,
-                            _ => 0,
-                        };
-                        let end = match args.get(1) {
-                            Some(Value::Integer(i)) => *i as usize,
-                            _ => s.len(),
-                        };
-                        let chars: Vec<char> = s.chars().collect();
-                        let end = end.min(chars.len());
-                        Ok(Value::String(chars[start..end].iter().collect()))
-                    }
-                    "indexOf" | "index_of" => {
-                        let pat = match args.first() {
-                            Some(Value::String(p)) => p.clone(),
-                            _ => return Err(RuntimeError::new("indexOf: expected string argument".to_string())),
-                        };
-                        match s.find(pat.as_str()) {
-                            Some(idx) => Ok(Value::Integer(idx as i64)),
-                            None => Ok(Value::Integer(-1)),
+                    let mut new_arr = arr.clone();
+                    new_arr.pop();
+                    Ok(Value::Array(new_arr))
+                }
+                "slice" => {
+                    let s = match args.first() {
+                        Some(Value::Integer(i)) => *i as usize,
+                        _ => 0,
+                    };
+                    let e = match args.get(1) {
+                        Some(Value::Integer(i)) => (*i as usize).min(arr.len()),
+                        _ => arr.len(),
+                    };
+                    Ok(Value::Array(arr[s..e].to_vec()))
+                }
+                "flat" | "flatten" => {
+                    let mut flat = Vec::new();
+                    for v in arr {
+                        if let Value::Array(inner) = v {
+                            flat.extend(inner.clone());
+                        } else {
+                            flat.push(v.clone());
                         }
                     }
-                    "repeat" => {
-                        let n = match args.first() {
-                            Some(Value::Integer(i)) => *i as usize,
-                            _ => return Err(RuntimeError::new("repeat: expected integer argument".to_string())),
-                        };
-                        Ok(Value::String(s.repeat(n)))
-                    }
-                    "padStart" | "pad_start" => {
-                        let n = match args.first() {
-                            Some(Value::Integer(i)) => *i as usize,
-                            _ => return Err(RuntimeError::new("padStart: expected integer".to_string())),
-                        };
-                        let pad = match args.get(1) {
-                            Some(Value::String(p)) => p.chars().next().unwrap_or(' '),
-                            _ => ' ',
-                        };
-                        let chars: Vec<char> = s.chars().collect();
-                        if chars.len() >= n { return Ok(Value::String(s.clone())); }
-                        let pad_n = n - chars.len();
-                        Ok(Value::String(std::iter::repeat(pad).take(pad_n).chain(chars).collect()))
-                    }
-                    "padEnd" | "pad_end" => {
-                        let n = match args.first() {
-                            Some(Value::Integer(i)) => *i as usize,
-                            _ => return Err(RuntimeError::new("padEnd: expected integer".to_string())),
-                        };
-                        let pad = match args.get(1) {
-                            Some(Value::String(p)) => p.chars().next().unwrap_or(' '),
-                            _ => ' ',
-                        };
-                        let chars: Vec<char> = s.chars().collect();
-                        if chars.len() >= n { return Ok(Value::String(s.clone())); }
-                        let pad_n = n - chars.len();
-                        Ok(Value::String(chars.into_iter().chain(std::iter::repeat(pad).take(pad_n)).collect()))
-                    }
-                    _ => Err(RuntimeError::new(format!("Unknown string method: {}", method))),
+                    Ok(Value::Array(flat))
                 }
-            }
-            Value::Array(arr) => {
-                match method {
-                    "len" => Ok(Value::Integer(arr.len() as i64)),
-                    "isEmpty" | "is_empty" => Ok(Value::Boolean(arr.is_empty())),
-                    "first" => arr.first().cloned().ok_or_else(|| RuntimeError::new("Array is empty".to_string())),
-                    "last" => arr.last().cloned().ok_or_else(|| RuntimeError::new("Array is empty".to_string())),
-                    "contains" => {
-                        let target = args.first().ok_or_else(|| RuntimeError::new("contains: expected argument".to_string()))?;
-                        Ok(Value::Boolean(arr.contains(target)))
-                    }
-                    "indexOf" | "index_of" => {
-                        let target = args.first().ok_or_else(|| RuntimeError::new("indexOf: expected argument".to_string()))?;
-                        match arr.iter().position(|v| v == target) {
-                            Some(i) => Ok(Value::Integer(i as i64)),
-                            None => Ok(Value::Integer(-1)),
-                        }
-                    }
-                    "join" => {
-                        let sep = match args.first() {
-                            Some(Value::String(s)) => s.clone(),
-                            _ => ",".to_string(),
-                        };
-                        let joined = arr.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(&sep);
-                        Ok(Value::String(joined))
-                    }
-                    "reverse" => {
-                        let mut rev = arr.clone();
-                        rev.reverse();
-                        Ok(Value::Array(rev))
-                    }
-                    "sort" => {
-                        let mut sorted = arr.clone();
-                        sorted.sort_by(|a, b| {
-                            format!("{:?}", a).cmp(&format!("{:?}", b))
-                        });
-                        Ok(Value::Array(sorted))
-                    }
-                    "push" => {
-                        let val = args.first().ok_or_else(|| RuntimeError::new("push: expected argument".to_string()))?.clone();
-                        let mut new_arr = arr.clone();
-                        new_arr.push(val);
-                        Ok(Value::Array(new_arr))
-                    }
-                    "pop" => {
-                        if arr.is_empty() {
-                            return Err(RuntimeError::new("pop: array is empty".to_string()));
-                        }
-                        let mut new_arr = arr.clone();
-                        new_arr.pop();
-                        Ok(Value::Array(new_arr))
-                    }
-                    "slice" => {
-                        let s = match args.first() {
-                            Some(Value::Integer(i)) => *i as usize,
-                            _ => 0,
-                        };
-                        let e = match args.get(1) {
-                            Some(Value::Integer(i)) => (*i as usize).min(arr.len()),
-                            _ => arr.len(),
-                        };
-                        Ok(Value::Array(arr[s..e].to_vec()))
-                    }
-                    "flat" | "flatten" => {
-                        let mut flat = Vec::new();
-                        for v in arr {
-                            if let Value::Array(inner) = v {
-                                flat.extend(inner.clone());
-                            } else {
-                                flat.push(v.clone());
-                            }
-                        }
-                        Ok(Value::Array(flat))
-                    }
-                    _ => Err(RuntimeError::new(format!("Unknown array method: {}", method))),
+                _ => Err(RuntimeError::new(format!(
+                    "Unknown array method: {}",
+                    method
+                ))),
+            },
+            Value::Map(map) => match method {
+                "len" => Ok(Value::Integer(map.len() as i64)),
+                "isEmpty" | "is_empty" => Ok(Value::Boolean(map.is_empty())),
+                "keys" => Ok(Value::Array(
+                    map.keys().cloned().map(Value::String).collect(),
+                )),
+                "values" => Ok(Value::Array(map.values().cloned().collect())),
+                "has" | "contains" => {
+                    let key = match args.first() {
+                        Some(Value::String(s)) => s.clone(),
+                        _ => return Err(RuntimeError::new("has: expected string key".to_string())),
+                    };
+                    Ok(Value::Boolean(map.contains_key(&key)))
                 }
-            }
-            Value::Map(map) => {
-                match method {
-                    "len" => Ok(Value::Integer(map.len() as i64)),
-                    "isEmpty" | "is_empty" => Ok(Value::Boolean(map.is_empty())),
-                    "keys" => Ok(Value::Array(map.keys().cloned().map(Value::String).collect())),
-                    "values" => Ok(Value::Array(map.values().cloned().collect())),
-                    "has" | "contains" => {
-                        let key = match args.first() {
-                            Some(Value::String(s)) => s.clone(),
-                            _ => return Err(RuntimeError::new("has: expected string key".to_string())),
-                        };
-                        Ok(Value::Boolean(map.contains_key(&key)))
-                    }
-                    "get" => {
-                        let key = match args.first() {
-                            Some(Value::String(s)) => s.clone(),
-                            _ => return Err(RuntimeError::new("get: expected string key".to_string())),
-                        };
-                        Ok(map.get(&key).cloned().unwrap_or(Value::Null))
-                    }
-                    "entries" => {
-                        let entries: Vec<Value> = map.iter()
-                            .map(|(k, v)| Value::Array(vec![Value::String(k.clone()), v.clone()]))
-                            .collect();
-                        Ok(Value::Array(entries))
-                    }
-                    _ => Err(RuntimeError::new(format!("Unknown map method: {}", method))),
+                "get" => {
+                    let key = match args.first() {
+                        Some(Value::String(s)) => s.clone(),
+                        _ => return Err(RuntimeError::new("get: expected string key".to_string())),
+                    };
+                    Ok(map.get(&key).cloned().unwrap_or(Value::Null))
                 }
-            }
-            Value::Set(items) => {
-                match method {
-                    "len" => Ok(Value::Integer(items.len() as i64)),
-                    "isEmpty" | "is_empty" => Ok(Value::Boolean(items.is_empty())),
-                    "has" | "contains" => {
-                        let target = args.first().ok_or_else(|| RuntimeError::new("has: expected argument".to_string()))?;
-                        Ok(Value::Boolean(items.contains(target)))
-                    }
-                    "values" => Ok(Value::Array(items.clone())),
-                    _ => Err(RuntimeError::new(format!("Unknown set method: {}", method))),
+                "entries" => {
+                    let entries: Vec<Value> = map
+                        .iter()
+                        .map(|(k, v)| Value::Array(vec![Value::String(k.clone()), v.clone()]))
+                        .collect();
+                    Ok(Value::Array(entries))
                 }
-            }
-            _ => Err(RuntimeError::new(format!("Cannot call method '{}' on this type", method))),
+                _ => Err(RuntimeError::new(format!("Unknown map method: {}", method))),
+            },
+            Value::Set(items) => match method {
+                "len" => Ok(Value::Integer(items.len() as i64)),
+                "isEmpty" | "is_empty" => Ok(Value::Boolean(items.is_empty())),
+                "has" | "contains" => {
+                    let target = args
+                        .first()
+                        .ok_or_else(|| RuntimeError::new("has: expected argument".to_string()))?;
+                    Ok(Value::Boolean(items.contains(target)))
+                }
+                "values" => Ok(Value::Array(items.clone())),
+                _ => Err(RuntimeError::new(format!("Unknown set method: {}", method))),
+            },
+            _ => Err(RuntimeError::new(format!(
+                "Cannot call method '{}' on this type",
+                method
+            ))),
         }
     }
 
     fn pop_value(&mut self) -> Result<Value, RuntimeError> {
-        self.stack.pop().ok_or_else(|| RuntimeError::new("Stack underflow".to_string()))
+        self.stack
+            .pop()
+            .ok_or_else(|| RuntimeError::new("Stack underflow".to_string()))
     }
 
     fn constant_to_value(&self, constant: &Constant) -> Value {
@@ -1269,19 +1484,20 @@ impl BytecodeVM {
     {
         match (a, b) {
             (Value::Integer(a_val), Value::Integer(b_val)) => Ok(Value::Integer(op(a_val, b_val))),
-            _ => Err(RuntimeError::new("Type mismatch in binary operation".to_string())),
+            _ => Err(RuntimeError::new(
+                "Type mismatch in binary operation".to_string(),
+            )),
         }
     }
 
     fn compare(&self, a: &Value, b: &Value) -> Result<i32, RuntimeError> {
         match (a, b) {
             (Value::Integer(a_val), Value::Integer(b_val)) => Ok((a_val - b_val).signum() as i32),
-            (Value::Float(a_val), Value::Float(b_val)) => {
-                Ok(a_val.partial_cmp(b_val).unwrap_or(std::cmp::Ordering::Equal) as i32)
-            }
-            (Value::String(a_val), Value::String(b_val)) => {
-                Ok(a_val.cmp(b_val) as i32)
-            }
+            (Value::Float(a_val), Value::Float(b_val)) => Ok(a_val
+                .partial_cmp(b_val)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                as i32),
+            (Value::String(a_val), Value::String(b_val)) => Ok(a_val.cmp(b_val) as i32),
             _ => Err(RuntimeError::new("Cannot compare values".to_string())),
         }
     }
@@ -1311,8 +1527,13 @@ impl BytecodeVM {
         for search_dir in &self.module_search_paths {
             let candidate = search_dir.join(&file_name);
             if candidate.exists() {
-                let source = std::fs::read_to_string(&candidate)
-                    .map_err(|e| RuntimeError::new(format!("Cannot read module '{}': {}", candidate.display(), e)))?;
+                let source = std::fs::read_to_string(&candidate).map_err(|e| {
+                    RuntimeError::new(format!(
+                        "Cannot read module '{}': {}",
+                        candidate.display(),
+                        e
+                    ))
+                })?;
                 return Ok(Some(source));
             }
         }
