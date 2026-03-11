@@ -1,4 +1,4 @@
-/// Permission denial and security tests for v0.2
+/// Permission denial and security tests for v0.4
 ///
 /// These tests verify that the permission system correctly denies access
 /// when permissions are not granted or explicitly denied.
@@ -357,7 +357,7 @@ fn test_smoke_linter_does_not_panic() {
 }
 
 // ---------------------------------------------------------------------------
-// Bytecode VM: control flow and iterators (v0.3 additions)
+// Bytecode VM: control flow and iterators (v0.4)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -484,7 +484,7 @@ fn test_bytecode_vm_increment_operator() {
 }
 
 // ---------------------------------------------------------------------------
-// Overflow guards (v0.3)
+// Overflow guards (v0.4)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -552,7 +552,7 @@ fn test_bytecode_vm_match_string_case() {
 }
 
 // ---------------------------------------------------------------------------
-// User-defined functions in bytecode VM (v0.3)
+// User-defined functions in bytecode VM (v0.4)
 // ---------------------------------------------------------------------------
 
 #[test]

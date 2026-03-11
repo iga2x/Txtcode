@@ -1,10 +1,16 @@
-# Txt-code Language Specification — v0.3.0
+# Txt-code Language Specification — v0.4.0
 
-> **Status:** v0.3.0 release. Behaviour described here matches the current implementation
+> **Status:** v0.4.0 release. Behaviour described here matches the current implementation
 > except where explicitly marked as “planned / not yet implemented”.
 > Breaking changes between minor versions are documented in [CHANGELOG.md](../CHANGELOG.md).
 >
-> **New in v0.3:**
+> **New in v0.4:**
+> - Virtual environment system (`txtcode env`) with 12 subcommands
+> - Bytecode VM: `break`/`continue`, `for x in arr`, `repeat N`, `match`, string interpolation
+> - Integer overflow guards (`checked_*`) in both AST VM and bytecode VM
+> - Recursion depth limit (50) enforced across all VMs
+> - User-defined functions with caller/callee scope isolation in bytecode VM
+> - Module imports (`ImportModule`) in bytecode VM
 > - `?.` / `?[]` / `?()` optional chaining — both VMs (returns `null` on null target)
 > - `do…while` loop in bytecode VM
 > - `f”...”` string interpolation prefix; raw strings `r”...”`, number separators `1_000_000`
@@ -17,7 +23,7 @@
 > - `++`/`--` now errors cleanly on non-identifier targets
 > - `txtcode inspect` command — disassemble compiled bytecode
 > - Call depth unified to 50 across all VMs
-> - `async`/`await` runs synchronously (passthrough; true async in v0.4)
+> - `async`/`await` runs synchronously (passthrough; true async planned for v0.5)
 >
 > **Still not fully implemented:**
 > - Generic type enforcement at runtime (type params are parsed but erased)
@@ -326,7 +332,7 @@ store → val → map?.["key"]       # null if map is null
 store → res → func?.()           # null if func is null; calls func if not null
 ```
 
-All three operators (`?.`, `?[]`, `?()`) are fully implemented in both the AST VM and bytecode VM as of v0.3.
+All three operators (`?.`, `?[]`, `?()`) are fully implemented in both the AST VM and bytecode VM as of v0.4.
 
 ### 1.12 Spread Operator
 
@@ -342,7 +348,7 @@ store → e → [...a, ...b, ...a] # [1, 2, 3, 4, 1, 2]
 
 Rules:
 - Spread elements must evaluate to `array`. Spreading a non-array is a `RuntimeError`.
-- Spread is only supported inside array literals (`[...]`). It is not supported in function call arguments in v0.3.
+- Spread is only supported inside array literals (`[...]`). It is not supported in function call arguments in v0.4.
 
 ### 1.13 Multi-Return Values
 
@@ -577,8 +583,8 @@ Functions with no explicit `return` return `null`.
 | `-` (negate) | `float` | `float` | IEEE 754 negation |
 | `not` | `bool` | `bool` | Logical complement |
 | `~` | `int` | `int` | Bitwise NOT |
-| `++` (prefix) | `int` | `int` | **Not yet implemented in v0.2**: syntax accepted, bytecode VM emits Nop. Use `store → x → x + 1` instead. |
-| `--` (prefix) | `int` | `int` | **Not yet implemented in v0.2**: syntax accepted, bytecode VM emits Nop. Use `store → x → x - 1` instead. |
+| `++` (prefix) | `int` | `int` | Implemented in v0.4. |
+| `--` (prefix) | `int` | `int` | Implemented in v0.4. |
 
 ### 3.3 Comparison Operators
 
@@ -638,7 +644,7 @@ store → result → value ?? default
 
 Returns `value` if it is not `null`, otherwise returns `default`. The right operand is only evaluated if needed.
 
-> **v0.3 status:** `??` is fully implemented in the bytecode VM (`NullCoalesce` instruction). Works in both AST VM and bytecode mode.
+> **v0.4 status:** `??` is fully implemented in the bytecode VM (`NullCoalesce` instruction). Works in both AST VM and bytecode mode.
 
 ### 3.7 Ternary
 
@@ -723,7 +729,7 @@ end
 
 Type parameters are listed after the function name inside `<>` and may be used in parameter types and return types.
 
-> **v0.3 note:** Type parameters are parsed and stored in the AST but are **type-erased at runtime**. No generic specialisation or type-checking against `T` occurs. All type annotations are advisory and validated by the type-checker tool only, not by the runtime.
+> **v0.4 note:** Type parameters are parsed and stored in the AST but are **type-erased at runtime**. No generic specialisation or type-checking against `T` occurs. All type annotations are advisory and validated by the type-checker tool only, not by the runtime.
 
 ### 4.4 Return
 
@@ -752,16 +758,16 @@ print → add5(3)    # 8
 
 The captured environment is a snapshot: mutations to `n` after `make_adder` returns do not affect existing closures.
 
-### 4.6 Async Functions (synchronous mode in v0.3)
+### 4.6 Async Functions (synchronous mode in v0.4)
 
-> **v0.3 note:** `async`/`await` syntax is fully parsed and accepted. In the current
+> **v0.4 note:** `async`/`await` syntax is fully parsed and accepted. In the current
 > implementation both VMs execute async functions **synchronously** — `await` evaluates
 > the expression and returns its value immediately without any blocking or parallelism.
-> Full Tokio-backed async I/O is planned for v0.4.
+> Full Tokio-backed async I/O is planned for v0.5.
 
 ```txtcode
 async → define → fetch → (url: string) → string
-  # In v0.3 this runs synchronously — http_get blocks
+  # In v0.4 this runs synchronously — http_get blocks
   store → body → await → http_get(url)
   return → body
 end
@@ -940,7 +946,7 @@ RuntimeError: Maximum execution time exceeded: N seconds (max: M seconds)
 
 ### 6.3 Call Stack
 
-The call stack is unbounded in v0.1. Deep recursion may exhaust the host process stack (typically 8 MB on Linux), producing a hard OS-level stack overflow rather than a graceful `RuntimeError`. A configurable recursion depth limit is planned for v0.2.
+The call stack depth limit is enforced at 50 in all VMs as of v0.4. Deep recursion beyond this limit returns a `RuntimeError` instead of exhausting the host process stack.
 
 **Recommended limit for well-behaved programs:** ≤ 10 000 nested calls.
 
@@ -952,7 +958,7 @@ Memory is managed by Rust's ownership system combined with reference counting fo
 
 ### 6.5 Integer Overflow
 
-Integer arithmetic uses Rust `i64`. Overflow wraps in debug builds and panics in release builds in Rust — however, the bytecode VM does not currently add overflow guards. Programs that overflow `i64` range produce undefined behaviour in v0.1. Saturating or wrapping semantics will be specified in v0.2.
+Integer arithmetic uses Rust `i64`. All arithmetic (`+`, `-`, `*`, `**`) in both the AST VM and bytecode VM uses Rust's `checked_*` methods as of v0.4, returning a `RuntimeError` on overflow instead of wrapping or panicking.
 
 ### 6.6 Float Semantics
 
@@ -1090,18 +1096,18 @@ else
 end
 ```
 
-A native `Result<T, E>` type is planned for v0.2.
+A native `Result<T, E>` type is planned for a future release.
 
 ---
 
 ---
 
-## Appendix F — Security Guarantees (v0.2)
+## Appendix F — Security Guarantees (v0.4)
 
-This section documents what the v0.2 runtime does and does not enforce, so users can make
+This section documents what the v0.4 runtime does and does not enforce, so users can make
 informed decisions about running Txt-code scripts.
 
-### F.1 Enforced in v0.2
+### F.1 Enforced in v0.4
 
 | Guarantee | Mechanism | Notes |
 |-----------|-----------|-------|
@@ -1115,14 +1121,12 @@ informed decisions about running Txt-code scripts.
 | **Source file size limit** | 10 MB max, rejected before parsing | Prevents resource exhaustion |
 | **Permission checking in stdlib** | `call_function_with_combined_traits` checks net/IO/sys/exec | Before call via PermissionChecker trait |
 
-### F.2 Not Yet Enforced (v0.3 status)
+### F.2 Not Yet Enforced (v0.4 status)
 
 | Gap | Impact | Status |
 |-----|--------|--------|
-| **Integer overflow guards** | `i64` overflow panics in release builds | v0.4 |
-| **Call stack depth limit** | AST VM: MAX_CALL_DEPTH=50. Bytecode VM: unbounded | v0.4 |
 | **Memory limits** | No explicit heap limit; bounded by host OS only | Future |
-| **`?()` optional call in bytecode** | Optional call on function values raises RuntimeError | v0.4 |
+| **`?()` optional call on non-null non-function** | Raises RuntimeError in bytecode VM | v0.5 |
 | **Source comments in migrate** | `#` comments are not preserved through AST printer | v0.4 |
 
 ### F.3 Safe Mode Guarantees
@@ -1139,7 +1143,7 @@ Safe mode **does not** restrict:
 
 ### F.4 Capability Declaration vs Permission Checker
 
-Two independent mechanisms enforce permissions in v0.2:
+Two independent mechanisms enforce permissions in v0.4:
 
 1. **Capability declarations** (`allowed`/`forbidden`) — declared in function bodies, enforced
    by the AST VM at runtime when the function executes.
@@ -1178,11 +1182,11 @@ txtcode migrate --directory src/
 # Specify versions explicitly
 txtcode migrate --files main.tc --from 0.1.0 --to 0.2.0
 
-# Write migrated source back to file (v0.3+)
+# Write migrated source back to file (v0.4+)
 txtcode migrate --files main.tc --dry-run=false
 ```
 
-### E.4 Current Limitations (v0.3)
+### E.4 Current Limitations (v0.4)
 
 - **Source code regeneration** is now implemented via the AST printer. Files are written when
   `--dry-run=false`. The written source uses canonical syntax (`store →`, `define →`, etc.)
@@ -1193,13 +1197,13 @@ txtcode migrate --files main.tc --dry-run=false
 - **Source comments** (lines starting with `#`) are not preserved through the AST printer,
   as the AST does not store comment nodes. Back up your files before migrating.
 
-**Planned for v0.3:** Implement an AST-to-source printer to enable actual file transformation.
+The AST-to-source printer is implemented as of v0.4, enabling actual file transformation via `--dry-run=false`.
 
 ---
 
 ## Appendix D — Execution Engine Reference
 
-### D.1 Engine Overview (v0.2)
+### D.1 Engine Overview (v0.4)
 
 Txt-code has two execution engines. Understanding which one is active is important for security and
 compatibility guarantees.
@@ -1219,29 +1223,24 @@ compatibility guarantees.
 - Policy constraints (rate limits, timeouts) are applied by the policy engine.
 - Intent and AI-hint annotations are visible to the audit log.
 
-This engine is the **only** execution path with production security guarantees in v0.2.
+This engine is the **only** execution path with production security guarantees in v0.4.
 
 ### D.3 Bytecode VM — Experimental Engine
 
 `BytecodeVM` (in `src/runtime/bytecode_vm.rs`) is a stack-based interpreter for compiled `.txtc` files.
 
-**v0.2 limitations:**
+**v0.4 status:** Significant improvements shipped — `break`/`continue`, `for x in arr`, `repeat N`,
+`match`, `++`/`--`, string interpolation, user-defined functions, and `ImportModule` are all
+implemented. Remaining limitations:
 - No permission enforcement — all stdlib calls bypass `PermissionChecker`.
 - No audit logging — executed instructions are not recorded.
 - No capability scoping — `allowed`/`forbidden` declarations are ignored.
-- Incomplete instruction set:
-  - `++`/`--` (prefix increment/decrement) emit `Nop` and have no effect.
-  - `?.`/`?[]`/`?()` (optional chaining) raise `RuntimeError` with an explanation.
-  - `SetIndex` and `SetField` raise `RuntimeError`.
-- Function definitions are not registered separately — only the body is compiled inline.
-- `for` loop iterator is not implemented — the iterable is evaluated and discarded.
-- `break`/`continue` are not wired to jump targets.
 
-**Recommended use in v0.2:** benchmarking (`txtcode bench`), debugger step-through, and
+**Recommended use in v0.4:** benchmarking (`txtcode bench`), debugger step-through, and
 offline bytecode inspection. **Do not** use compiled `.txtc` output in production environments
 where permission enforcement or audit logging is required.
 
-**Planned for v0.3:** BytecodeVM will be aligned with AST VM for full permission and audit parity.
+**Planned for v0.5:** BytecodeVM permission and audit parity with AST VM.
 
 ### D.4 Choosing an Engine
 

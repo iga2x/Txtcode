@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 
 const TEMPLATE_DEV: &str = r#"[env]
 name        = "dev"
-version     = "0.2.0"
+version     = "0.4.0"
 description = "Development environment — full access, verbose output"
 
 [permissions]
@@ -47,7 +47,7 @@ use_local_packages = true
 
 const TEMPLATE_PROD: &str = r#"[env]
 name        = "prod"
-version     = "0.2.0"
+version     = "0.4.0"
 description = "Production environment — restricted permissions, safe mode on"
 
 [permissions]
@@ -64,7 +64,7 @@ use_local_packages = true
 
 const TEMPLATE_TEST: &str = r#"[env]
 name        = "test"
-version     = "0.2.0"
+version     = "0.4.0"
 description = "Test environment — full fs/net, no process spawning"
 
 [permissions]
@@ -81,7 +81,7 @@ use_local_packages = true
 
 const TEMPLATE_SANDBOX: &str = r#"[env]
 name        = "sandbox"
-version     = "0.2.0"
+version     = "0.4.0"
 description = "Sandbox environment — zero trust, nothing allowed by default"
 
 [permissions]
@@ -337,6 +337,38 @@ pub fn env_status() -> Result<(), RuntimeError> {
             // Timeout / memory
             println!("  Timeout  : {}", config.settings.timeout);
             println!("  Max mem  : {}", config.settings.max_memory);
+        }
+    }
+    Ok(())
+}
+
+/// `txtcode env status --json`
+pub fn env_status_json() -> Result<(), RuntimeError> {
+    match Config::load_active_env() {
+        None => {
+            println!("{{\"active\":null,\"error\":\"No .txtcode-env/ found\"}}");
+        }
+        Some((env_dir, name, config)) => {
+            let pkg_dir = env_dir.join(&name).join("packages");
+            let pkg_count = count_packages(&pkg_dir);
+            let allow_json = config.permissions.allow.iter()
+                .map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(",");
+            let deny_json = config.permissions.deny.iter()
+                .map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(",");
+            println!(
+                "{{\"active\":\"{}\",\"location\":\"{}\",\"version\":\"{}\",\
+                 \"description\":\"{}\",\"safe_mode\":{},\"allow\":[{}],\
+                 \"deny\":[{}],\"packages\":{},\"timeout\":\"{}\",\"max_memory\":\"{}\"}}",
+                name,
+                env_dir.display(),
+                config.env.version,
+                config.env.description.replace('"', "\\\""),
+                config.permissions.safe_mode,
+                allow_json, deny_json,
+                pkg_count,
+                config.settings.timeout,
+                config.settings.max_memory,
+            );
         }
     }
     Ok(())

@@ -1,4 +1,4 @@
-# Txt-code Programming Language v0.2
+# Txt-code Programming Language v0.4
 
 **Txt-code** © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.
 
@@ -104,7 +104,7 @@ txtcode repl
 # Compile to bytecode
 txtcode compile examples/hello.tc -o hello.txtc
 # (Experimental / planned) Compile to native or WASM:
-# native and WASM backends are not enabled in 0.1/0.2 builds yet.
+# native and WASM backends are not enabled in v0.4 builds yet.
 # Future versions will support:
 # txtcode compile examples/hello.txt -t native -o hello
 ```
@@ -161,11 +161,11 @@ txtcode migrate [...]          Migrate code between Txt-code versions (dry-run b
   - `--allow-exec` overrides `--safe-mode` to re-enable process execution explicitly.
 - **Compilation target**:
   - `txtcode compile` currently emits bytecode (`.txtc`) only.
-  - Native (LLVM) and WASM backends are **planned** and not enabled in v0.1/v0.2 builds.
+  - Native (LLVM) and WASM backends are **planned** and not enabled in v0.4 builds.
 
 > **Engine note:** `txtcode run` and the REPL use the high-level AST VM with full policy enforcement,
 > permission checks, and audit logging. The bytecode VM (used internally by `compile`) is
-> **experimental** in v0.2 and does not yet have full permission/audit parity. See
+> **experimental** in v0.4 and does not yet have full permission/audit parity. See
 > [docs/language-spec.md](docs/language-spec.md) for details.
 
 ## Example Program

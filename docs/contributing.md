@@ -90,12 +90,20 @@ cargo test -- --nocapture
 - ✅ Call depth aligned to 50 in all VMs
 - ✅ async/await runs synchronously (non-blocking passthrough)
 
-### v0.4+ (planned)
+### v0.4 (released) — Virtual environments & bytecode completeness
+- ✅ Virtual environment system (`txtcode env`) — 12 subcommands
+- ✅ Bytecode VM: `break`/`continue`, `for x in arr`, `repeat N`, `match`, string interpolation
+- ✅ Integer overflow guards in both VMs
+- ✅ Recursion depth limit (50) in all VMs
+- ✅ User-defined functions with scope isolation in bytecode VM
+- ✅ Module imports (`ImportModule`) in bytecode VM
+
+### v0.5+ (planned)
 - True async/await with Tokio runtime integration
 - Native binary compilation (`-t native`) via LLVM
 - WebAssembly compilation target
 - WebSocket stdlib (`websocket_connect`)
-- Obfuscation and encryption for compiled output
+- BytecodeVM permission and audit parity with AST VM
 - Generic type enforcement at runtime
 
 ## Questions?

@@ -71,7 +71,7 @@ store → result → 5 |> double
 
 #[test]
 fn test_runtime_async_sync_mode() {
-    // async functions run synchronously in v0.3, should not crash
+    // async functions run synchronously in v0.4, should not crash
     let result = run_ast_source(r#"
 async → define → add_one → (x)
   return → x + 1

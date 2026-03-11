@@ -1,4 +1,4 @@
-/// Bytecode VM integration tests (v0.3)
+/// Bytecode VM integration tests (v0.4)
 ///
 /// Verifies all previously-stubbed features in the bytecode compiler + VM:
 /// Ternary, Await, Set, Lambda, MethodCall, Slice, IndexAssignment,
@@ -554,7 +554,7 @@ return → sum_coords({"x": 10, "y": 20})
 
 #[test]
 fn test_bytecode_async_function_runs_synchronously() {
-    // async/await runs synchronously in v0.3 — no crash, returns value
+    // async/await runs synchronously in v0.4 — no crash, returns value
     let val = run_ok(r#"
 async → define → fetch → (x)
   return → x + 1
@@ -635,6 +635,6 @@ return → recurse(0)
 
 #[test]
 fn test_bytecode_version_string() {
-    // Sanity check: project version is 0.3.0
-    assert_eq!(env!("CARGO_PKG_VERSION"), "0.3.0");
+    // Sanity check: project version is 0.4.0
+    assert_eq!(env!("CARGO_PKG_VERSION"), "0.4.0");
 }
