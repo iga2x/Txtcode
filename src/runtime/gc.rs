@@ -29,9 +29,14 @@ impl GarbageCollector {
     }
 
     /// Collect garbage from stack, globals, and scopes
-    pub fn collect(&mut self, stack: &Vec<Value>, globals: &HashMap<String, Value>, scopes: &Vec<HashMap<String, Value>>) {
+    pub fn collect(
+        &mut self,
+        stack: &[Value],
+        globals: &HashMap<String, Value>,
+        scopes: &[HashMap<String, Value>],
+    ) {
         self.allocations_since_gc += 1;
-        
+
         // Only collect if threshold reached
         if self.allocations_since_gc < self.collection_threshold {
             return;
@@ -41,17 +46,17 @@ impl GarbageCollector {
 
         // Mark phase
         self.mark_set.clear();
-        
+
         // Mark all values on stack
         for value in stack.iter() {
             self.mark_value(value);
         }
-        
+
         // Mark all global variables
         for value in globals.values() {
             self.mark_value(value);
         }
-        
+
         // Mark all values in local scopes
         for scope in scopes.iter() {
             for value in scope.values() {
@@ -63,9 +68,10 @@ impl GarbageCollector {
         // In Rust, this is handled by the borrow checker and drop,
         // but we track for statistics
         let before = self.allocated_objects.len();
-        self.allocated_objects.retain(|ptr| self.mark_set.contains(ptr));
+        self.allocated_objects
+            .retain(|ptr| self.mark_set.contains(ptr));
         let after = self.allocated_objects.len();
-        
+
         if before > after {
             // Objects were collected
             // In a real implementation, we'd free memory here
@@ -75,7 +81,7 @@ impl GarbageCollector {
     /// Mark a value and all its references
     fn mark_value(&mut self, value: &Value) {
         let ptr = value as *const Value;
-        
+
         // Avoid cycles
         if self.mark_set.contains(&ptr) {
             return;
@@ -137,7 +143,12 @@ impl GarbageCollector {
     }
 
     /// Force a full garbage collection
-    pub fn force_collect(&mut self, stack: &Vec<Value>, globals: &HashMap<String, Value>, scopes: &Vec<HashMap<String, Value>>) {
+    pub fn force_collect(
+        &mut self,
+        stack: &[Value],
+        globals: &HashMap<String, Value>,
+        scopes: &[HashMap<String, Value>],
+    ) {
         self.allocations_since_gc = self.collection_threshold;
         self.collect(stack, globals, scopes);
     }
@@ -155,4 +166,3 @@ impl Default for GarbageCollector {
         Self::new()
     }
 }
-

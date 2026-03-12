@@ -1,4 +1,4 @@
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 
 /// Runtime protection against debugging and tampering
 pub struct RuntimeProtector {
@@ -88,11 +88,11 @@ impl RuntimeProtector {
         };
 
         result.anti_debug = self.check_anti_debugging();
-        
+
         if let Some(hash) = current_hash {
             result.integrity = self.verify_integrity(hash);
         }
-        
+
         result.tampering = self.check_tampering();
 
         result
@@ -104,7 +104,8 @@ impl RuntimeProtector {
         if let Ok(content) = std::fs::read_to_string("/proc/self/status") {
             for line in content.lines() {
                 if line.starts_with("TracerPid:") {
-                    if let Some(Ok(pid)) = line.split_whitespace().nth(1).map(|s| s.parse::<u32>()) {
+                    if let Some(Ok(pid)) = line.split_whitespace().nth(1).map(|s| s.parse::<u32>())
+                    {
                         return pid != 0;
                     }
                 }

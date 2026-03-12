@@ -14,7 +14,10 @@ impl ComparisonOps {
             BinaryOperator::Greater => Self::greater(left, right),
             BinaryOperator::LessEqual => Self::less_equal(left, right),
             BinaryOperator::GreaterEqual => Self::greater_equal(left, right),
-            _ => Err(RuntimeError::new(format!("Not a comparison operator: {:?}", op))),
+            _ => Err(RuntimeError::new(format!(
+                "Not a comparison operator: {:?}",
+                op
+            ))),
         }
     }
 
@@ -38,7 +41,9 @@ impl ComparisonOps {
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Boolean(*a < (*b as f64))),
             (Value::String(a), Value::String(b)) => Ok(Value::Boolean(a < b)),
             (Value::Char(a), Value::Char(b)) => Ok(Value::Boolean(a < b)),
-            _ => Err(RuntimeError::new("Invalid operands for comparison".to_string())),
+            _ => Err(RuntimeError::new(
+                "Invalid operands for comparison".to_string(),
+            )),
         }
     }
 
@@ -50,7 +55,9 @@ impl ComparisonOps {
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Boolean(*a > (*b as f64))),
             (Value::String(a), Value::String(b)) => Ok(Value::Boolean(a > b)),
             (Value::Char(a), Value::Char(b)) => Ok(Value::Boolean(a > b)),
-            _ => Err(RuntimeError::new("Invalid operands for comparison".to_string())),
+            _ => Err(RuntimeError::new(
+                "Invalid operands for comparison".to_string(),
+            )),
         }
     }
 
@@ -62,7 +69,9 @@ impl ComparisonOps {
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Boolean(*a <= (*b as f64))),
             (Value::String(a), Value::String(b)) => Ok(Value::Boolean(a <= b)),
             (Value::Char(a), Value::Char(b)) => Ok(Value::Boolean(a <= b)),
-            _ => Err(RuntimeError::new("Invalid operands for comparison".to_string())),
+            _ => Err(RuntimeError::new(
+                "Invalid operands for comparison".to_string(),
+            )),
         }
     }
 
@@ -74,8 +83,9 @@ impl ComparisonOps {
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Boolean(*a >= (*b as f64))),
             (Value::String(a), Value::String(b)) => Ok(Value::Boolean(a >= b)),
             (Value::Char(a), Value::Char(b)) => Ok(Value::Boolean(a >= b)),
-            _ => Err(RuntimeError::new("Invalid operands for comparison".to_string())),
+            _ => Err(RuntimeError::new(
+                "Invalid operands for comparison".to_string(),
+            )),
         }
     }
 }
-

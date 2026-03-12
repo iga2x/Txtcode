@@ -2,7 +2,7 @@ use aes_gcm::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Key, Nonce,
 };
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Bytecode encryptor
@@ -23,7 +23,7 @@ impl BytecodeEncryptor {
         if key.len() != 32 {
             return Err("Key must be 32 bytes for AES-256".to_string());
         }
-        let key = Key::<Aes256Gcm>::from_slice(key).clone();
+        let key = *Key::<Aes256Gcm>::from_slice(key);
         Ok(Self { key })
     }
 
@@ -31,31 +31,34 @@ impl BytecodeEncryptor {
     pub fn from_runtime() -> Self {
         // Derive key from system properties
         let mut hasher = Sha256::new();
-        
+
         // Use system time as part of key derivation
         let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(duration) => duration.as_secs(),
             Err(e) => {
                 // Fallback: use a default timestamp if system time fails
                 // This is a rare error (system clock set backwards), but we need to handle it
-                eprintln!("Warning: System time error in key derivation: {}. Using fallback timestamp.", e);
+                eprintln!(
+                    "Warning: System time error in key derivation: {}. Using fallback timestamp.",
+                    e
+                );
                 // Use a fixed timestamp as fallback (Jan 1, 2020)
                 1577836800
             }
         };
-        hasher.update(&timestamp.to_le_bytes());
-        
+        hasher.update(timestamp.to_le_bytes());
+
         // Use environment variables if available
         if let Ok(hostname) = std::env::var("HOSTNAME") {
             hasher.update(hostname.as_bytes());
         }
-        
+
         // Use process ID
-        hasher.update(&std::process::id().to_le_bytes());
-        
+        hasher.update(std::process::id().to_le_bytes());
+
         let key_bytes = hasher.finalize();
-        let key = Key::<Aes256Gcm>::from_slice(&key_bytes).clone();
-        
+        let key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
+
         Self { key }
     }
 
@@ -63,7 +66,7 @@ impl BytecodeEncryptor {
     pub fn encrypt(&self, data: &[u8]) -> Result<EncryptedBytecode, String> {
         let cipher = Aes256Gcm::new(&self.key);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-        
+
         let ciphertext = cipher
             .encrypt(&nonce, data)
             .map_err(|e| format!("Encryption failed: {}", e))?;
@@ -79,7 +82,7 @@ impl BytecodeEncryptor {
     pub fn decrypt(&self, encrypted: &EncryptedBytecode) -> Result<Vec<u8>, String> {
         let cipher = Aes256Gcm::new(&self.key);
         let nonce = Nonce::from_slice(&encrypted.nonce);
-        
+
         let plaintext = cipher
             .decrypt(nonce, encrypted.ciphertext.as_ref())
             .map_err(|e| format!("Decryption failed: {}", e))?;
@@ -133,7 +136,7 @@ impl EncryptedBytecode {
         }
 
         let nonce = data[2..2 + nonce_len].to_vec();
-        
+
         let ciphertext_len = u32::from_le_bytes([
             data[2 + nonce_len],
             data[2 + nonce_len + 1],

@@ -12,25 +12,34 @@ pub fn export_trace_json(trace: &ExecutionTrace) -> Result<String, RuntimeError>
 
     // Trace metadata
     let mut metadata = HashMap::new();
-    metadata.insert("start_time".to_string(), timestamp_to_string(&trace.start_time));
+    metadata.insert(
+        "start_time".to_string(),
+        timestamp_to_string(&trace.start_time),
+    );
     if let Some(ref end_time) = trace.end_time {
         metadata.insert("end_time".to_string(), timestamp_to_string(end_time));
     }
     metadata.insert("duration_ms".to_string(), trace.duration_ms().to_string());
     metadata.insert("node_count".to_string(), trace.nodes.len().to_string());
     metadata.insert("edge_count".to_string(), trace.edges.len().to_string());
-    json.insert("metadata".to_string(), serde_json::Value::Object(
-        metadata.into_iter().map(|(k, v)| (k, serde_json::Value::String(v))).collect()
-    ));
+    json.insert(
+        "metadata".to_string(),
+        serde_json::Value::Object(
+            metadata
+                .into_iter()
+                .map(|(k, v)| (k, serde_json::Value::String(v)))
+                .collect(),
+        ),
+    );
 
     // Nodes
-    let nodes: Vec<serde_json::Value> = trace.nodes.iter()
-        .map(|node| node_to_json(node))
-        .collect();
+    let nodes: Vec<serde_json::Value> = trace.nodes.iter().map(node_to_json).collect();
     json.insert("nodes".to_string(), serde_json::Value::Array(nodes));
 
     // Edges
-    let edges: Vec<serde_json::Value> = trace.edges.iter()
+    let edges: Vec<serde_json::Value> = trace
+        .edges
+        .iter()
         .map(|(from, to)| {
             serde_json::json!({
                 "from": from,
@@ -53,7 +62,11 @@ fn node_to_json(node: &TraceNode) -> serde_json::Value {
 
     // Add node type specific data
     match &node.node_type {
-        TraceNodeType::Statement { statement, success, error } => {
+        TraceNodeType::Statement {
+            statement,
+            success,
+            error,
+        } => {
             json["type"] = serde_json::Value::String("statement".to_string());
             json["statement"] = serde_json::Value::String(statement.clone());
             json["success"] = serde_json::Value::Bool(*success);
@@ -61,7 +74,11 @@ fn node_to_json(node: &TraceNode) -> serde_json::Value {
                 json["error"] = serde_json::Value::String(err.clone());
             }
         }
-        TraceNodeType::Expression { expression, value, error } => {
+        TraceNodeType::Expression {
+            expression,
+            value,
+            error,
+        } => {
             json["type"] = serde_json::Value::String("expression".to_string());
             json["expression"] = serde_json::Value::String(expression.clone());
             if let Some(ref val) = value {
@@ -71,17 +88,29 @@ fn node_to_json(node: &TraceNode) -> serde_json::Value {
                 json["error"] = serde_json::Value::String(err.clone());
             }
         }
-        TraceNodeType::VariableAssignment { variable, value, scope } => {
+        TraceNodeType::VariableAssignment {
+            variable,
+            value,
+            scope,
+        } => {
             json["type"] = serde_json::Value::String("variable_assignment".to_string());
             json["variable"] = serde_json::Value::String(variable.clone());
             json["value"] = serde_json::Value::String(value.clone());
             json["scope"] = serde_json::Value::String(scope.clone());
         }
-        TraceNodeType::FunctionCall { function, arguments, result, error } => {
+        TraceNodeType::FunctionCall {
+            function,
+            arguments,
+            result,
+            error,
+        } => {
             json["type"] = serde_json::Value::String("function_call".to_string());
             json["function"] = serde_json::Value::String(function.clone());
             json["arguments"] = serde_json::Value::Array(
-                arguments.iter().map(|a| serde_json::Value::String(a.clone())).collect()
+                arguments
+                    .iter()
+                    .map(|a| serde_json::Value::String(a.clone()))
+                    .collect(),
             );
             if let Some(ref res) = result {
                 json["result"] = serde_json::Value::String(res.clone());
@@ -90,7 +119,11 @@ fn node_to_json(node: &TraceNode) -> serde_json::Value {
                 json["error"] = serde_json::Value::String(err.clone());
             }
         }
-        TraceNodeType::ControlFlow { kind, condition, taken } => {
+        TraceNodeType::ControlFlow {
+            kind,
+            condition,
+            taken,
+        } => {
             json["type"] = serde_json::Value::String("control_flow".to_string());
             json["kind"] = serde_json::Value::String(kind.clone());
             json["condition"] = serde_json::Value::String(condition.clone());
@@ -111,13 +144,18 @@ fn node_to_json(node: &TraceNode) -> serde_json::Value {
 
     // Add variable state snapshot if available
     if !node.variables.is_empty() {
-        let vars: serde_json::Map<String, serde_json::Value> = node.variables.iter()
+        let vars: serde_json::Map<String, serde_json::Value> = node
+            .variables
+            .iter()
             .map(|(name, state)| {
-                (name.clone(), serde_json::json!({
-                    "value": state.value,
-                    "type": state.type_name,
-                    "scope": state.scope,
-                }))
+                (
+                    name.clone(),
+                    serde_json::json!({
+                        "value": state.value,
+                        "type": state.type_name,
+                        "scope": state.scope,
+                    }),
+                )
             })
             .collect();
         json["variables"] = serde_json::Value::Object(vars);
@@ -131,4 +169,3 @@ fn timestamp_to_string(time: &SystemTime) -> String {
         .map(|d| d.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_string())
 }
-

@@ -1,8 +1,13 @@
 // Timeout policy - controls maximum execution time
 
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 
-/// Timeout policy configuration
+/// Timeout policy configuration.
+///
+/// NOTE: `TimeoutPolicy` is not wired to `PolicyEngine` or the VM. The VM
+/// enforces execution time limits through `PolicyEngine::check_max_execution_time`.
+/// This struct is available for direct use in library consumers but is redundant
+/// with `Policy::set_max_execution_time` / `PolicyEngine`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeoutPolicy {
     pub max_execution_time: Option<Duration>,
@@ -41,4 +46,3 @@ impl Default for TimeoutPolicy {
         Self::new()
     }
 }
-

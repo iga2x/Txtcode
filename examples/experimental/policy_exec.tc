@@ -10,17 +10,17 @@
 # ── Permission declarations ───────────────────────────────────────────────────
 
 # Declare what this script is allowed to access
-permission → sys, "exec", "/usr/bin/*"
-permission → fs, "read", "/tmp/*"
-permission → fs, "write", "/tmp/*"
+permission → sys.exec → "/usr/bin/*"
+permission → fs.read → "/tmp/*"
+permission → fs.write → "/tmp/*"
 
 # ── Functions with explicit capability declarations ───────────────────────────
 
 ## Run a safe system command and return its output.
 ## Only allowed to exec commands under /usr/bin/.
 define → run_safe → (cmd)
-  allowed → [sys.exec("/usr/bin/*")]
-  forbidden → [net.connect, fs.write("/etc/*")]
+  allowed → ["sys.exec:/usr/bin/*"]
+  forbidden → ["net.connect", "fs.write:/etc/*"]
   intent → "execute a whitelisted system command and return output"
 
   return → exec(cmd)
@@ -28,8 +28,8 @@ end
 
 ## Read a file from /tmp only — cannot read outside that directory.
 define → read_temp_file → (filename)
-  allowed → [fs.read("/tmp/*")]
-  forbidden → [fs.read("/etc/*"), fs.read("/home/*"), net.connect]
+  allowed → ["fs.read:/tmp/*"]
+  forbidden → ["fs.read:/etc/*", "fs.read:/home/*", "net.connect"]
   intent → "read a temporary file safely"
 
   return → read_file("/tmp/" + filename)
@@ -37,8 +37,8 @@ end
 
 ## Write a report to /tmp.
 define → write_report → (filename, content)
-  allowed → [fs.write("/tmp/*")]
-  forbidden → [fs.write("/etc/*"), fs.write("/home/*"), net.connect, sys.exec]
+  allowed → ["fs.write:/tmp/*"]
+  forbidden → ["fs.write:/etc/*", "fs.write:/home/*", "net.connect", "sys.exec"]
   intent → "write a report file to the temp directory"
 
   write_file("/tmp/" + filename, content)
@@ -97,8 +97,8 @@ end
 
 ## Sensitive operation — logs every call for audit trail.
 define → privileged_action → (resource)
-  allowed → [fs.write("/tmp/audit.log")]
-  forbidden → [net.connect, sys.exec]
+  allowed → ["fs.write:/tmp/audit.log"]
+  forbidden → ["net.connect", "sys.exec"]
   intent → "record an audit event for a sensitive operation"
   ai_hint → "this function only writes to the audit log, it does not modify resources"
 

@@ -22,20 +22,24 @@ pub fn token_span_to_ast_span(token: &Token) -> Span {
     Span {
         start: token.span.1,  // column as start position
         end: token.span.1,    // column as end position (same for single token)
-        line: token.span.0,    // line number
-        column: token.span.1,  // column number
+        line: token.span.0,   // line number
+        column: token.span.1, // column number
     }
 }
 
-pub fn parse_interpolated_string(_parser: &mut crate::parser::parser::Parser, value: &str, span: Span) -> Result<Expression, String> {
+pub fn parse_interpolated_string(
+    _parser: &mut crate::parser::parser::Parser,
+    value: &str,
+    span: Span,
+) -> Result<Expression, String> {
     use crate::parser::ast::InterpolatedSegment;
-    
+
     let mut segments = Vec::new();
     let mut current_text = String::new();
     let mut chars = value.chars().peekable();
     let mut in_expression = false;
     let mut expr_chars = String::new();
-    
+
     while let Some(ch) = chars.next() {
         if ch == '\\' {
             // Handle escape sequences
@@ -81,22 +85,21 @@ pub fn parse_interpolated_string(_parser: &mut crate::parser::parser::Parser, va
             current_text.push(ch);
         }
     }
-    
+
     // Add remaining text
     if !current_text.is_empty() {
         segments.push(InterpolatedSegment::Text(current_text));
     }
-    
+
     // If no segments or only text, return as regular string
     if segments.is_empty() {
         Ok(Expression::Literal(Literal::String(String::new())))
     } else if segments.len() == 1 {
         match &segments[0] {
             InterpolatedSegment::Text(s) => Ok(Expression::Literal(Literal::String(s.clone()))),
-            _ => Ok(Expression::InterpolatedString { segments, span })
+            _ => Ok(Expression::InterpolatedString { segments, span }),
         }
     } else {
         Ok(Expression::InterpolatedString { segments, span })
     }
 }
-

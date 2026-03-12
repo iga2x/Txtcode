@@ -1,34 +1,36 @@
 use clap::{Parser as ClapParser, Subcommand};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // Binary must use txtcode:: to access library modules (they're separate crates in same package)
+use sha2::{Digest, Sha256};
+use txtcode::cli::env as env_cli;
+use txtcode::cli::package;
+use txtcode::cli::self_manage;
+use txtcode::compiler::bytecode::BytecodeCompiler;
+use txtcode::compiler::optimizer::{OptimizationLevel, Optimizer};
+use txtcode::config::Config;
 use txtcode::lexer::Lexer;
+use txtcode::lexer::TokenKind;
 use txtcode::parser::Parser;
+use txtcode::runtime::permissions::PermissionResource;
 use txtcode::runtime::vm::VirtualMachine;
 use txtcode::runtime::Value;
-use txtcode::lexer::TokenKind;
-use txtcode::compiler::optimizer::{Optimizer, OptimizationLevel};
-use txtcode::compiler::bytecode::BytecodeCompiler;
-use txtcode::cli::package;
-use txtcode::cli::env as env_cli;
-use txtcode::cli::self_manage;
-use txtcode::config::Config;
-use txtcode::runtime::permissions::PermissionResource;
-use txtcode::tools::logger;
 use txtcode::tools::debugger::Debugger;
-use sha2::{Sha256, Digest};
+use txtcode::tools::logger;
 
 #[derive(ClapParser)]
 #[command(name = "txtcode")]
 #[command(about = "Txt-code Programming Language")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(subcommand_required = false)]
-#[command(after_help = "Examples:\n  txtcode                          # Start REPL\n  txtcode script.tc                # Run a file\n  txtcode -c \"print(1 + 1)\"        # Inline eval\n  echo 'print(42)' | txtcode -    # Stdin pipe\n  txtcode run script.tc --watch    # Re-run on file change\n  txtcode check src/               # Lint + type-check\n  txtcode format src/ --write      # Format in-place\n  txtcode lint src/                # Lint a directory\n  txtcode compile main.tc -o app   # Compile to bytecode\n  txtcode test --json              # JSON test results\n  txtcode env status --json        # Active env as JSON\n  txtcode bench benches/fib.txt    # Benchmark\n  txtcode init my-project          # New project")]
+#[command(
+    after_help = "Examples:\n  txtcode                          # Start REPL\n  txtcode script.tc                # Run a file\n  txtcode -c \"print(1 + 1)\"        # Inline eval\n  echo 'print(42)' | txtcode -    # Stdin pipe\n  txtcode run script.tc --watch    # Re-run on file change\n  txtcode check src/               # Lint + type-check\n  txtcode format src/ --write      # Format in-place\n  txtcode lint src/                # Lint a directory\n  txtcode compile main.tc -o app   # Compile to bytecode\n  txtcode test --json              # JSON test results\n  txtcode env status --json        # Active env as JSON\n  txtcode bench benches/fib.txt    # Benchmark\n  txtcode init my-project          # New project"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
-    
+
     /// File to execute (when no subcommand given)
     #[arg(value_name = "FILE")]
     pub file: Option<PathBuf>,
@@ -36,23 +38,23 @@ pub struct Cli {
     /// Evaluate a snippet and exit  (like python -c)
     #[arg(short = 'c', value_name = "CODE", global = false)]
     pub eval: Option<String>,
-    
+
     /// Enable safe mode (disables exec() function)
     #[arg(long, global = true)]
     pub safe_mode: bool,
-    
+
     /// Allow exec() function (overrides --safe-mode)
     #[arg(long, global = true)]
     pub allow_exec: bool,
-    
+
     /// Enable debug mode (verbose execution logging)
     #[arg(long, short = 'd', global = true)]
     pub debug: bool,
-    
+
     /// Enable verbose output
     #[arg(long, short = 'v', global = true)]
     pub verbose: bool,
-    
+
     /// Quiet mode (minimal output)
     #[arg(long, short = 'q', global = true)]
     pub quiet: bool,
@@ -351,7 +353,7 @@ pub fn main() {
     if let Err(e) = txtcode::config::Config::ensure_directories() {
         eprintln!("Warning: Failed to initialize txtcode directories: {}", e);
     }
-    
+
     // Initialize default config if it doesn't exist
     if let Err(e) = txtcode::config::Config::init_default_config() {
         eprintln!("Warning: Failed to initialize config file: {}", e);
@@ -374,11 +376,9 @@ pub fn main() {
 
     // Special case: only flags, no command or file
     // - `txtcode -v` → verbose version/info and exit
-    if cli.command.is_none() && cli.file.is_none() {
-        if cli.verbose {
-            print_verbose_info();
-            return;
-        }
+    if cli.command.is_none() && cli.file.is_none() && cli.verbose {
+        print_verbose_info();
+        return;
     }
 
     // -c "code" → evaluate snippet and exit
@@ -419,7 +419,17 @@ pub fn main() {
         (Some(cmd), _) => {
             // Subcommand provided → Use existing subcommand logic
             match cmd {
-                Commands::Run { file, timeout, sandbox, env_file, no_color, json, watch, allow_fs, allow_net } => {
+                Commands::Run {
+                    file,
+                    timeout,
+                    sandbox,
+                    env_file,
+                    no_color,
+                    json,
+                    watch,
+                    allow_fs,
+                    allow_net,
+                } => {
                     // NO_COLOR support
                     if *no_color || std::env::var_os("NO_COLOR").is_some() {
                         std::env::set_var("NO_COLOR", "1");
@@ -439,13 +449,36 @@ pub fn main() {
                     let effective_safe = safe_mode || *sandbox;
                     let effective_allow_exec = if *sandbox { false } else { allow_exec };
                     if *watch {
-                        run_file_watch(file, effective_safe, effective_allow_exec, debug, verbose, allow_fs.clone(), allow_net.clone());
+                        run_file_watch(
+                            file,
+                            effective_safe,
+                            effective_allow_exec,
+                            debug,
+                            verbose,
+                            allow_fs.clone(),
+                            allow_net.clone(),
+                        );
                         return;
                     }
                     let result = if let Some(ts) = timeout {
-                        run_file_with_timeout(file, effective_safe, effective_allow_exec, debug, verbose, ts)
+                        run_file_with_timeout(
+                            file,
+                            effective_safe,
+                            effective_allow_exec,
+                            debug,
+                            verbose,
+                            ts,
+                        )
                     } else {
-                        run_file_with_allowlists(file, effective_safe, effective_allow_exec, debug, verbose, allow_fs, allow_net)
+                        run_file_with_allowlists(
+                            file,
+                            effective_safe,
+                            effective_allow_exec,
+                            debug,
+                            verbose,
+                            allow_fs,
+                            allow_net,
+                        )
                     };
                     if let Err(e) = result {
                         if *json {
@@ -457,7 +490,11 @@ pub fn main() {
                         std::process::exit(1);
                     }
                 }
-                Commands::Compile { file, output, optimize } => {
+                Commands::Compile {
+                    file,
+                    output,
+                    optimize,
+                } => {
                     if let Err(e) = compile_file(file, output.as_ref(), optimize) {
                         eprintln!("Error: {}", e);
                         std::process::exit(1);
@@ -469,7 +506,12 @@ pub fn main() {
                         std::process::exit(1);
                     }
                 }
-                Commands::Format { files, write, check, json } => {
+                Commands::Format {
+                    files,
+                    write,
+                    check,
+                    json,
+                } => {
                     if *write && *check {
                         eprintln!("Error: --write and --check are mutually exclusive.");
                         std::process::exit(1);
@@ -492,7 +534,7 @@ pub fn main() {
                     }
                 }
                 Commands::Package { command } => {
-                    if let Err(e) = handle_package_command(&command) {
+                    if let Err(e) = handle_package_command(command) {
                         eprintln!("Error: {}", e);
                         std::process::exit(1);
                     }
@@ -503,9 +545,23 @@ pub fn main() {
                         std::process::exit(1);
                     }
                 }
-                Commands::Migrate { files, directory, from, to, dry_run, strict } => {
+                Commands::Migrate {
+                    files,
+                    directory,
+                    from,
+                    to,
+                    dry_run,
+                    strict,
+                } => {
                     use txtcode::cli::migrate::migrate_command;
-                    if let Err(e) = migrate_command(files.clone(), from.clone(), to.clone(), *dry_run, *strict, directory.clone()) {
+                    if let Err(e) = migrate_command(
+                        files.clone(),
+                        from.clone(),
+                        to.clone(),
+                        *dry_run,
+                        *strict,
+                        directory.clone(),
+                    ) {
                         eprintln!("Error: {}", e);
                         std::process::exit(1);
                     }
@@ -519,7 +575,12 @@ pub fn main() {
                 Commands::Doctor => {
                     run_doctor();
                 }
-                Commands::Test { path, filter, watch, json } => {
+                Commands::Test {
+                    path,
+                    filter,
+                    watch,
+                    json,
+                } => {
                     if *watch {
                         if let Err(e) = run_tests_watch(path, filter.as_deref()) {
                             eprintln!("Error: {}", e);
@@ -536,14 +597,26 @@ pub fn main() {
                         std::process::exit(1);
                     }
                 }
-                Commands::Doc { files, output, format } => {
+                Commands::Doc {
+                    files,
+                    output,
+                    format,
+                } => {
                     if let Err(e) = generate_docs(files, output.as_ref(), format) {
                         eprintln!("Error: {}", e);
                         std::process::exit(1);
                     }
                 }
-                Commands::Bench { file, runs, warmup, save, compare } => {
-                    if let Err(e) = benchmark_file(file, *runs, *warmup, save.as_ref(), compare.as_ref()) {
+                Commands::Bench {
+                    file,
+                    runs,
+                    warmup,
+                    save,
+                    compare,
+                } => {
+                    if let Err(e) =
+                        benchmark_file(file, *runs, *warmup, save.as_ref(), compare.as_ref())
+                    {
                         eprintln!("Error: {}", e);
                         std::process::exit(1);
                     }
@@ -568,15 +641,10 @@ pub fn main() {
 fn handle_env_command(command: &EnvCommands) -> Result<(), String> {
     match command {
         EnvCommands::Init { name, sandbox, all } => {
-            env_cli::env_init(name.clone(), *sandbox, *all)
-                .map_err(|e| e.to_string())
+            env_cli::env_init(name.clone(), *sandbox, *all).map_err(|e| e.to_string())
         }
-        EnvCommands::Install => {
-            env_cli::env_install().map_err(|e| e.to_string())
-        }
-        EnvCommands::Use { name } => {
-            env_cli::env_use(name).map_err(|e| e.to_string())
-        }
+        EnvCommands::Install => env_cli::env_install().map_err(|e| e.to_string()),
+        EnvCommands::Use { name } => env_cli::env_use(name).map_err(|e| e.to_string()),
         EnvCommands::Status { json } => {
             if *json {
                 env_cli::env_status_json().map_err(|e| e.to_string())
@@ -584,30 +652,16 @@ fn handle_env_command(command: &EnvCommands) -> Result<(), String> {
                 env_cli::env_status().map_err(|e| e.to_string())
             }
         }
-        EnvCommands::List => {
-            env_cli::env_list().map_err(|e| e.to_string())
-        }
-        EnvCommands::Clean { name } => {
-            env_cli::env_clean(name.clone()).map_err(|e| e.to_string())
-        }
+        EnvCommands::List => env_cli::env_list().map_err(|e| e.to_string()),
+        EnvCommands::Clean { name } => env_cli::env_clean(name.clone()).map_err(|e| e.to_string()),
         EnvCommands::Remove { name } => {
             env_cli::env_remove(name.clone()).map_err(|e| e.to_string())
         }
-        EnvCommands::Doctor => {
-            env_cli::env_doctor().map_err(|e| e.to_string())
-        }
-        EnvCommands::Diff { a, b } => {
-            env_cli::env_diff(a, b).map_err(|e| e.to_string())
-        }
-        EnvCommands::Freeze => {
-            env_cli::env_freeze().map_err(|e| e.to_string())
-        }
-        EnvCommands::ShellHook => {
-            env_cli::env_shell_hook().map_err(|e| e.to_string())
-        }
-        EnvCommands::Path => {
-            env_cli::env_path().map_err(|e| e.to_string())
-        }
+        EnvCommands::Doctor => env_cli::env_doctor().map_err(|e| e.to_string()),
+        EnvCommands::Diff { a, b } => env_cli::env_diff(a, b).map_err(|e| e.to_string()),
+        EnvCommands::Freeze => env_cli::env_freeze().map_err(|e| e.to_string()),
+        EnvCommands::ShellHook => env_cli::env_shell_hook().map_err(|e| e.to_string()),
+        EnvCommands::Path => env_cli::env_path().map_err(|e| e.to_string()),
     }
 }
 
@@ -628,10 +682,18 @@ fn run_file_with_allowlists(
     }
     // We need to wire the extra grants into the VirtualMachine before running.
     // Do that by calling run_file_inner directly.
-    run_file_inner(file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net)
+    run_file_inner(
+        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net,
+    )
 }
 
-fn eval_snippet(code: &str, safe_mode: bool, allow_exec: bool, debug: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn eval_snippet(
+    code: &str,
+    safe_mode: bool,
+    allow_exec: bool,
+    debug: bool,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut vm = VirtualMachine::with_all_options(safe_mode, debug, verbose);
     vm.set_exec_allowed(allow_exec);
     let mut lexer = Lexer::new(code.to_string());
@@ -645,7 +707,13 @@ fn eval_snippet(code: &str, safe_mode: bool, allow_exec: bool, debug: bool, verb
     Ok(())
 }
 
-fn run_file(file: &PathBuf, safe_mode: bool, allow_exec: bool, debug: bool, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn run_file(
+    file: &PathBuf,
+    safe_mode: bool,
+    allow_exec: bool,
+    debug: bool,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[])
 }
 
@@ -703,28 +771,31 @@ fn run_file_inner(
             "File '{}' is too large ({} bytes, max 10MB)",
             file.display(),
             metadata.len()
-        ).into());
+        )
+        .into());
     }
 
     // Read file
     let source = fs::read_to_string(file)?;
-    
+
     // Lex
     let mut lexer = Lexer::new(source);
-    let tokens = lexer.tokenize()
-        .map_err(|e| format!("Lex error: {}", e))?;
-    
+    let tokens = lexer.tokenize().map_err(|e| format!("Lex error: {}", e))?;
+
     // Parse
     let mut parser = Parser::new(tokens);
-    let program = parser.parse()
-        .map_err(|e| format!("Parse error: {}", e))?;
-    
+    let program = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
+
     // Resolve effective safe_mode: CLI flag OR env profile safe_mode
     let env_safe_mode = Config::load_active_env()
         .map(|(_, _, cfg)| cfg.permissions.safe_mode)
         .unwrap_or(false);
     let effective_safe_mode = safe_mode || env_safe_mode;
-    let exec_allowed = if allow_exec { true } else { !effective_safe_mode };
+    let exec_allowed = if allow_exec {
+        true
+    } else {
+        !effective_safe_mode
+    };
 
     let mut vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
     vm.set_exec_allowed(exec_allowed);
@@ -741,17 +812,10 @@ fn run_file_inner(
     Ok(())
 }
 
-/// Parse a permission string like "fs.read", "net.connect", "process.exec", "sys.getenv"
-/// into a PermissionResource.
+/// Parse a permission string like "fs.read", "net.connect", "process.exec", "sys.getenv".
+/// Delegates to the canonical `PermissionResource::from_string` parser.
 fn parse_permission_string(s: &str) -> Option<PermissionResource> {
-    let (prefix, action) = s.split_once('.')?;
-    match prefix {
-        "fs" | "filesystem" => Some(PermissionResource::FileSystem(action.to_string())),
-        "net" | "network"   => Some(PermissionResource::Network(action.to_string())),
-        "process" | "proc"  => Some(PermissionResource::Process(vec![action.to_string()])),
-        "sys" | "system"    => Some(PermissionResource::System(action.to_string())),
-        _ => None,
-    }
+    PermissionResource::from_string(s).ok()
 }
 
 /// Load the active env's allow/deny permission lists and apply them to the VM.
@@ -784,19 +848,32 @@ fn apply_cli_allowlists(vm: &mut VirtualMachine, allow_fs: &[String], allow_net:
         } else {
             format!("{}/*", path)
         };
-        vm.grant_permission(PermissionResource::FileSystem("read".to_string()), Some(scope.clone()));
-        vm.grant_permission(PermissionResource::FileSystem("write".to_string()), Some(scope));
+        vm.grant_permission(
+            PermissionResource::FileSystem("read".to_string()),
+            Some(scope.clone()),
+        );
+        vm.grant_permission(
+            PermissionResource::FileSystem("write".to_string()),
+            Some(scope),
+        );
     }
     for host in allow_net {
-        vm.grant_permission(PermissionResource::Network("connect".to_string()), Some(host.clone()));
+        vm.grant_permission(
+            PermissionResource::Network("connect".to_string()),
+            Some(host.clone()),
+        );
     }
 }
 
 fn inspect_bytecode(file: &PathBuf, format: &str) -> Result<(), Box<dyn std::error::Error>> {
     use txtcode::compiler::bytecode::Bytecode;
     let bytes = std::fs::read(file)?;
-    let bytecode: Bytecode = bincode::deserialize(&bytes)
-        .map_err(|e| format!("Failed to deserialize bytecode: {}. Is this a compiled .tcc file?", e))?;
+    let bytecode: Bytecode = bincode::deserialize(&bytes).map_err(|e| {
+        format!(
+            "Failed to deserialize bytecode: {}. Is this a compiled .tcc file?",
+            e
+        )
+    })?;
     match format {
         "json" => {
             println!("[");
@@ -840,7 +917,9 @@ fn compile_file(
         let cache_path = Config::get_cache_path(&cache_key)?;
         if cache_path.exists() {
             logger::log_info(&format!("Using cached bytecode for: {}", file.display()));
-            let output_path = output.cloned().unwrap_or_else(|| file.with_extension("txtc"));
+            let output_path = output
+                .cloned()
+                .unwrap_or_else(|| file.with_extension("txtc"));
             fs::copy(&cache_path, &output_path)?;
             println!("Compiled (from cache) to: {}", output_path.display());
             return Ok(());
@@ -872,11 +951,15 @@ fn compile_file(
     if user_config.package.cache_packages {
         let cache_key = generate_cache_key(&source, optimize)?;
         let cache_path = Config::get_cache_path(&cache_key)?;
-        if let Some(parent) = cache_path.parent() { fs::create_dir_all(parent)?; }
+        if let Some(parent) = cache_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(&cache_path, &serialized)?;
     }
 
-    let output_path = output.cloned().unwrap_or_else(|| file.with_extension("txtc"));
+    let output_path = output
+        .cloned()
+        .unwrap_or_else(|| file.with_extension("txtc"));
     fs::write(&output_path, serialized)?;
     println!("Compiled to: {}", output_path.display());
     Ok(())
@@ -890,7 +973,12 @@ fn generate_cache_key(source: &str, optimize: &str) -> Result<String, Box<dyn st
     Ok(hex::encode(&hash[..16]))
 }
 
-fn format_files(files: &[PathBuf], write: bool, check: bool, json: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn format_files(
+    files: &[PathBuf],
+    write: bool,
+    check: bool,
+    json: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut needs_format: Vec<PathBuf> = Vec::new();
     let mut json_results: Vec<String> = Vec::new();
 
@@ -902,7 +990,8 @@ fn format_files(files: &[PathBuf], write: bool, check: bool, json: bool) -> Resu
         if json {
             json_results.push(format!(
                 "{{\"file\":\"{}\",\"changed\":{}}}",
-                file.display(), changed
+                file.display(),
+                changed
             ));
         } else if check {
             if changed {
@@ -928,13 +1017,20 @@ fn format_files(files: &[PathBuf], write: bool, check: bool, json: bool) -> Resu
     }
 
     if check && !needs_format.is_empty() {
-        eprintln!("\n{} file(s) need formatting. Run with --write to fix.", needs_format.len());
+        eprintln!(
+            "\n{} file(s) need formatting. Run with --write to fix.",
+            needs_format.len()
+        );
         std::process::exit(1);
     }
     Ok(())
 }
 
-fn lint_files(files: &[PathBuf], format: &str, fix: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn lint_files(
+    files: &[PathBuf],
+    format: &str,
+    fix: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     use txtcode::tools::linter::{Linter, Severity};
     let mut error_count = 0usize;
     let mut warning_count = 0usize;
@@ -976,7 +1072,14 @@ fn lint_files(files: &[PathBuf], format: &str, fix: bool) -> Result<(), Box<dyn 
                     Severity::Warning => "warning",
                     Severity::Info => "info",
                 };
-                println!("  [{}] {}:{}:{} — {}", prefix, file.display(), issue.line, issue.column, issue.message);
+                println!(
+                    "  [{}] {}:{}:{} — {}",
+                    prefix,
+                    file.display(),
+                    issue.line,
+                    issue.column,
+                    issue.message
+                );
             }
         }
     }
@@ -1106,7 +1209,10 @@ fn repl_help(topic: &str) {
             println!("  JSON:    json_encode, json_decode");
         }
         other => {
-            eprintln!("No help for '{}'. Topics: syntax, types, ops, stdlib", other);
+            eprintln!(
+                "No help for '{}'. Topics: syntax, types, ops, stdlib",
+                other
+            );
         }
     }
 }
@@ -1114,12 +1220,16 @@ fn repl_help(topic: &str) {
 /// Count net block-depth delta for one line (used for REPL multiline detection).
 fn repl_block_delta(line: &str) -> i32 {
     let t = line.trim();
-    if t.starts_with('#') { return 0; }
-    let first = t.split(|c: char| c.is_whitespace() || c == '→').next().unwrap_or("");
+    if t.starts_with('#') {
+        return 0;
+    }
+    let first = t
+        .split(|c: char| c.is_whitespace() || c == '→')
+        .next()
+        .unwrap_or("");
     match first {
-        "if" | "while" | "for" | "foreach" | "define" | "def"
-        | "async" | "try" | "match" | "switch" | "do" | "repeat"
-        | "struct" | "enum" => 1,
+        "if" | "while" | "for" | "foreach" | "define" | "def" | "async" | "try" | "match"
+        | "switch" | "do" | "repeat" | "struct" | "enum" => 1,
         "end" => -1,
         _ => 0,
     }
@@ -1132,20 +1242,26 @@ fn start_repl(
     verbose: bool,
     quiet: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use rustyline::{DefaultEditor, error::ReadlineError};
+    use rustyline::{error::ReadlineError, DefaultEditor};
 
     let mut rl = DefaultEditor::new()?;
 
     if !quiet {
-        println!("Txt-code v{}  |  type 'help' for commands, 'exit' to quit",
-            env!("CARGO_PKG_VERSION"));
+        println!(
+            "Txt-code v{}  |  type 'help' for commands, 'exit' to quit",
+            env!("CARGO_PKG_VERSION")
+        );
     }
 
     let env_safe_mode = Config::load_active_env()
         .map(|(_, _, cfg)| cfg.permissions.safe_mode)
         .unwrap_or(false);
     let effective_safe_mode = safe_mode || env_safe_mode;
-    let exec_allowed = if allow_exec { true } else { !effective_safe_mode };
+    let exec_allowed = if allow_exec {
+        true
+    } else {
+        !effective_safe_mode
+    };
     let mut vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
     vm.set_exec_allowed(exec_allowed);
     apply_env_permissions(&mut vm);
@@ -1155,7 +1271,11 @@ fn start_repl(
     let mut block_depth: i32 = 0;
 
     loop {
-        let prompt = if block_depth > 0 { "...   > " } else { "txtcode> " };
+        let prompt = if block_depth > 0 {
+            "...   > "
+        } else {
+            "txtcode> "
+        };
         let readline = rl.readline(prompt);
         match readline {
             Ok(line) => {
@@ -1164,8 +1284,12 @@ fn start_repl(
 
                 // Top-level only commands
                 if block_depth == 0 {
-                    if trimmed == "exit" || trimmed == "quit" { break; }
-                    if trimmed.is_empty() { continue; }
+                    if trimmed == "exit" || trimmed == "quit" {
+                        break;
+                    }
+                    if trimmed.is_empty() {
+                        continue;
+                    }
 
                     if trimmed == "clear" {
                         print!("\x1B[2J\x1B[1;1H");
@@ -1194,7 +1318,9 @@ fn start_repl(
                                                     match p.parse() {
                                                         Ok(prog) => match vm.interpret(&prog) {
                                                             Ok(_) => println!("Loaded: {}", path),
-                                                            Err(e) => eprintln!("Runtime error: {}", e),
+                                                            Err(e) => {
+                                                                eprintln!("Runtime error: {}", e)
+                                                            }
                                                         },
                                                         Err(e) => eprintln!("Parse error: {}", e),
                                                     }
@@ -1212,7 +1338,9 @@ fn start_repl(
                                     eprintln!("Usage: :save <file>");
                                 } else {
                                     match fs::write(path, history.join("\n")) {
-                                        Ok(_) => println!("Saved {} line(s) to {}", history.len(), path),
+                                        Ok(_) => {
+                                            println!("Saved {} line(s) to {}", history.len(), path)
+                                        }
                                         Err(e) => eprintln!("Cannot write '{}': {}", path, e),
                                     }
                                 }
@@ -1233,7 +1361,9 @@ fn start_repl(
                                                     match infer.infer_program(&prog) {
                                                         Ok(_) => println!("{} : (ok)", expr_src),
                                                         Err(errs) => {
-                                                            for e in errs { println!("type-error: {}", e); }
+                                                            for e in errs {
+                                                                println!("type-error: {}", e);
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -1245,7 +1375,11 @@ fn start_repl(
                                 }
                             }
                             "clear" => {
-                                vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
+                                vm = VirtualMachine::with_all_options(
+                                    effective_safe_mode,
+                                    debug,
+                                    verbose,
+                                );
                                 vm.set_exec_allowed(exec_allowed);
                                 apply_env_permissions(&mut vm);
                                 history.clear();
@@ -1278,15 +1412,21 @@ fn start_repl(
                 multiline_buf.clear();
                 block_depth = 0;
 
-                if source.trim().is_empty() { continue; }
+                if source.trim().is_empty() {
+                    continue;
+                }
                 history.push(source.trim().to_string());
 
                 let mut lexer = Lexer::new(source.trim().to_string());
                 match lexer.tokenize() {
                     Ok(tokens) => {
                         let tokens: Vec<txtcode::lexer::Token> = tokens;
-                        if tokens.is_empty() { continue; }
-                        if tokens.last().map_or(false, |t| t.kind == TokenKind::Eof) && tokens.len() == 1 {
+                        if tokens.is_empty() {
+                            continue;
+                        }
+                        if tokens.last().is_some_and(|t| t.kind == TokenKind::Eof)
+                            && tokens.len() == 1
+                        {
                             continue;
                         }
                         let mut parser = Parser::new(tokens);
@@ -1330,7 +1470,11 @@ fn start_repl(
 
 fn print_verbose_info() {
     let version = env!("CARGO_PKG_VERSION");
-    let build = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let build = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
 
@@ -1360,8 +1504,14 @@ fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let mut debugger = Debugger::new();
     debugger.load(bytecode);
 
-    println!("Txt-code Debugger — {} ({} instructions)", file.display(), total);
-    println!("Commands: step/s, continue/c, break/b <n>, inspect/i <var>, stack, vars, quit/q, help");
+    println!(
+        "Txt-code Debugger — {} ({} instructions)",
+        file.display(),
+        total
+    );
+    println!(
+        "Commands: step/s, continue/c, break/b <n>, inspect/i <var>, stack, vars, quit/q, help"
+    );
     println!("ip=0 ready");
 
     let mut rl = DefaultEditor::new()?;
@@ -1379,24 +1529,20 @@ fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         let _ = rl.add_history_entry(trimmed);
         let parts: Vec<&str> = trimmed.splitn(2, ' ').collect();
         match parts[0] {
-            "step" | "s" => {
-                match debugger.step() {
-                    Ok(state) => {
-                        if state.done {
-                            println!("Program finished.");
-                        } else {
-                            println!("ip={} | {}", state.ip, state.instruction);
-                        }
+            "step" | "s" => match debugger.step() {
+                Ok(state) => {
+                    if state.done {
+                        println!("Program finished.");
+                    } else {
+                        println!("ip={} | {}", state.ip, state.instruction);
                     }
-                    Err(e) => eprintln!("Step error: {}", e),
                 }
-            }
-            "continue" | "c" => {
-                match debugger.continue_execution() {
-                    Ok(_) => println!("Execution complete."),
-                    Err(e) => println!("{}", e),
-                }
-            }
+                Err(e) => eprintln!("Step error: {}", e),
+            },
+            "continue" | "c" => match debugger.continue_execution() {
+                Ok(_) => println!("Execution complete."),
+                Err(e) => println!("{}", e),
+            },
             "break" | "b" => {
                 if let Some(addr_str) = parts.get(1) {
                     if let Ok(addr) = addr_str.trim().parse::<usize>() {
@@ -1698,7 +1844,7 @@ fn run_doctor() {
             ok = false;
         }
     }
-    pass("version: 0.1.0");
+    pass(&format!("version: {}", env!("CARGO_PKG_VERSION")));
 
     // ── Project manifest ────────────────────────────────────────────────────
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -1741,7 +1887,10 @@ fn run_doctor() {
                 if path.exists() {
                     pass(&format!("{}/: {}", subdir, path.display()));
                 } else {
-                    warn(&format!("{}/: not found (will be created on first use)", subdir));
+                    warn(&format!(
+                        "{}/: not found (will be created on first use)",
+                        subdir
+                    ));
                 }
             }
         }
@@ -1772,7 +1921,11 @@ fn run_doctor() {
             pass(&format!("temp directory writable: {}", tmp.display()));
         }
         Err(e) => {
-            fail(&format!("temp directory not writable ({}): {}", tmp.display(), e));
+            fail(&format!(
+                "temp directory not writable ({}): {}",
+                tmp.display(),
+                e
+            ));
             ok = false;
         }
     }
@@ -1791,7 +1944,11 @@ fn run_doctor() {
 // txtcode test
 // ────────────────────────────────────────────────────────────────────────────
 
-fn run_tests(path: &PathBuf, filter: Option<&str>, json_out: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn run_tests(
+    path: &PathBuf,
+    filter: Option<&str>,
+    json_out: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut test_files: Vec<PathBuf> = Vec::new();
 
     if path.is_file() {
@@ -1804,7 +1961,9 @@ fn run_tests(path: &PathBuf, filter: Option<&str>, json_out: bool) -> Result<(),
 
     if let Some(f) = filter {
         test_files.retain(|p| {
-            p.file_name().and_then(|n| n.to_str()).map_or(false, |n| n.contains(f))
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains(f))
         });
     }
 
@@ -1812,28 +1971,44 @@ fn run_tests(path: &PathBuf, filter: Option<&str>, json_out: bool) -> Result<(),
         if json_out {
             println!("{{\"passed\":0,\"failed\":0,\"tests\":[]}}");
         } else {
-            println!("No test files found in '{}'. Test files must be named test_*.tc or *_test.tc", path.display());
+            println!(
+                "No test files found in '{}'. Test files must be named test_*.tc or *_test.tc",
+                path.display()
+            );
         }
         return Ok(());
     }
 
-    if !json_out { println!("Running {} test file(s)...\n", test_files.len()); }
+    if !json_out {
+        println!("Running {} test file(s)...\n", test_files.len());
+    }
 
     let mut passed = 0usize;
     let mut failed = 0usize;
     let mut json_tests: Vec<String> = Vec::new();
 
     for test_file in &test_files {
-        let name = test_file.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown");
+        let name = test_file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
         let source = fs::read_to_string(test_file)?;
         let mut lexer = Lexer::new(source);
         let tokens = match lexer.tokenize() {
             Ok(t) => t,
             Err(e) => {
                 let msg = format!("lex error: {}", e);
-                if json_out { json_tests.push(format!("{{\"name\":\"{}\",\"passed\":false,\"error\":\"{}\"}}", name, msg.replace('"', "\\\""))); }
-                else { println!("  FAIL  {} — {}", name, msg); }
-                failed += 1; continue;
+                if json_out {
+                    json_tests.push(format!(
+                        "{{\"name\":\"{}\",\"passed\":false,\"error\":\"{}\"}}",
+                        name,
+                        msg.replace('"', "\\\"")
+                    ));
+                } else {
+                    println!("  FAIL  {} — {}", name, msg);
+                }
+                failed += 1;
+                continue;
             }
         };
         let mut parser = Parser::new(tokens);
@@ -1841,34 +2016,62 @@ fn run_tests(path: &PathBuf, filter: Option<&str>, json_out: bool) -> Result<(),
             Ok(p) => p,
             Err(e) => {
                 let msg = format!("parse error: {}", e);
-                if json_out { json_tests.push(format!("{{\"name\":\"{}\",\"passed\":false,\"error\":\"{}\"}}", name, msg.replace('"', "\\\""))); }
-                else { println!("  FAIL  {} — {}", name, msg); }
-                failed += 1; continue;
+                if json_out {
+                    json_tests.push(format!(
+                        "{{\"name\":\"{}\",\"passed\":false,\"error\":\"{}\"}}",
+                        name,
+                        msg.replace('"', "\\\"")
+                    ));
+                } else {
+                    println!("  FAIL  {} — {}", name, msg);
+                }
+                failed += 1;
+                continue;
             }
         };
         let mut vm = VirtualMachine::new();
         match vm.interpret(&program) {
             Ok(_) => {
-                if json_out { json_tests.push(format!("{{\"name\":\"{}\",\"passed\":true,\"error\":null}}", name)); }
-                else { println!("  PASS  {}", name); }
+                if json_out {
+                    json_tests.push(format!(
+                        "{{\"name\":\"{}\",\"passed\":true,\"error\":null}}",
+                        name
+                    ));
+                } else {
+                    println!("  PASS  {}", name);
+                }
                 passed += 1;
             }
             Err(e) => {
                 let msg = e.to_string();
-                if json_out { json_tests.push(format!("{{\"name\":\"{}\",\"passed\":false,\"error\":\"{}\"}}", name, msg.replace('"', "\\\""))); }
-                else { println!("  FAIL  {} — {}", name, msg); }
+                if json_out {
+                    json_tests.push(format!(
+                        "{{\"name\":\"{}\",\"passed\":false,\"error\":\"{}\"}}",
+                        name,
+                        msg.replace('"', "\\\"")
+                    ));
+                } else {
+                    println!("  FAIL  {} — {}", name, msg);
+                }
                 failed += 1;
             }
         }
     }
 
     if json_out {
-        println!("{{\"passed\":{},\"failed\":{},\"tests\":[{}]}}", passed, failed, json_tests.join(","));
+        println!(
+            "{{\"passed\":{},\"failed\":{},\"tests\":[{}]}}",
+            passed,
+            failed,
+            json_tests.join(",")
+        );
     } else {
         println!("\n{} passed, {} failed", passed, failed);
     }
 
-    if failed > 0 { std::process::exit(1); }
+    if failed > 0 {
+        std::process::exit(1);
+    }
     Ok(())
 }
 
@@ -1882,9 +2085,7 @@ fn collect_test_files(
         if path.is_dir() {
             collect_test_files(&path, files)?;
         } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if (name.starts_with("test_") || name.ends_with("_test.tc"))
-                && name.ends_with(".tc")
-            {
+            if (name.starts_with("test_") || name.ends_with("_test.tc")) && name.ends_with(".tc") {
                 files.push(path);
             }
         }
@@ -1992,7 +2193,11 @@ fn benchmark_file(
         match fs::read_to_string(cmp_path) {
             Ok(data) => parse_bench_json(&data),
             Err(e) => {
-                eprintln!("Warning: could not read compare file '{}': {}", cmp_path.display(), e);
+                eprintln!(
+                    "Warning: could not read compare file '{}': {}",
+                    cmp_path.display(),
+                    e
+                );
                 None
             }
         }
@@ -2013,7 +2218,8 @@ fn benchmark_file(
     // Warmup
     for _ in 0..warmup {
         let mut vm = VirtualMachine::new();
-        vm.interpret(&program).map_err(|e| format!("Runtime error: {}", e))?;
+        vm.interpret(&program)
+            .map_err(|e| format!("Runtime error: {}", e))?;
     }
 
     // Timed runs (microseconds)
@@ -2021,15 +2227,15 @@ fn benchmark_file(
     for _ in 0..runs {
         let start = std::time::Instant::now();
         let mut vm = VirtualMachine::new();
-        vm.interpret(&program).map_err(|e| format!("Runtime error: {}", e))?;
+        vm.interpret(&program)
+            .map_err(|e| format!("Runtime error: {}", e))?;
         timings.push(start.elapsed().as_micros() as f64);
     }
 
     let mean = timings.iter().sum::<f64>() / timings.len() as f64;
     let min = timings.iter().cloned().fold(f64::INFINITY, f64::min);
     let max = timings.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let variance =
-        timings.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / timings.len() as f64;
+    let variance = timings.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / timings.len() as f64;
     let stddev = variance.sqrt();
 
     let fmt_us = |us: f64| -> String {
@@ -2052,14 +2258,34 @@ fn benchmark_file(
     if let Some((prev_mean, prev_min, prev_max, prev_stddev)) = prev {
         println!("\n  Comparison vs baseline:");
         let delta = |cur: f64, old: f64| {
-            if old == 0.0 { return "n/a".to_string(); }
+            if old == 0.0 {
+                return "n/a".to_string();
+            }
             let pct = (cur - old) / old * 100.0;
-            if pct > 0.0 { format!("+{:.1}% slower", pct) }
-            else { format!("{:.1}% faster", -pct) }
+            if pct > 0.0 {
+                format!("+{:.1}% slower", pct)
+            } else {
+                format!("{:.1}% faster", -pct)
+            }
         };
-        println!("  Mean:    {} → {} ({})", fmt_us(prev_mean), fmt_us(mean), delta(mean, prev_mean));
-        println!("  Min:     {} → {} ({})", fmt_us(prev_min), fmt_us(min), delta(min, prev_min));
-        println!("  Max:     {} → {} ({})", fmt_us(prev_max), fmt_us(max), delta(max, prev_max));
+        println!(
+            "  Mean:    {} → {} ({})",
+            fmt_us(prev_mean),
+            fmt_us(mean),
+            delta(mean, prev_mean)
+        );
+        println!(
+            "  Min:     {} → {} ({})",
+            fmt_us(prev_min),
+            fmt_us(min),
+            delta(min, prev_min)
+        );
+        println!(
+            "  Max:     {} → {} ({})",
+            fmt_us(prev_max),
+            fmt_us(max),
+            delta(max, prev_max)
+        );
         println!("  Std dev: {} → {}", fmt_us(prev_stddev), fmt_us(stddev));
     }
 
@@ -2082,12 +2308,16 @@ fn parse_bench_json(data: &str) -> Option<(f64, f64, f64, f64)> {
         let needle = format!("\"{}\":", key);
         let pos = data.find(&needle)? + needle.len();
         let rest = data[pos..].trim_start();
-        let end = rest.find(|c: char| c == ',' || c == '}').unwrap_or(rest.len());
+        let end = rest.find([',', '}']).unwrap_or(rest.len());
         rest[..end].trim().parse().ok()
     };
-    Some((get("mean_us")?, get("min_us")?, get("max_us")?, get("stddev_us")?))
+    Some((
+        get("mean_us")?,
+        get("min_us")?,
+        get("max_us")?,
+        get("stddev_us")?,
+    ))
 }
-
 
 // ────────────────────────────────────────────────────────────────────────────
 // txtcode run --timeout
@@ -2100,7 +2330,10 @@ fn parse_duration(s: &str) -> Option<std::time::Duration> {
         return ms.parse::<u64>().ok().map(std::time::Duration::from_millis);
     }
     if let Some(m) = s.strip_suffix('m') {
-        return m.parse::<u64>().ok().map(|n| std::time::Duration::from_secs(n * 60));
+        return m
+            .parse::<u64>()
+            .ok()
+            .map(|n| std::time::Duration::from_secs(n * 60));
     }
     if let Some(sec) = s.strip_suffix('s') {
         return sec.parse::<u64>().ok().map(std::time::Duration::from_secs);
@@ -2109,22 +2342,26 @@ fn parse_duration(s: &str) -> Option<std::time::Duration> {
 }
 
 fn run_file_with_timeout(
-    file: &PathBuf,
+    file: &Path,
     safe_mode: bool,
     allow_exec: bool,
     debug: bool,
     verbose: bool,
     timeout_str: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let duration = parse_duration(timeout_str)
-        .ok_or_else(|| format!("Invalid timeout format '{}'. Use e.g. 30s, 500ms, 2m", timeout_str))?;
+    let duration = parse_duration(timeout_str).ok_or_else(|| {
+        format!(
+            "Invalid timeout format '{}'. Use e.g. 30s, 500ms, 2m",
+            timeout_str
+        )
+    })?;
 
-    let file = file.clone();
+    let file = file.to_path_buf();
     let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
     std::thread::spawn(move || {
-        let result = run_file(&file, safe_mode, allow_exec, debug, verbose)
-            .map_err(|e| e.to_string());
+        let result =
+            run_file(&file, safe_mode, allow_exec, debug, verbose).map_err(|e| e.to_string());
         let _ = tx.send(result);
     });
 
@@ -2188,14 +2425,19 @@ fn run_file_watch(
     allow_fs: Vec<String>,
     allow_net: Vec<String>,
 ) {
-    println!("Watching '{}' for changes (Ctrl+C to stop)...\n", file.display());
+    println!(
+        "Watching '{}' for changes (Ctrl+C to stop)...\n",
+        file.display()
+    );
 
     let get_mtime = |p: &PathBuf| -> Option<std::time::SystemTime> {
         fs::metadata(p).ok().and_then(|m| m.modified().ok())
     };
 
     let mut prev_mtime = get_mtime(file);
-    let _ = run_file_with_allowlists(file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net);
+    let _ = run_file_with_allowlists(
+        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net,
+    );
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -2207,7 +2449,9 @@ fn run_file_watch(
         };
         if changed {
             println!("\n── file changed, re-running ──\n");
-            let _ = run_file_with_allowlists(file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net);
+            let _ = run_file_with_allowlists(
+                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net,
+            );
             prev_mtime = cur;
         }
     }
@@ -2243,8 +2487,8 @@ fn check_files(files: &[PathBuf], json_out: bool) -> Result<(), Box<dyn std::err
         let source = fs::read_to_string(file)?;
 
         // Lint pass
-        let issues = Linter::lint_source_with_path(&source, Some(file.as_path()))
-            .unwrap_or_default();
+        let issues =
+            Linter::lint_source_with_path(&source, Some(file.as_path())).unwrap_or_default();
 
         for issue in &issues {
             match issue.severity {
@@ -2264,7 +2508,14 @@ fn check_files(files: &[PathBuf], json_out: bool) -> Result<(), Box<dyn std::err
                     Severity::Warning => "warning",
                     Severity::Info => "info",
                 };
-                println!("  [{}] {}:{}:{} — {}", prefix, file.display(), issue.line, issue.column, issue.message);
+                println!(
+                    "  [{}] {}:{}:{} — {}",
+                    prefix,
+                    file.display(),
+                    issue.line,
+                    issue.column,
+                    issue.message
+                );
             }
         }
 
@@ -2296,18 +2547,25 @@ fn check_files(files: &[PathBuf], json_out: bool) -> Result<(), Box<dyn std::err
     } else if total_errors == 0 && total_warnings == 0 {
         println!("No issues found in {} file(s).", files.len());
     } else {
-        println!("\n{} error(s), {} warning(s) across {} file(s).", total_errors, total_warnings, files.len());
+        println!(
+            "\n{} error(s), {} warning(s) across {} file(s).",
+            total_errors,
+            total_warnings,
+            files.len()
+        );
     }
 
-    if total_errors > 0 { std::process::exit(1); }
+    if total_errors > 0 {
+        std::process::exit(1);
+    }
     Ok(())
 }
 
-fn run_tests_watch(
-    path: &PathBuf,
-    filter: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Watching for changes in '{}' (Ctrl+C to stop)...\n", path.display());
+fn run_tests_watch(path: &PathBuf, filter: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    println!(
+        "Watching for changes in '{}' (Ctrl+C to stop)...\n",
+        path.display()
+    );
 
     // Snapshot: path -> last-modified
     let snapshot = |path: &PathBuf| -> std::collections::HashMap<PathBuf, std::time::SystemTime> {
@@ -2341,7 +2599,7 @@ fn run_tests_watch(
     loop {
         std::thread::sleep(std::time::Duration::from_secs(2));
         let current = snapshot(path);
-        let changed = current.iter().any(|(p, t)| prev.get(p).map_or(true, |old| old != t))
+        let changed = current.iter().any(|(p, t)| prev.get(p) != Some(t))
             || prev.keys().any(|p| !current.contains_key(p));
         if changed {
             println!("\n── file change detected, re-running tests ──\n");

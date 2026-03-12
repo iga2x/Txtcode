@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
-use std::fs;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Environment constants
@@ -18,7 +18,7 @@ pub const DEFAULT_ENV_NAME: &str = "dev";
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Full configuration loaded from a user project's env.toml
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EnvConfig {
     #[serde(default)]
     pub env: EnvMeta,
@@ -26,16 +26,6 @@ pub struct EnvConfig {
     pub permissions: EnvPermissions,
     #[serde(default)]
     pub settings: EnvSettings,
-}
-
-impl Default for EnvConfig {
-    fn default() -> Self {
-        Self {
-            env: EnvMeta::default(),
-            permissions: EnvPermissions::default(),
-            settings: EnvSettings::default(),
-        }
-    }
 }
 
 /// [env] section of env.toml
@@ -102,10 +92,18 @@ impl Default for EnvSettings {
     }
 }
 
-fn default_env_name() -> String { DEFAULT_ENV_NAME.to_string() }
-fn default_env_version() -> String { env!("CARGO_PKG_VERSION").to_string() }
-fn default_timeout() -> String { "none".to_string() }
-fn default_memory() -> String { "1gb".to_string() }
+fn default_env_name() -> String {
+    DEFAULT_ENV_NAME.to_string()
+}
+fn default_env_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+fn default_timeout() -> String {
+    "none".to_string()
+}
+fn default_memory() -> String {
+    "1gb".to_string()
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config — global runtime configuration
@@ -116,7 +114,7 @@ pub struct Config;
 
 impl Config {
     /// Get the txtcode home directory
-    /// 
+    ///
     /// - Linux/macOS: `~/.txtcode`
     /// - Windows: `%APPDATA%\txtcode`
     pub fn get_txtcode_home() -> Result<PathBuf, String> {
@@ -131,8 +129,8 @@ impl Config {
         #[cfg(not(target_os = "windows"))]
         {
             // On Unix-like systems, use ~/.txtcode
-            let home = dirs::home_dir()
-                .ok_or_else(|| "Could not find home directory".to_string())?;
+            let home =
+                dirs::home_dir().ok_or_else(|| "Could not find home directory".to_string())?;
             Ok(home.join(".txtcode"))
         }
     }
@@ -168,8 +166,7 @@ impl Config {
     /// Set the active env name by writing to `.txtcode-env/active`.
     pub fn set_active_env_name(env_dir: &Path, name: &str) -> Result<(), String> {
         let active_file = env_dir.join(ACTIVE_ENV_FILE);
-        fs::write(&active_file, name)
-            .map_err(|e| format!("Failed to write active env file: {}", e))
+        fs::write(&active_file, name).map_err(|e| format!("Failed to write active env file: {}", e))
     }
 
     /// Load and parse `env.toml` from `.txtcode-env/{name}/env.toml`.
@@ -222,7 +219,7 @@ impl Config {
     }
 
     /// Get the cache directory
-    /// 
+    ///
     /// Stores compiled bytecode cache: `~/.txtcode/cache/`
     pub fn get_cache_dir() -> Result<PathBuf, String> {
         let dir = Self::get_txtcode_home()?.join("cache");
@@ -230,14 +227,14 @@ impl Config {
     }
 
     /// Get the config directory
-    /// 
+    ///
     /// Stores configuration files: `~/.txtcode/`
     pub fn get_config_dir() -> Result<PathBuf, String> {
         Self::get_txtcode_home()
     }
 
     /// Get the logs directory
-    /// 
+    ///
     /// Stores runtime logs: `~/.txtcode/logs/`
     pub fn get_logs_dir() -> Result<PathBuf, String> {
         let dir = Self::get_txtcode_home()?.join("logs");
@@ -245,7 +242,7 @@ impl Config {
     }
 
     /// Get the path to the main config file
-    /// 
+    ///
     /// Returns: `~/.txtcode/config.toml`
     pub fn get_config_file() -> Result<PathBuf, String> {
         let file = Self::get_config_dir()?.join("config.toml");
@@ -253,11 +250,11 @@ impl Config {
     }
 
     /// Ensure all required directories exist
-    /// 
+    ///
     /// Creates the txtcode home directory and all subdirectories
     pub fn ensure_directories() -> Result<(), String> {
         let home = Self::get_txtcode_home()?;
-        
+
         // Create home directory
         fs::create_dir_all(&home)
             .map_err(|e| format!("Failed to create txtcode home directory: {}", e))?;
@@ -280,7 +277,7 @@ impl Config {
     /// Initialize default configuration file if it doesn't exist
     pub fn init_default_config() -> Result<(), String> {
         let config_file = Self::get_config_file()?;
-        
+
         if config_file.exists() {
             return Ok(()); // Config already exists
         }
@@ -346,7 +343,7 @@ cache_packages = true
     }
 
     /// Get the full path to a package
-    /// 
+    ///
     /// Returns: `~/.txtcode/packages/{name}/`
     pub fn get_package_path(name: &str) -> Result<PathBuf, String> {
         let packages_dir = Self::get_packages_dir()?;
@@ -354,7 +351,7 @@ cache_packages = true
     }
 
     /// Get the full path to a cached bytecode file
-    /// 
+    ///
     /// Returns: `~/.txtcode/cache/{hash}.txtc`
     pub fn get_cache_path(hash: &str) -> Result<PathBuf, String> {
         let cache_dir = Self::get_cache_dir()?;
@@ -362,7 +359,7 @@ cache_packages = true
     }
 
     /// Get the full path to a log file
-    /// 
+    ///
     /// Returns: `~/.txtcode/logs/{name}.log`
     pub fn get_log_path(name: &str) -> Result<PathBuf, String> {
         let logs_dir = Self::get_logs_dir()?;
@@ -370,11 +367,11 @@ cache_packages = true
     }
 
     /// Load user configuration from ~/.txtcode/config.toml
-    /// 
+    ///
     /// Returns default config if file doesn't exist or can't be parsed
     pub fn load_config() -> Result<UserConfig, String> {
         let config_file = Self::get_config_file()?;
-        
+
         if !config_file.exists() {
             // Return default config if file doesn't exist
             return Ok(UserConfig::default());
@@ -382,16 +379,16 @@ cache_packages = true
 
         let content = fs::read_to_string(&config_file)
             .map_err(|e| format!("Failed to read config file: {}", e))?;
-        
-        let config: UserConfig = toml::from_str(&content)
-            .map_err(|e| format!("Failed to parse config file: {}", e))?;
-        
+
+        let config: UserConfig =
+            toml::from_str(&content).map_err(|e| format!("Failed to parse config file: {}", e))?;
+
         Ok(config)
     }
 }
 
 /// User configuration loaded from ~/.txtcode/config.toml
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UserConfig {
     #[serde(default)]
     pub compiler: CompilerConfig,
@@ -401,17 +398,6 @@ pub struct UserConfig {
     pub package: PackageConfig,
     #[serde(default)]
     pub paths: PathsConfig,
-}
-
-impl Default for UserConfig {
-    fn default() -> Self {
-        Self {
-            compiler: CompilerConfig::default(),
-            runtime: RuntimeConfig::default(),
-            package: PackageConfig::default(),
-            paths: PathsConfig::default(),
-        }
-    }
 }
 
 /// Compiler configuration section
@@ -439,7 +425,7 @@ impl Default for CompilerConfig {
 }
 
 /// Runtime configuration section
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RuntimeConfig {
     #[serde(default)]
     pub safe_mode: bool,
@@ -449,17 +435,6 @@ pub struct RuntimeConfig {
     pub debug: bool,
     #[serde(default)]
     pub verbose: bool,
-}
-
-impl Default for RuntimeConfig {
-    fn default() -> Self {
-        Self {
-            safe_mode: false,
-            allow_exec: false,
-            debug: false,
-            verbose: false,
-        }
-    }
 }
 
 /// Package configuration section
@@ -481,21 +456,11 @@ impl Default for PackageConfig {
 }
 
 /// Paths configuration section
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PathsConfig {
     pub packages: Option<String>,
     pub cache: Option<String>,
     pub logs: Option<String>,
-}
-
-impl Default for PathsConfig {
-    fn default() -> Self {
-        Self {
-            packages: None,
-            cache: None,
-            logs: None,
-        }
-    }
 }
 
 fn default_optimization() -> String {
@@ -539,11 +504,10 @@ mod tests {
         // This test will actually create directories
         let result = Config::ensure_directories();
         assert!(result.is_ok());
-        
+
         // Verify directories exist
         assert!(Config::get_packages_dir().unwrap().exists());
         assert!(Config::get_cache_dir().unwrap().exists());
         assert!(Config::get_logs_dir().unwrap().exists());
     }
 }
-

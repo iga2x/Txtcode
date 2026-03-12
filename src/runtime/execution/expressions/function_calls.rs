@@ -649,12 +649,12 @@ pub fn call_user_function<VM: ExpressionVM>(
                     param.name,
                     remaining_args.len()
                 ));
-                vm.set_variable(param.name.clone(), Value::Array(remaining_args))?;
+                vm.define_local_variable(param.name.clone(), Value::Array(remaining_args))?;
                 arg_index = args_len;
             } else if arg_index < args_len {
                 let arg = &args[arg_index];
                 log_debug(&format!("Binding parameter '{}' = {:?}", param.name, arg));
-                vm.set_variable(param.name.clone(), arg.clone())?;
+                vm.define_local_variable(param.name.clone(), arg.clone())?;
                 arg_index += 1;
             } else if let Some(default_expr) = &param.default_value {
                 log_debug(&format!(
@@ -662,7 +662,7 @@ pub fn call_user_function<VM: ExpressionVM>(
                     param.name
                 ));
                 let default_val = super::ExpressionEvaluator::evaluate(vm, default_expr)?;
-                vm.set_variable(param.name.clone(), default_val)?;
+                vm.define_local_variable(param.name.clone(), default_val)?;
                 arg_index += 1;
             } else {
                 return Err(vm.create_error(format!("Missing required parameter: {}", param.name)));

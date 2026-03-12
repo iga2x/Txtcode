@@ -1,5 +1,5 @@
-use crate::lexer::token::{Token, TokenKind};
 use crate::lexer::keywords::is_keyword;
+use crate::lexer::token::{Token, TokenKind};
 
 /// Lexer for tokenizing Txt-code source code
 pub struct Lexer {
@@ -21,7 +21,7 @@ impl Lexer {
 
     pub fn tokenize(&mut self) -> Result<Vec<Token>, String> {
         let mut tokens = Vec::new();
-        
+
         while self.position < self.source.len() {
             if let Some(token) = self.next_token()? {
                 if token.kind != TokenKind::Whitespace && token.kind != TokenKind::Comment {
@@ -31,8 +31,12 @@ impl Lexer {
                 break;
             }
         }
-        
-        tokens.push(Token::new(TokenKind::Eof, String::new(), (self.line, self.column)));
+
+        tokens.push(Token::new(
+            TokenKind::Eof,
+            String::new(),
+            (self.line, self.column),
+        ));
         Ok(tokens)
     }
 
@@ -44,7 +48,7 @@ impl Lexer {
         let _start_pos = self.position;
         let start_line = self.line;
         let start_col = self.column;
-        
+
         // Get character at current byte position
         // Since we're using byte positions, we need to get the char that starts at this byte
         let ch = if self.position < self.source.len() {
@@ -54,7 +58,7 @@ impl Lexer {
         } else {
             None
         };
-        
+
         let ch = match ch {
             Some(c) => c,
             None => return Ok(None),
@@ -68,7 +72,11 @@ impl Lexer {
             }
             '\n' | '\r' => {
                 self.advance();
-                Token::new(TokenKind::Newline, String::from(ch), (start_line, start_col))
+                Token::new(
+                    TokenKind::Newline,
+                    String::from(ch),
+                    (start_line, start_col),
+                )
             }
             // Comments
             '#' => {
@@ -81,11 +89,19 @@ impl Lexer {
                 if self.peek() == Some('+') {
                     self.advance(); // Advance past first '+'
                     self.advance(); // Advance past second '+'
-                    Token::new(TokenKind::Increment, "++".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::Increment,
+                        "++".to_string(),
+                        (start_line, start_col),
+                    )
                 } else if self.peek() == Some('=') {
                     self.advance(); // Advance past '+'
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::PlusAssign, "+=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::PlusAssign,
+                        "+=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     self.advance(); // Advance past '+'
                     Token::new(TokenKind::Plus, String::from(ch), (start_line, start_col))
@@ -101,11 +117,19 @@ impl Lexer {
                     // Check for decrement operator (--)
                     self.advance(); // Advance past first '-'
                     self.advance(); // Advance past second '-'
-                    Token::new(TokenKind::Decrement, "--".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::Decrement,
+                        "--".to_string(),
+                        (start_line, start_col),
+                    )
                 } else if self.peek() == Some('=') {
                     self.advance(); // Advance past '-'
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::MinusAssign, "-=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::MinusAssign,
+                        "-=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     self.advance(); // Advance past '-'
                     Token::new(TokenKind::Minus, String::from(ch), (start_line, start_col))
@@ -122,12 +146,16 @@ impl Lexer {
                 if self.peek() == Some('*') {
                     self.advance(); // Advance past first '*'
                     self.advance(); // Advance past second '*'
-                    // Check for **=
+                                    // Check for **=
                     if self.position < self.source.len() {
                         let rem = &self.source[self.position..];
                         if rem.starts_with('=') {
                             self.advance(); // Advance past '='
-                            Token::new(TokenKind::PowerAssign, "**=".to_string(), (start_line, start_col))
+                            Token::new(
+                                TokenKind::PowerAssign,
+                                "**=".to_string(),
+                                (start_line, start_col),
+                            )
                         } else {
                             Token::new(TokenKind::Power, "**".to_string(), (start_line, start_col))
                         }
@@ -137,7 +165,11 @@ impl Lexer {
                 } else if self.peek() == Some('=') {
                     self.advance(); // Advance past '*'
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::StarAssign, "*=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::StarAssign,
+                        "*=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     self.advance(); // Advance past '*'
                     Token::new(TokenKind::Star, String::from(ch), (start_line, start_col))
@@ -147,7 +179,11 @@ impl Lexer {
                 if self.peek() == Some('=') {
                     self.advance(); // Advance past '/'
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::SlashAssign, "/=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::SlashAssign,
+                        "/=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     self.advance();
                     Token::new(TokenKind::Slash, String::from(ch), (start_line, start_col))
@@ -157,10 +193,18 @@ impl Lexer {
                 if self.peek() == Some('=') {
                     self.advance(); // Advance past '%'
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::PercentAssign, "%=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::PercentAssign,
+                        "%=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     self.advance();
-                    Token::new(TokenKind::Percent, String::from(ch), (start_line, start_col))
+                    Token::new(
+                        TokenKind::Percent,
+                        String::from(ch),
+                        (start_line, start_col),
+                    )
                 }
             }
             '<' => {
@@ -168,11 +212,19 @@ impl Lexer {
                 if self.peek() == Some('<') {
                     self.advance(); // Advance past '<'
                     self.advance(); // Advance past second '<'
-                    Token::new(TokenKind::LeftShift, "<<".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::LeftShift,
+                        "<<".to_string(),
+                        (start_line, start_col),
+                    )
                 } else if self.peek() == Some('=') {
                     self.advance(); // Advance past '<'
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::LessEqual, "<=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::LessEqual,
+                        "<=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     self.advance(); // Advance past '<'
                     Token::new(TokenKind::Less, String::from(ch), (start_line, start_col))
@@ -183,14 +235,26 @@ impl Lexer {
                 if self.peek() == Some('>') {
                     self.advance(); // Advance past '>'
                     self.advance(); // Advance past second '>'
-                    Token::new(TokenKind::RightShift, ">>".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::RightShift,
+                        ">>".to_string(),
+                        (start_line, start_col),
+                    )
                 } else if self.peek() == Some('=') {
                     self.advance(); // Advance past '>'
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::GreaterEqual, ">=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::GreaterEqual,
+                        ">=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     self.advance(); // Advance past '>'
-                    Token::new(TokenKind::Greater, String::from(ch), (start_line, start_col))
+                    Token::new(
+                        TokenKind::Greater,
+                        String::from(ch),
+                        (start_line, start_col),
+                    )
                 }
             }
             '=' => {
@@ -201,7 +265,11 @@ impl Lexer {
                     Token::new(TokenKind::Equal, "==".to_string(), (start_line, start_col))
                 } else {
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::Assignment, String::from(ch), (start_line, start_col))
+                    Token::new(
+                        TokenKind::Assignment,
+                        String::from(ch),
+                        (start_line, start_col),
+                    )
                 }
             }
             '!' => {
@@ -209,7 +277,11 @@ impl Lexer {
                 if self.peek() == Some('=') {
                     self.advance(); // Advance past '!'
                     self.advance(); // Advance past '='
-                    Token::new(TokenKind::NotEqual, "!=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::NotEqual,
+                        "!=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     return Err(format!("Unexpected character: {}", ch));
                 }
@@ -219,14 +291,26 @@ impl Lexer {
                 if self.peek() == Some('?') {
                     self.advance(); // Advance past first '?'
                     self.advance(); // Advance past second '?'
-                    Token::new(TokenKind::NullCoalesce, "??".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::NullCoalesce,
+                        "??".to_string(),
+                        (start_line, start_col),
+                    )
                 } else if self.peek() == Some('.') {
                     self.advance(); // Advance past '?'
                     self.advance(); // Advance past '.'
-                    Token::new(TokenKind::OptionalChain, "?.".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::OptionalChain,
+                        "?.".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     self.advance(); // Advance past '?'
-                    Token::new(TokenKind::QuestionMark, "?".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::QuestionMark,
+                        "?".to_string(),
+                        (start_line, start_col),
+                    )
                 }
             }
             '&' => {
@@ -237,7 +321,11 @@ impl Lexer {
                     Token::new(TokenKind::And, "&&".to_string(), (start_line, start_col))
                 } else if next == Some('=') {
                     self.advance();
-                    Token::new(TokenKind::BitAndAssign, "&=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::BitAndAssign,
+                        "&=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     Token::new(TokenKind::BitAnd, String::from(ch), (start_line, start_col))
                 }
@@ -253,7 +341,11 @@ impl Lexer {
                     Token::new(TokenKind::Or, "||".to_string(), (start_line, start_col))
                 } else if next == Some('=') {
                     self.advance();
-                    Token::new(TokenKind::BitOrAssign, "|=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::BitOrAssign,
+                        "|=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     Token::new(TokenKind::BitOr, String::from(ch), (start_line, start_col))
                 }
@@ -263,7 +355,11 @@ impl Lexer {
                 let next = self.source[self.position..].chars().next();
                 if next == Some('=') {
                     self.advance();
-                    Token::new(TokenKind::BitXorAssign, "^=".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::BitXorAssign,
+                        "^=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     Token::new(TokenKind::BitXor, String::from(ch), (start_line, start_col))
                 }
@@ -275,27 +371,51 @@ impl Lexer {
             // Delimiters
             '(' => {
                 self.advance();
-                Token::new(TokenKind::LeftParen, String::from(ch), (start_line, start_col))
+                Token::new(
+                    TokenKind::LeftParen,
+                    String::from(ch),
+                    (start_line, start_col),
+                )
             }
             ')' => {
                 self.advance();
-                Token::new(TokenKind::RightParen, String::from(ch), (start_line, start_col))
+                Token::new(
+                    TokenKind::RightParen,
+                    String::from(ch),
+                    (start_line, start_col),
+                )
             }
             '{' => {
                 self.advance();
-                Token::new(TokenKind::LeftBrace, String::from(ch), (start_line, start_col))
+                Token::new(
+                    TokenKind::LeftBrace,
+                    String::from(ch),
+                    (start_line, start_col),
+                )
             }
             '}' => {
                 self.advance();
-                Token::new(TokenKind::RightBrace, String::from(ch), (start_line, start_col))
+                Token::new(
+                    TokenKind::RightBrace,
+                    String::from(ch),
+                    (start_line, start_col),
+                )
             }
             '[' => {
                 self.advance();
-                Token::new(TokenKind::LeftBracket, String::from(ch), (start_line, start_col))
+                Token::new(
+                    TokenKind::LeftBracket,
+                    String::from(ch),
+                    (start_line, start_col),
+                )
             }
             ']' => {
                 self.advance();
-                Token::new(TokenKind::RightBracket, String::from(ch), (start_line, start_col))
+                Token::new(
+                    TokenKind::RightBracket,
+                    String::from(ch),
+                    (start_line, start_col),
+                )
             }
             ',' => {
                 self.advance();
@@ -303,7 +423,11 @@ impl Lexer {
             }
             ';' => {
                 self.advance();
-                Token::new(TokenKind::Semicolon, String::from(ch), (start_line, start_col))
+                Token::new(
+                    TokenKind::Semicolon,
+                    String::from(ch),
+                    (start_line, start_col),
+                )
             }
             ':' => {
                 self.advance();
@@ -315,7 +439,11 @@ impl Lexer {
                 if self.source[self.position..].starts_with("..") {
                     self.advance(); // consume second .
                     self.advance(); // consume third .
-                    Token::new(TokenKind::Spread, "...".to_string(), (start_line, start_col))
+                    Token::new(
+                        TokenKind::Spread,
+                        "...".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     Token::new(TokenKind::Dot, String::from(ch), (start_line, start_col))
                 }
@@ -334,9 +462,7 @@ impl Lexer {
                 self.read_char_or_string(ch)?
             }
             // Numbers
-            '0'..='9' => {
-                self.read_number()?
-            }
+            '0'..='9' => self.read_number()?,
             // Identifiers and keywords (also raw strings: r"...", f-strings: f"...")
             'a'..='z' | 'A'..='Z' | '_' => {
                 // Check for raw string: r"..."
@@ -354,7 +480,10 @@ impl Lexer {
                 }
             }
             _ => {
-                return Err(format!("Unexpected character: {} at line {}:{}", ch, self.line, self.column));
+                return Err(format!(
+                    "Unexpected character: {} at line {}:{}",
+                    ch, self.line, self.column
+                ));
             }
         };
 
@@ -436,17 +565,17 @@ impl Lexer {
         let start_line = self.line;
         let start_col = self.column;
         self.advance(); // Skip opening quote
-        
+
         if self.position >= self.source.len() {
             return Err("Unterminated character literal".to_string());
         }
-        
+
         let remaining = &self.source[self.position..];
         let ch = match remaining.chars().next() {
             Some(c) => c,
             None => return Err("Unterminated character literal".to_string()),
         };
-        
+
         // Check if it's an escape sequence
         if ch == '\\' {
             self.advance();
@@ -468,31 +597,49 @@ impl Lexer {
                 _ => escaped,
             };
             self.advance();
-            
+
             // Check for closing quote
             let closing_remaining = &self.source[self.position..];
-            if self.position >= self.source.len() || 
-               closing_remaining.chars().next().map(|c| c != quote).unwrap_or(true) {
+            if self.position >= self.source.len()
+                || closing_remaining
+                    .chars()
+                    .next()
+                    .map(|c| c != quote)
+                    .unwrap_or(true)
+            {
                 return Err("Character literal must be exactly one character".to_string());
             }
             self.advance(); // Skip closing quote
-            
-            Ok(Token::new(TokenKind::Char, char_value.to_string(), (start_line, start_col)))
+
+            Ok(Token::new(
+                TokenKind::Char,
+                char_value.to_string(),
+                (start_line, start_col),
+            ))
         } else {
             // Regular character
             let char_value = ch;
             self.advance();
-            
+
             // Check for closing quote
             let closing_remaining = &self.source[self.position..];
-            if self.position >= self.source.len() || 
-               closing_remaining.chars().next().map(|c| c != quote).unwrap_or(true) {
+            if self.position >= self.source.len()
+                || closing_remaining
+                    .chars()
+                    .next()
+                    .map(|c| c != quote)
+                    .unwrap_or(true)
+            {
                 // Not a char literal, treat as string
                 return self.read_string(quote);
             }
             self.advance(); // Skip closing quote
-            
-            Ok(Token::new(TokenKind::Char, char_value.to_string(), (start_line, start_col)))
+
+            Ok(Token::new(
+                TokenKind::Char,
+                char_value.to_string(),
+                (start_line, start_col),
+            ))
         }
     }
 
@@ -503,7 +650,7 @@ impl Lexer {
         let mut value = String::new();
         let mut has_interpolation = false;
         let mut found_closing_quote = false;
-        
+
         while self.position < self.source.len() {
             let remaining = &self.source[self.position..];
             let ch = match remaining.chars().next() {
@@ -554,17 +701,28 @@ impl Lexer {
                 self.advance();
             }
         }
-        
+
         // Check if string was properly terminated
         if !found_closing_quote {
-            return Err(format!("Unterminated string literal starting at line {}, column {}", start_line, start_col));
+            return Err(format!(
+                "Unterminated string literal starting at line {}, column {}",
+                start_line, start_col
+            ));
         }
-        
+
         // If string contains unescaped {, mark it as interpolated
         if has_interpolation {
-            Ok(Token::new(TokenKind::InterpolatedString, value, (start_line, start_col)))
+            Ok(Token::new(
+                TokenKind::InterpolatedString,
+                value,
+                (start_line, start_col),
+            ))
         } else {
-            Ok(Token::new(TokenKind::String, value, (start_line, start_col)))
+            Ok(Token::new(
+                TokenKind::String,
+                value,
+                (start_line, start_col),
+            ))
         }
     }
 
@@ -574,7 +732,7 @@ impl Lexer {
         let mut value = String::new();
         let mut has_dot = false;
         let mut has_exponent = false;
-        
+
         // Check for hex (0x) or binary (0b) prefixes
         if self.position < self.source.len() {
             let remaining = &self.source[self.position..];
@@ -588,7 +746,7 @@ impl Lexer {
                             self.advance(); // consume 'x' or 'X'
                             value.push('0');
                             value.push('x');
-                            
+
                             // Read hex digits
                             let mut has_digits = false;
                             while self.position < self.source.len() {
@@ -605,24 +763,32 @@ impl Lexer {
                                     break;
                                 }
                             }
-                            
+
                             if !has_digits {
                                 return Err(format!("Hexadecimal literal must have at least one digit at line {}:{}", self.line, self.column));
                             }
-                            
+
                             // Parse hex value
                             let hex_str = &value[2..]; // Skip "0x"
-                            let int_val = i64::from_str_radix(hex_str, 16)
-                                .map_err(|_| format!("Invalid hexadecimal number at line {}:{}", self.line, self.column))?;
-                            
-                            return Ok(Token::new(TokenKind::Integer, int_val.to_string(), (start_line, start_col)));
+                            let int_val = i64::from_str_radix(hex_str, 16).map_err(|_| {
+                                format!(
+                                    "Invalid hexadecimal number at line {}:{}",
+                                    self.line, self.column
+                                )
+                            })?;
+
+                            return Ok(Token::new(
+                                TokenKind::Integer,
+                                int_val.to_string(),
+                                (start_line, start_col),
+                            ));
                         } else if next_ch == 'b' || next_ch == 'B' {
                             // Binary literal: 0b1010, 0b1111
                             self.advance(); // consume '0'
                             self.advance(); // consume 'b' or 'B'
                             value.push('0');
                             value.push('b');
-                            
+
                             // Read binary digits
                             let mut has_digits = false;
                             while self.position < self.source.len() {
@@ -639,23 +805,34 @@ impl Lexer {
                                     break;
                                 }
                             }
-                            
+
                             if !has_digits {
-                                return Err(format!("Binary literal must have at least one digit at line {}:{}", self.line, self.column));
+                                return Err(format!(
+                                    "Binary literal must have at least one digit at line {}:{}",
+                                    self.line, self.column
+                                ));
                             }
-                            
+
                             // Parse binary value
                             let bin_str = &value[2..]; // Skip "0b"
-                            let int_val = i64::from_str_radix(bin_str, 2)
-                                .map_err(|_| format!("Invalid binary number at line {}:{}", self.line, self.column))?;
-                            
-                            return Ok(Token::new(TokenKind::Integer, int_val.to_string(), (start_line, start_col)));
+                            let int_val = i64::from_str_radix(bin_str, 2).map_err(|_| {
+                                format!(
+                                    "Invalid binary number at line {}:{}",
+                                    self.line, self.column
+                                )
+                            })?;
+
+                            return Ok(Token::new(
+                                TokenKind::Integer,
+                                int_val.to_string(),
+                                (start_line, start_col),
+                            ));
                         }
                     }
                 }
             }
         }
-        
+
         // Regular decimal number parsing
         while self.position < self.source.len() {
             let remaining = &self.source[self.position..];
@@ -681,7 +858,7 @@ impl Lexer {
                 has_exponent = true;
                 has_dot = true; // Once we have exponent, treat as float
                 self.advance();
-                
+
                 // Optional + or - after e/E
                 if self.position < self.source.len() {
                     let next_remaining = &self.source[self.position..];
@@ -692,30 +869,39 @@ impl Lexer {
                         }
                     }
                 }
-                
+
                 // Exponent must be followed by digits
                 if self.position >= self.source.len() {
-                    return Err(format!("Exponent must be followed by digits at line {}:{}", self.line, self.column));
+                    return Err(format!(
+                        "Exponent must be followed by digits at line {}:{}",
+                        self.line, self.column
+                    ));
                 }
                 let digit_remaining = &self.source[self.position..];
                 if let Some(digit_ch) = digit_remaining.chars().next() {
                     if !digit_ch.is_ascii_digit() {
-                        return Err(format!("Exponent must be followed by digits at line {}:{}", self.line, self.column));
+                        return Err(format!(
+                            "Exponent must be followed by digits at line {}:{}",
+                            self.line, self.column
+                        ));
                     }
                 } else {
-                    return Err(format!("Exponent must be followed by digits at line {}:{}", self.line, self.column));
+                    return Err(format!(
+                        "Exponent must be followed by digits at line {}:{}",
+                        self.line, self.column
+                    ));
                 }
             } else {
                 break;
             }
         }
-        
+
         let kind = if has_dot || has_exponent {
             TokenKind::Float
         } else {
             TokenKind::Integer
         };
-        
+
         Ok(Token::new(kind, value, (start_line, start_col)))
     }
 
@@ -744,10 +930,17 @@ impl Lexer {
         }
 
         if !found_closing {
-            return Err(format!("Unterminated raw string literal at line {}, column {}", start_line, start_col));
+            return Err(format!(
+                "Unterminated raw string literal at line {}, column {}",
+                start_line, start_col
+            ));
         }
 
-        Ok(Token::new(TokenKind::String, value, (start_line, start_col)))
+        Ok(Token::new(
+            TokenKind::String,
+            value,
+            (start_line, start_col),
+        ))
     }
 
     /// Read a multiline string literal: """..."""
@@ -780,15 +973,26 @@ impl Lexer {
         }
 
         if !found_closing {
-            return Err(format!("Unterminated multiline string literal at line {}, column {}", start_line, start_col));
+            return Err(format!(
+                "Unterminated multiline string literal at line {}, column {}",
+                start_line, start_col
+            ));
         }
 
         // Multiline strings may contain unescaped { for interpolation
         let has_interpolation = value.contains('{');
         if has_interpolation {
-            Ok(Token::new(TokenKind::InterpolatedString, value, (start_line, start_col)))
+            Ok(Token::new(
+                TokenKind::InterpolatedString,
+                value,
+                (start_line, start_col),
+            ))
         } else {
-            Ok(Token::new(TokenKind::String, value, (start_line, start_col)))
+            Ok(Token::new(
+                TokenKind::String,
+                value,
+                (start_line, start_col),
+            ))
         }
     }
 
@@ -796,7 +1000,7 @@ impl Lexer {
         let start_line = self.line;
         let start_col = self.column;
         let mut value = String::new();
-        
+
         while self.position < self.source.len() {
             let remaining = &self.source[self.position..];
             if let Some(ch) = remaining.chars().next() {
@@ -810,14 +1014,13 @@ impl Lexer {
                 break;
             }
         }
-        
+
         let kind = if is_keyword(&value) {
             TokenKind::Keyword
         } else {
             TokenKind::Identifier
         };
-        
+
         Ok(Token::new(kind, value, (start_line, start_col)))
     }
 }
-

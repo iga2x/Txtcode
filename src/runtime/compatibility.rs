@@ -1,4 +1,4 @@
-use crate::parser::ast::{Program, Statement, Expression, Span};
+use crate::parser::ast::{Expression, Program, Span, Statement};
 use crate::runtime::errors::RuntimeError;
 use crate::tools::logger::log_warn;
 use std::collections::HashMap;
@@ -13,7 +13,11 @@ pub struct Version {
 
 impl Version {
     pub fn new(major: u32, minor: u32, patch: u32) -> Self {
-        Self { major, minor, patch }
+        Self {
+            major,
+            minor,
+            patch,
+        }
     }
 
     pub fn from_string(s: &str) -> Result<Self, String> {
@@ -28,10 +32,6 @@ impl Version {
         })
     }
 
-    pub fn to_string(&self) -> String {
-        format!("{}.{}.{}", self.major, self.minor, self.patch)
-    }
-
     /// Current runtime version
     pub fn current() -> Self {
         Self::new(0, 2, 0)
@@ -41,23 +41,23 @@ impl Version {
     pub fn is_compatible_with(&self, other: &Self) -> CompatibilityResult {
         if self.major != other.major {
             CompatibilityResult::Incompatible {
-                reason: format!(
-                    "Major version mismatch: {} vs {}",
-                    self.major, other.major
-                ),
+                reason: format!("Major version mismatch: {} vs {}", self.major, other.major),
             }
         } else if self.minor > other.minor {
             CompatibilityResult::BackwardCompatible
         } else if self.minor < other.minor {
             CompatibilityResult::Incompatible {
-                reason: format!(
-                    "Minor version too old: {} < {}",
-                    other.minor, self.minor
-                ),
+                reason: format!("Minor version too old: {} < {}", other.minor, self.minor),
             }
         } else {
             CompatibilityResult::FullyCompatible
         }
+    }
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
@@ -97,19 +97,19 @@ impl FeatureFlags {
     /// Create feature flags from module metadata
     pub fn from_metadata(metadata: &HashMap<String, String>) -> Self {
         let mut flags = Self::default();
-        
+
         if let Some(v) = metadata.get("version") {
             flags.module_version = Version::from_string(v).ok();
         }
-        
+
         if let Some(v) = metadata.get("enable_new_permission_system") {
             flags.enable_new_permission_system = v == "true";
         }
-        
+
         if let Some(v) = metadata.get("legacy_return_syntax") {
             flags.legacy_return_syntax = v == "true";
         }
-        
+
         flags
     }
 }
@@ -126,6 +126,12 @@ pub struct MigrationMetadata {
 pub struct CompatibilityLayer {
     current_version: Version,
     pub(crate) strict_mode: bool, // If true, errors on deprecated features instead of warning
+}
+
+impl Default for CompatibilityLayer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CompatibilityLayer {
@@ -152,9 +158,13 @@ impl CompatibilityLayer {
     }
 
     /// Migrate AST from older version to current version
-    pub fn migrate_ast(&self, mut program: Program, source_version: Option<Version>) -> Result<Program, RuntimeError> {
+    pub fn migrate_ast(
+        &self,
+        mut program: Program,
+        source_version: Option<Version>,
+    ) -> Result<Program, RuntimeError> {
         let source_version = source_version.unwrap_or_else(|| Version::new(0, 1, 0));
-        
+
         // Check compatibility
         match self.current_version.is_compatible_with(&source_version) {
             CompatibilityResult::FullyCompatible => {
@@ -164,7 +174,7 @@ impl CompatibilityLayer {
             CompatibilityResult::Incompatible { reason } => {
                 return Err(RuntimeError::new(format!(
                     "Version incompatibility: {}. Source version: {}, Runtime version: {}",
-                    reason, source_version.to_string(), self.current_version.to_string()
+                    reason, source_version, self.current_version
                 )));
             }
             CompatibilityResult::BackwardCompatible => {
@@ -183,10 +193,14 @@ impl CompatibilityLayer {
     }
 
     /// Migrate AST for major version changes
-    fn migrate_major_version(&self, program: Program, from_version: &Version) -> Result<Program, RuntimeError> {
+    fn migrate_major_version(
+        &self,
+        program: Program,
+        from_version: &Version,
+    ) -> Result<Program, RuntimeError> {
         // For major version migrations, apply all breaking changes
-        // Currently: 0.1.0 -> 0.2.0
-        
+        // Handles 0.1.0 → 0.2.0 only; later minor/patch migrations handled in migrate_minor_version
+
         if from_version.major == 0 && from_version.minor == 1 {
             // Migrate from 0.1.0 to 0.2.0
             self.migrate_0_1_to_0_2(program)
@@ -196,7 +210,11 @@ impl CompatibilityLayer {
     }
 
     /// Migrate AST for minor version changes
-    fn migrate_minor_version(&self, program: Program, _from_version: &Version) -> Result<Program, RuntimeError> {
+    fn migrate_minor_version(
+        &self,
+        program: Program,
+        _from_version: &Version,
+    ) -> Result<Program, RuntimeError> {
         // Minor version changes are backward compatible but may need syntax updates
         Ok(program) // Placeholder - add minor version migrations as needed
     }
@@ -208,24 +226,30 @@ impl CompatibilityLayer {
     /// - Path validation changes
     fn migrate_0_1_to_0_2(&self, mut program: Program) -> Result<Program, RuntimeError> {
         let mut migration_notes = Vec::new();
-        
+
         // Transform statements
-        let transformed_statements: Vec<Statement> = program.statements
+        let transformed_statements: Vec<Statement> = program
+            .statements
             .into_iter()
             .map(|stmt| self.transform_statement_0_1_to_0_2(stmt, &mut migration_notes))
             .collect();
-        
+
         program.statements = transformed_statements;
-        
+
         if !migration_notes.is_empty() {
             log_warn(&format!("Migration notes: {}", migration_notes.join(", ")));
         }
-        
+
         Ok(program)
     }
 
     /// Transform a statement for 0.1 -> 0.2 migration
-    fn transform_statement_0_1_to_0_2(&self, stmt: Statement, notes: &mut Vec<String>) -> Statement {
+    #[allow(clippy::only_used_in_recursion)]
+    fn transform_statement_0_1_to_0_2(
+        &self,
+        stmt: Statement,
+        notes: &mut Vec<String>,
+    ) -> Statement {
         match stmt {
             Statement::Return { value, span } => {
                 // Check if this was using legacy "return ->" syntax
@@ -240,31 +264,31 @@ impl CompatibilityLayer {
                 return_type,
                 body,
                 is_async,
-                    intent: _,
-                    ai_hint: _,
-                    allowed_actions: _,
-                    forbidden_actions: _,
+                intent: _,
+                ai_hint: _,
+                allowed_actions: _,
+                forbidden_actions: _,
+                span, // used in struct construction
+            } => {
+                // Transform function body
+                let transformed_body: Vec<Statement> = body
+                    .into_iter()
+                    .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
+                    .collect();
+
+                Statement::FunctionDef {
+                    name,
+                    type_params,
+                    params,
+                    return_type,
+                    body: transformed_body,
+                    is_async,
+                    intent: None,
+                    ai_hint: None,
+                    allowed_actions: Vec::new(),
+                    forbidden_actions: Vec::new(),
                     span, // used in struct construction
-                } => {
-                    // Transform function body
-                    let transformed_body: Vec<Statement> = body
-                        .into_iter()
-                        .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
-                        .collect();
-                    
-                    Statement::FunctionDef {
-                        name,
-                        type_params,
-                        params,
-                        return_type,
-                        body: transformed_body,
-                        is_async,
-                        intent: None,
-                        ai_hint: None,
-                        allowed_actions: Vec::new(),
-                        forbidden_actions: Vec::new(),
-                        span, // used in struct construction
-                    }
+                }
             }
             Statement::If {
                 condition,
@@ -277,7 +301,7 @@ impl CompatibilityLayer {
                     .into_iter()
                     .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                     .collect();
-                
+
                 let transformed_else_ifs: Vec<(Expression, Vec<Statement>)> = else_if_branches
                     .into_iter()
                     .map(|(cond, branch)| {
@@ -288,13 +312,14 @@ impl CompatibilityLayer {
                         (cond, transformed_branch)
                     })
                     .collect();
-                
+
                 let transformed_else = else_branch.map(|branch| {
-                    branch.into_iter()
+                    branch
+                        .into_iter()
                         .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                         .collect()
                 });
-                
+
                 Statement::If {
                     condition,
                     then_branch: transformed_then,
@@ -303,40 +328,76 @@ impl CompatibilityLayer {
                     span, // used in struct construction
                 }
             }
-            Statement::While { condition, body, span } => {
+            Statement::While {
+                condition,
+                body,
+                span,
+            } => {
                 let transformed_body: Vec<Statement> = body
                     .into_iter()
                     .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                     .collect();
-                Statement::While { condition, body: transformed_body, span }
+                Statement::While {
+                    condition,
+                    body: transformed_body,
+                    span,
+                }
             }
-            Statement::For { variable, iterable, body, span } => {
+            Statement::For {
+                variable,
+                iterable,
+                body,
+                span,
+            } => {
                 let transformed_body: Vec<Statement> = body
                     .into_iter()
                     .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                     .collect();
-                Statement::For { variable, iterable, body: transformed_body, span }
+                Statement::For {
+                    variable,
+                    iterable,
+                    body: transformed_body,
+                    span,
+                }
             }
             Statement::Repeat { count, body, span } => {
                 let transformed_body: Vec<Statement> = body
                     .into_iter()
                     .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                     .collect();
-                Statement::Repeat { count, body: transformed_body, span }
+                Statement::Repeat {
+                    count,
+                    body: transformed_body,
+                    span,
+                }
             }
-            Statement::DoWhile { body, condition, span } => { // span used in struct construction
+            Statement::DoWhile {
+                body,
+                condition,
+                span,
+            } => {
+                // span used in struct construction
                 let transformed_body: Vec<Statement> = body
                     .into_iter()
                     .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                     .collect();
-                Statement::DoWhile { body: transformed_body, condition, span }
+                Statement::DoWhile {
+                    body: transformed_body,
+                    condition,
+                    span,
+                }
             }
-            Statement::Try { body, catch, finally, span } => {
+            Statement::Try {
+                body,
+                catch,
+                finally,
+                span,
+            } => {
                 let transformed_body: Vec<Statement> = body
                     .into_iter()
                     .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                     .collect();
-                
+
                 let transformed_catch = catch.map(|(var, catch_body)| {
                     let transformed_catch_body: Vec<Statement> = catch_body
                         .into_iter()
@@ -344,13 +405,14 @@ impl CompatibilityLayer {
                         .collect();
                     (var, transformed_catch_body)
                 });
-                
+
                 let transformed_finally = finally.map(|finally_body| {
-                    finally_body.into_iter()
+                    finally_body
+                        .into_iter()
                         .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                         .collect()
                 });
-                
+
                 Statement::Try {
                     body: transformed_body,
                     catch: transformed_catch,
@@ -358,8 +420,17 @@ impl CompatibilityLayer {
                     span,
                 }
             }
-            Statement::Match { value, cases, default, span } => {
-                let transformed_cases: Vec<(crate::parser::ast::Pattern, Option<Expression>, Vec<Statement>)> = cases
+            Statement::Match {
+                value,
+                cases,
+                default,
+                span,
+            } => {
+                let transformed_cases: Vec<(
+                    crate::parser::ast::Pattern,
+                    Option<Expression>,
+                    Vec<Statement>,
+                )> = cases
                     .into_iter()
                     .map(|(pattern, guard, case_body)| {
                         let transformed_case_body: Vec<Statement> = case_body
@@ -369,13 +440,14 @@ impl CompatibilityLayer {
                         (pattern, guard, transformed_case_body)
                     })
                     .collect();
-                
+
                 let transformed_default = default.map(|default_body| {
-                    default_body.into_iter()
+                    default_body
+                        .into_iter()
                         .map(|s| self.transform_statement_0_1_to_0_2(s, notes))
                         .collect()
                 });
-                
+
                 Statement::Match {
                     value,
                     cases: transformed_cases,
@@ -389,14 +461,19 @@ impl CompatibilityLayer {
     }
 
     /// Detect deprecated features in AST and emit warnings/errors
-    pub fn check_deprecations(&self, program: &Program, flags: &FeatureFlags) -> Vec<DeprecationWarning> {
+    pub fn check_deprecations(
+        &self,
+        program: &Program,
+        flags: &FeatureFlags,
+    ) -> Vec<DeprecationWarning> {
         let mut warnings = Vec::new();
-        
+
         self.check_statement_deprecations(&program.statements, flags, &mut warnings);
-        
+
         warnings
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn check_statement_deprecations(
         &self,
         statements: &[Statement],
@@ -405,7 +482,9 @@ impl CompatibilityLayer {
     ) {
         for stmt in statements {
             match stmt {
-                Statement::FunctionDef { body, span: _span, .. } => {
+                Statement::FunctionDef {
+                    body, span: _span, ..
+                } => {
                     // Check function body for deprecated constructs
                     self.check_statement_deprecations(body, flags, warnings);
                 }
@@ -428,7 +507,7 @@ impl CompatibilityLayer {
         }
 
         let mut permissions = Vec::new();
-        
+
         if exec_allowed_value {
             // Old code had exec_allowed: true
             // In new system, this means: permission → sys.exec (but with restrictions)
@@ -441,7 +520,7 @@ impl CompatibilityLayer {
                 span: Span::default(),
             });
         }
-        
+
         permissions
     }
 }
@@ -460,13 +539,19 @@ impl DeprecationWarning {
     pub fn emit(&self, strict_mode: bool) -> Result<(), RuntimeError> {
         let msg = format!(
             "DEPRECATED: '{}' is deprecated in v{}. Use '{}' instead. {}",
-            self.feature, self.version.to_string(), self.replacement, self.message
+            self.feature, self.version, self.replacement, self.message
         );
-        
+
         if strict_mode {
-            Err(RuntimeError::new(format!("{} (at line {}, column {})", msg, self.span.line, self.span.column)))
+            Err(RuntimeError::new(format!(
+                "{} (at line {}, column {})",
+                msg, self.span.line, self.span.column
+            )))
         } else {
-            log_warn(&format!("{} (at line {}, column {})", msg, self.span.line, self.span.column));
+            log_warn(&format!(
+                "{} (at line {}, column {})",
+                msg, self.span.line, self.span.column
+            ));
             Ok(())
         }
     }
@@ -543,37 +628,42 @@ impl MigrationReport {
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
     }
+}
 
-    pub fn to_string(&self) -> String {
-        let mut report = format!(
-            "Migration Report: {} → {}\n",
-            self.from_version.to_string(),
-            self.to_version.to_string()
-        );
-        
+impl std::fmt::Display for MigrationReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "Migration Report: {} → {}",
+            self.from_version, self.to_version
+        )?;
+
         if !self.transformations_applied.is_empty() {
-            report.push_str("\nTransformations Applied:\n");
+            writeln!(f, "\nTransformations Applied:")?;
             for transformation in &self.transformations_applied {
-                report.push_str(&format!("  - {}\n", transformation));
+                writeln!(f, "  - {}", transformation)?;
             }
         }
-        
+
         if !self.warnings.is_empty() {
-            report.push_str("\nWarnings:\n");
+            writeln!(f, "\nWarnings:")?;
             for warning in &self.warnings {
-                report.push_str(&format!("  - {} (line {}, col {})\n", 
-                    warning.message, warning.span.line, warning.span.column));
+                writeln!(
+                    f,
+                    "  - {} (line {}, col {})",
+                    warning.message, warning.span.line, warning.span.column
+                )?;
             }
         }
-        
+
         if !self.errors.is_empty() {
-            report.push_str("\nErrors:\n");
+            writeln!(f, "\nErrors:")?;
             for error in &self.errors {
-                report.push_str(&format!("  - {}\n", error));
+                writeln!(f, "  - {}", error)?;
             }
         }
-        
-        report
+
+        Ok(())
     }
 }
 
@@ -585,9 +675,15 @@ mod tests {
     fn test_version_compatibility() {
         let v1 = Version::new(0, 1, 0);
         let v2 = Version::new(0, 2, 0);
-        
-        assert!(matches!(v2.is_compatible_with(&v1), CompatibilityResult::BackwardCompatible));
-        assert!(matches!(v1.is_compatible_with(&v2), CompatibilityResult::Incompatible { .. }));
+
+        assert!(matches!(
+            v2.is_compatible_with(&v1),
+            CompatibilityResult::BackwardCompatible
+        ));
+        assert!(matches!(
+            v1.is_compatible_with(&v2),
+            CompatibilityResult::Incompatible { .. }
+        ));
     }
 
     #[test]
@@ -598,4 +694,3 @@ mod tests {
         assert_eq!(v.patch, 0);
     }
 }
-

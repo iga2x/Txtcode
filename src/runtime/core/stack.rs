@@ -13,9 +13,7 @@ pub struct CallStack {
 
 impl CallStack {
     pub fn new() -> Self {
-        Self {
-            frames: Vec::new(),
-        }
+        Self { frames: Vec::new() }
     }
 
     pub fn push(&mut self, frame: CallFrame) {
@@ -49,4 +47,3 @@ impl Default for CallStack {
         Self::new()
     }
 }
-

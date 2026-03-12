@@ -12,7 +12,7 @@ pub fn parse_pipe(parser: &mut Parser) -> Result<Expression, String> {
 
     while parser.check(crate::lexer::token::TokenKind::Pipe) {
         parser.advance(); // consume |>
-        // Right-hand side should be an identifier (function name)
+                          // Right-hand side should be an identifier (function name)
         let func_expr = parse_ternary(parser)?;
         // Desugar: lhs |> func → func(lhs)
         match func_expr {
@@ -95,7 +95,7 @@ pub fn parse_and(parser: &mut Parser) -> Result<Expression, String> {
 
 pub fn parse_null_coalesce(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = parse_equality(parser)?;
-    
+
     while parser.check(crate::lexer::token::TokenKind::NullCoalesce) {
         parser.advance();
         let right = parse_equality(parser)?;
@@ -106,15 +106,16 @@ pub fn parse_null_coalesce(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_equality(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = parse_comparison(parser)?;
-    
-    while parser.check(crate::lexer::token::TokenKind::Equal) || 
-          parser.check(crate::lexer::token::TokenKind::NotEqual) {
+
+    while parser.check(crate::lexer::token::TokenKind::Equal)
+        || parser.check(crate::lexer::token::TokenKind::NotEqual)
+    {
         let op = if parser.check(crate::lexer::token::TokenKind::Equal) {
             parser.advance();
             BinaryOperator::Equal
@@ -125,22 +126,23 @@ pub fn parse_equality(parser: &mut Parser) -> Result<Expression, String> {
         let right = parse_comparison(parser)?;
         expr = Expression::BinaryOp {
             left: Box::new(expr),
-            op: op,
+            op,
             right: Box::new(right),
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_comparison(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = parse_bitwise_or(parser)?;
-    
-    while parser.check(crate::lexer::token::TokenKind::Less) ||
-          parser.check(crate::lexer::token::TokenKind::Greater) ||
-          parser.check(crate::lexer::token::TokenKind::LessEqual) ||
-          parser.check(crate::lexer::token::TokenKind::GreaterEqual) {
+
+    while parser.check(crate::lexer::token::TokenKind::Less)
+        || parser.check(crate::lexer::token::TokenKind::Greater)
+        || parser.check(crate::lexer::token::TokenKind::LessEqual)
+        || parser.check(crate::lexer::token::TokenKind::GreaterEqual)
+    {
         let op = match parser.peek().kind {
             crate::lexer::token::TokenKind::Less => {
                 parser.advance();
@@ -163,18 +165,18 @@ pub fn parse_comparison(parser: &mut Parser) -> Result<Expression, String> {
         let right = parse_bitwise_or(parser)?;
         expr = Expression::BinaryOp {
             left: Box::new(expr),
-            op: op,
+            op,
             right: Box::new(right),
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_bitwise_or(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = parse_bitwise_xor(parser)?;
-    
+
     while parser.check(crate::lexer::token::TokenKind::BitOr) {
         parser.advance();
         let right = parse_bitwise_xor(parser)?;
@@ -185,13 +187,13 @@ pub fn parse_bitwise_or(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_bitwise_xor(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = parse_bitwise_and(parser)?;
-    
+
     while parser.check(crate::lexer::token::TokenKind::BitXor) {
         parser.advance();
         let right = parse_bitwise_and(parser)?;
@@ -202,13 +204,13 @@ pub fn parse_bitwise_xor(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_bitwise_and(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = parse_shift(parser)?;
-    
+
     while parser.check(crate::lexer::token::TokenKind::BitAnd) {
         parser.advance();
         let right = parse_shift(parser)?;
@@ -219,15 +221,16 @@ pub fn parse_bitwise_and(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_shift(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = parse_term(parser)?;
-    
-    while parser.check(crate::lexer::token::TokenKind::LeftShift) ||
-          parser.check(crate::lexer::token::TokenKind::RightShift) {
+
+    while parser.check(crate::lexer::token::TokenKind::LeftShift)
+        || parser.check(crate::lexer::token::TokenKind::RightShift)
+    {
         let op = if parser.check(crate::lexer::token::TokenKind::LeftShift) {
             parser.advance();
             BinaryOperator::LeftShift
@@ -238,20 +241,21 @@ pub fn parse_shift(parser: &mut Parser) -> Result<Expression, String> {
         let right = parse_term(parser)?;
         expr = Expression::BinaryOp {
             left: Box::new(expr),
-            op: op,
+            op,
             right: Box::new(right),
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_term(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = parse_factor(parser)?;
-    
-    while parser.check(crate::lexer::token::TokenKind::Plus) ||
-          parser.check(crate::lexer::token::TokenKind::Minus) {
+
+    while parser.check(crate::lexer::token::TokenKind::Plus)
+        || parser.check(crate::lexer::token::TokenKind::Minus)
+    {
         let op = if parser.check(crate::lexer::token::TokenKind::Plus) {
             parser.advance();
             BinaryOperator::Add
@@ -262,19 +266,19 @@ pub fn parse_term(parser: &mut Parser) -> Result<Expression, String> {
         let right = parse_factor(parser)?;
         expr = Expression::BinaryOp {
             left: Box::new(expr),
-            op: op,
+            op,
             right: Box::new(right),
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_factor(parser: &mut Parser) -> Result<Expression, String> {
     // Power operator has higher precedence and is right-associative
     let mut expr = parse_unary(parser)?;
-    
+
     // Parse power operator (right-associative: 2 ** 3 ** 4 = 2 ** (3 ** 4))
     if parser.check(crate::lexer::token::TokenKind::Power) {
         parser.advance();
@@ -286,11 +290,12 @@ pub fn parse_factor(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         };
     }
-    
+
     // Parse multiplication, division, modulo (left-associative)
-    while parser.check(crate::lexer::token::TokenKind::Star) ||
-          parser.check(crate::lexer::token::TokenKind::Slash) ||
-          parser.check(crate::lexer::token::TokenKind::Percent) {
+    while parser.check(crate::lexer::token::TokenKind::Star)
+        || parser.check(crate::lexer::token::TokenKind::Slash)
+        || parser.check(crate::lexer::token::TokenKind::Percent)
+    {
         let op = match parser.peek().kind {
             crate::lexer::token::TokenKind::Star => {
                 parser.advance();
@@ -309,36 +314,36 @@ pub fn parse_factor(parser: &mut Parser) -> Result<Expression, String> {
         let right = parse_unary(parser)?;
         expr = Expression::BinaryOp {
             left: Box::new(expr),
-            op: op,
+            op,
             right: Box::new(right),
             span: Span::default(),
         };
     }
-    
+
     Ok(expr)
 }
 
 pub fn parse_unary(parser: &mut Parser) -> Result<Expression, String> {
     use crate::parser::utils::token_span_to_ast_span;
-    
+
     // Parse await expression: await -> expression
     if parser.check_keyword("await") {
         let token = parser.peek().clone();
         let span = token_span_to_ast_span(&token);
         parser.advance();
-        
+
         // Optional arrow after await
         if parser.check(crate::lexer::token::TokenKind::Arrow) {
             parser.advance();
         }
-        
+
         let expr = parse_unary(parser)?; // Recursive to allow await await (though unlikely)
         return Ok(Expression::Await {
             expression: Box::new(expr),
             span,
         });
     }
-    
+
     if parser.check_keyword("not") {
         parser.advance();
         let expr = parse_unary(parser)?;
@@ -348,7 +353,7 @@ pub fn parse_unary(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         });
     }
-    
+
     if parser.check(crate::lexer::token::TokenKind::Minus) {
         parser.advance();
         let expr = parse_unary(parser)?;
@@ -358,7 +363,7 @@ pub fn parse_unary(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         });
     }
-    
+
     if parser.check(crate::lexer::token::TokenKind::BitNot) {
         parser.advance();
         let expr = parse_unary(parser)?;
@@ -368,7 +373,7 @@ pub fn parse_unary(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         });
     }
-    
+
     // Parse increment/decrement (prefix: ++x, --x)
     if parser.check(crate::lexer::token::TokenKind::Increment) {
         parser.advance();
@@ -379,7 +384,7 @@ pub fn parse_unary(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         });
     }
-    
+
     if parser.check(crate::lexer::token::TokenKind::Decrement) {
         parser.advance();
         let expr = parse_unary(parser)?;
@@ -389,7 +394,6 @@ pub fn parse_unary(parser: &mut Parser) -> Result<Expression, String> {
             span: Span::default(),
         });
     }
-    
+
     crate::parser::expressions::calls::parse_call(parser)
 }
-

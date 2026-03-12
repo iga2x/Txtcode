@@ -1,12 +1,12 @@
-use crate::parser::ast::*;
 use crate::compiler::bytecode::Bytecode;
+use crate::parser::ast::*;
 
 /// Code optimizer
-/// 
+///
 /// **SIMPLIFIED**: Optimizer focuses on essential optimizations only:
 /// - Constant folding (evaluate constant expressions at compile time)
 /// - Dead code elimination (remove unreachable code)
-/// 
+///
 /// Aggressive optimizations (function inlining, loop optimization, constant propagation)
 /// are removed to keep the codebase focused on cyber orchestration use cases.
 pub struct Optimizer {
@@ -16,8 +16,8 @@ pub struct Optimizer {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OptimizationLevel {
     None,
-    Basic,  // Constant folding + dead code elimination
-    // Aggressive removed - not needed for cyber orchestration use case
+    Basic, // Constant folding + dead code elimination
+           // Aggressive removed - not needed for cyber orchestration use case
 }
 
 impl Optimizer {
@@ -41,14 +41,14 @@ impl Optimizer {
     /// Optimize bytecode
     pub fn optimize_bytecode(&self, bytecode: &Bytecode) -> Result<Bytecode, String> {
         let mut optimized = bytecode.clone();
-        
+
         match self.optimization_level {
             OptimizationLevel::None => {}
             OptimizationLevel::Basic => {
                 self.peephole_optimization(&mut optimized);
             }
         }
-        
+
         Ok(optimized)
     }
 
@@ -67,13 +67,21 @@ impl Optimizer {
             Statement::CompoundAssignment { value, .. } => {
                 *value = self.fold_constants_expression(value);
             }
-            Statement::Assert { condition, message, .. } => {
+            Statement::Assert {
+                condition, message, ..
+            } => {
                 *condition = self.fold_constants_expression(condition);
                 if let Some(msg) = message {
                     *msg = self.fold_constants_expression(msg);
                 }
             }
-            Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
+            Statement::If {
+                condition,
+                then_branch,
+                else_if_branches,
+                else_branch,
+                ..
+            } => {
                 *condition = self.fold_constants_expression(condition);
                 for stmt in then_branch {
                     self.fold_constants_statement(stmt);
@@ -90,13 +98,17 @@ impl Optimizer {
                     }
                 }
             }
-            Statement::While { condition, body, .. } => {
+            Statement::While {
+                condition, body, ..
+            } => {
                 *condition = self.fold_constants_expression(condition);
                 for stmt in body {
                     self.fold_constants_statement(stmt);
                 }
             }
-            Statement::DoWhile { body, condition, .. } => {
+            Statement::DoWhile {
+                body, condition, ..
+            } => {
                 for stmt in body {
                     self.fold_constants_statement(stmt);
                 }
@@ -114,10 +126,10 @@ impl Optimizer {
                     self.fold_constants_statement(stmt);
                 }
             }
-            Statement::Return { value, .. } => {
-                if let Some(expr) = value {
-                    *expr = self.fold_constants_expression(expr);
-                }
+            Statement::Return {
+                value: Some(expr), ..
+            } => {
+                *expr = self.fold_constants_expression(expr);
             }
             Statement::Expression(expr) => {
                 *expr = self.fold_constants_expression(expr);
@@ -128,12 +140,19 @@ impl Optimizer {
 
     fn fold_constants_expression(&self, expr: &Expression) -> Expression {
         match expr {
-            Expression::BinaryOp { left, op, right, span } => {
+            Expression::BinaryOp {
+                left,
+                op,
+                right,
+                span,
+            } => {
                 let left_folded = self.fold_constants_expression(left);
                 let right_folded = self.fold_constants_expression(right);
 
                 // Try to evaluate if both are literals
-                if let (Expression::Literal(left_lit), Expression::Literal(right_lit)) = (&left_folded, &right_folded) {
+                if let (Expression::Literal(left_lit), Expression::Literal(right_lit)) =
+                    (&left_folded, &right_folded)
+                {
                     if let Some(result) = self.evaluate_binary_op(left_lit, op, right_lit) {
                         return Expression::Literal(result);
                     }
@@ -141,14 +160,14 @@ impl Optimizer {
 
                 Expression::BinaryOp {
                     left: Box::new(left_folded),
-                    op: op.clone(),
+                    op: *op,
                     right: Box::new(right_folded),
                     span: span.clone(),
                 }
             }
             Expression::UnaryOp { op, operand, span } => {
                 let operand_folded = self.fold_constants_expression(operand);
-                
+
                 if let Expression::Literal(lit) = &operand_folded {
                     if let Some(result) = self.evaluate_unary_op(op, lit) {
                         return Expression::Literal(result);
@@ -156,58 +175,105 @@ impl Optimizer {
                 }
 
                 Expression::UnaryOp {
-                    op: op.clone(),
+                    op: *op,
                     operand: Box::new(operand_folded),
                     span: span.clone(),
                 }
             }
-            Expression::Array { elements, span } => {
-                Expression::Array {
-                    elements: elements.iter().map(|e| self.fold_constants_expression(e)).collect(),
-                    span: span.clone(),
-                }
-            }
-            Expression::Map { entries, span } => {
-                Expression::Map {
-                    entries: entries.iter().map(|(k, v)| (k.clone(), self.fold_constants_expression(v))).collect(),
-                    span: span.clone(),
-                }
-            }
+            Expression::Array { elements, span } => Expression::Array {
+                elements: elements
+                    .iter()
+                    .map(|e| self.fold_constants_expression(e))
+                    .collect(),
+                span: span.clone(),
+            },
+            Expression::Map { entries, span } => Expression::Map {
+                entries: entries
+                    .iter()
+                    .map(|(k, v)| (k.clone(), self.fold_constants_expression(v)))
+                    .collect(),
+                span: span.clone(),
+            },
             _ => expr.clone(),
         }
     }
 
-    fn evaluate_binary_op(&self, left: &Literal, op: &BinaryOperator, right: &Literal) -> Option<Literal> {
+    fn evaluate_binary_op(
+        &self,
+        left: &Literal,
+        op: &BinaryOperator,
+        right: &Literal,
+    ) -> Option<Literal> {
         match (left, op, right) {
-            (Literal::Integer(a), BinaryOperator::Add, Literal::Integer(b)) => Some(Literal::Integer(a + b)),
-            (Literal::Integer(a), BinaryOperator::Subtract, Literal::Integer(b)) => Some(Literal::Integer(a - b)),
-            (Literal::Integer(a), BinaryOperator::Multiply, Literal::Integer(b)) => Some(Literal::Integer(a * b)),
+            (Literal::Integer(a), BinaryOperator::Add, Literal::Integer(b)) => {
+                Some(Literal::Integer(a + b))
+            }
+            (Literal::Integer(a), BinaryOperator::Subtract, Literal::Integer(b)) => {
+                Some(Literal::Integer(a - b))
+            }
+            (Literal::Integer(a), BinaryOperator::Multiply, Literal::Integer(b)) => {
+                Some(Literal::Integer(a * b))
+            }
             (Literal::Integer(a), BinaryOperator::Divide, Literal::Integer(b)) => {
-                if *b != 0 { Some(Literal::Integer(a / b)) } else { None }
+                if *b != 0 {
+                    Some(Literal::Integer(a / b))
+                } else {
+                    None
+                }
             }
             (Literal::Integer(a), BinaryOperator::Modulo, Literal::Integer(b)) => {
-                if *b != 0 { Some(Literal::Integer(a % b)) } else { None }
+                if *b != 0 {
+                    Some(Literal::Integer(a % b))
+                } else {
+                    None
+                }
             }
             (Literal::Integer(a), BinaryOperator::Power, Literal::Integer(b)) => {
                 Some(Literal::Integer((*a as f64).powi(*b as i32) as i64))
             }
-            (Literal::Integer(a), BinaryOperator::Equal, Literal::Integer(b)) => Some(Literal::Boolean(a == b)),
-            (Literal::Integer(a), BinaryOperator::NotEqual, Literal::Integer(b)) => Some(Literal::Boolean(a != b)),
-            (Literal::Integer(a), BinaryOperator::Less, Literal::Integer(b)) => Some(Literal::Boolean(a < b)),
-            (Literal::Integer(a), BinaryOperator::Greater, Literal::Integer(b)) => Some(Literal::Boolean(a > b)),
-            (Literal::Integer(a), BinaryOperator::LessEqual, Literal::Integer(b)) => Some(Literal::Boolean(a <= b)),
-            (Literal::Integer(a), BinaryOperator::GreaterEqual, Literal::Integer(b)) => Some(Literal::Boolean(a >= b)),
-            (Literal::Float(a), BinaryOperator::Add, Literal::Float(b)) => Some(Literal::Float(a + b)),
-            (Literal::Float(a), BinaryOperator::Subtract, Literal::Float(b)) => Some(Literal::Float(a - b)),
-            (Literal::Float(a), BinaryOperator::Multiply, Literal::Float(b)) => Some(Literal::Float(a * b)),
+            (Literal::Integer(a), BinaryOperator::Equal, Literal::Integer(b)) => {
+                Some(Literal::Boolean(a == b))
+            }
+            (Literal::Integer(a), BinaryOperator::NotEqual, Literal::Integer(b)) => {
+                Some(Literal::Boolean(a != b))
+            }
+            (Literal::Integer(a), BinaryOperator::Less, Literal::Integer(b)) => {
+                Some(Literal::Boolean(a < b))
+            }
+            (Literal::Integer(a), BinaryOperator::Greater, Literal::Integer(b)) => {
+                Some(Literal::Boolean(a > b))
+            }
+            (Literal::Integer(a), BinaryOperator::LessEqual, Literal::Integer(b)) => {
+                Some(Literal::Boolean(a <= b))
+            }
+            (Literal::Integer(a), BinaryOperator::GreaterEqual, Literal::Integer(b)) => {
+                Some(Literal::Boolean(a >= b))
+            }
+            (Literal::Float(a), BinaryOperator::Add, Literal::Float(b)) => {
+                Some(Literal::Float(a + b))
+            }
+            (Literal::Float(a), BinaryOperator::Subtract, Literal::Float(b)) => {
+                Some(Literal::Float(a - b))
+            }
+            (Literal::Float(a), BinaryOperator::Multiply, Literal::Float(b)) => {
+                Some(Literal::Float(a * b))
+            }
             (Literal::Float(a), BinaryOperator::Divide, Literal::Float(b)) => {
-                if *b != 0.0 { Some(Literal::Float(a / b)) } else { None }
+                if *b != 0.0 {
+                    Some(Literal::Float(a / b))
+                } else {
+                    None
+                }
             }
             (Literal::String(a), BinaryOperator::Add, Literal::String(b)) => {
                 Some(Literal::String(format!("{}{}", a, b)))
             }
-            (Literal::Boolean(a), BinaryOperator::And, Literal::Boolean(b)) => Some(Literal::Boolean(*a && *b)),
-            (Literal::Boolean(a), BinaryOperator::Or, Literal::Boolean(b)) => Some(Literal::Boolean(*a || *b)),
+            (Literal::Boolean(a), BinaryOperator::And, Literal::Boolean(b)) => {
+                Some(Literal::Boolean(*a && *b))
+            }
+            (Literal::Boolean(a), BinaryOperator::Or, Literal::Boolean(b)) => {
+                Some(Literal::Boolean(*a || *b))
+            }
             _ => None,
         }
     }
@@ -231,7 +297,11 @@ impl Optimizer {
 
     fn eliminate_dead_code_statement(&self, statement: &mut Statement) {
         match statement {
-            Statement::If { then_branch, else_branch, .. } => {
+            Statement::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 // Remove unreachable code after return in branches
                 self.remove_after_return(then_branch);
                 if let Some(else_body) = else_branch {
@@ -257,12 +327,15 @@ impl Optimizer {
     fn remove_after_return(&self, statements: &mut Vec<Statement>) {
         let mut return_index = None;
         for (i, stmt) in statements.iter().enumerate() {
-            if matches!(stmt, Statement::Return { .. } | Statement::Break { .. } | Statement::Continue { .. }) {
+            if matches!(
+                stmt,
+                Statement::Return { .. } | Statement::Break { .. } | Statement::Continue { .. }
+            ) {
                 return_index = Some(i);
                 break;
             }
         }
-        
+
         if let Some(index) = return_index {
             statements.truncate(index + 1);
         }
@@ -274,10 +347,12 @@ impl Optimizer {
     /// Peephole optimization on bytecode
     fn peephole_optimization(&self, bytecode: &mut Bytecode) {
         use crate::compiler::bytecode::Instruction;
-        
+
         // Remove consecutive Nop instructions
-        bytecode.instructions.retain(|inst| !matches!(inst, Instruction::Nop));
-        
+        bytecode
+            .instructions
+            .retain(|inst| !matches!(inst, Instruction::Nop));
+
         // Optimize: PushConstant 0; Add -> (no change needed, handled at runtime)
         // Optimize: PushConstant 1; Multiply -> (no change needed)
         // More peephole optimizations can be added here

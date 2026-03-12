@@ -1603,6 +1603,36 @@ impl CoreLib {
                 }
             }
 
+            "int" => match args.first() {
+                Some(Value::Integer(i)) => Ok(Value::Integer(*i)),
+                Some(Value::Float(f)) => Ok(Value::Integer(*f as i64)),
+                Some(Value::Boolean(b)) => Ok(Value::Integer(if *b { 1 } else { 0 })),
+                Some(Value::String(s)) => s.trim().parse::<i64>().map(Value::Integer).map_err(|_| {
+                    RuntimeError::new(format!("Cannot convert string to int: {:?}", s))
+                }),
+                _ => Err(RuntimeError::new("int() requires one argument".to_string())),
+            },
+            "float" => match args.first() {
+                Some(Value::Float(f)) => Ok(Value::Float(*f)),
+                Some(Value::Integer(i)) => Ok(Value::Float(*i as f64)),
+                Some(Value::Boolean(b)) => Ok(Value::Float(if *b { 1.0 } else { 0.0 })),
+                Some(Value::String(s)) => s.trim().parse::<f64>().map(Value::Float).map_err(|_| {
+                    RuntimeError::new(format!("Cannot convert string to float: {:?}", s))
+                }),
+                _ => Err(RuntimeError::new("float() requires one argument".to_string())),
+            },
+            "string" => match args.first() {
+                Some(v) => Ok(Value::String(v.to_string())),
+                None => Err(RuntimeError::new("string() requires one argument".to_string())),
+            },
+            "bool" => match args.first() {
+                Some(Value::Boolean(b)) => Ok(Value::Boolean(*b)),
+                Some(Value::Integer(i)) => Ok(Value::Boolean(*i != 0)),
+                Some(Value::Null) => Ok(Value::Boolean(false)),
+                Some(Value::String(s)) => Ok(Value::Boolean(!s.is_empty())),
+                Some(_) => Ok(Value::Boolean(true)),
+                None => Err(RuntimeError::new("bool() requires one argument".to_string())),
+            },
             _ => Err(RuntimeError::new(format!(
                 "Unknown core function: {}",
                 name

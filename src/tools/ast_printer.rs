@@ -1,13 +1,18 @@
+use crate::parser::ast::common::{BinaryOperator, InterpolatedSegment, Literal, UnaryOperator};
 /// AST-to-source printer for Txt-code
 ///
 /// Converts a parsed Program back into Txt-code source text.
 /// Used by the migration framework to write migrated AST back to disk.
-
 use crate::parser::ast::*;
-use crate::parser::ast::common::{Literal, BinaryOperator, UnaryOperator, InterpolatedSegment};
 
 pub struct AstPrinter {
     indent: usize,
+}
+
+impl Default for AstPrinter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AstPrinter {
@@ -33,18 +38,48 @@ impl AstPrinter {
         let ind = self.ind();
         match stmt {
             Statement::Assignment { pattern, value, .. } => {
-                format!("{}store → {} → {}", ind, self.print_pattern(pattern), self.print_expr(value))
+                format!(
+                    "{}store → {} → {}",
+                    ind,
+                    self.print_pattern(pattern),
+                    self.print_expr(value)
+                )
             }
-            Statement::IndexAssignment { target, index, value, .. } => {
-                format!("{}store → {}[{}] → {}",
-                    ind, self.print_expr(target), self.print_expr(index), self.print_expr(value))
+            Statement::IndexAssignment {
+                target,
+                index,
+                value,
+                ..
+            } => {
+                format!(
+                    "{}store → {}[{}] → {}",
+                    ind,
+                    self.print_expr(target),
+                    self.print_expr(index),
+                    self.print_expr(value)
+                )
             }
-            Statement::CompoundAssignment { name, op, value, .. } => {
-                format!("{}store → {} → {} {} {}",
-                    ind, name, name, self.print_binop(op), self.print_expr(value))
+            Statement::CompoundAssignment {
+                name, op, value, ..
+            } => {
+                format!(
+                    "{}store → {} → {} {} {}",
+                    ind,
+                    name,
+                    name,
+                    self.print_binop(op),
+                    self.print_expr(value)
+                )
             }
-            Statement::FunctionDef { name, params, body, return_type, .. } => {
-                let params_str = params.iter()
+            Statement::FunctionDef {
+                name,
+                params,
+                body,
+                return_type,
+                ..
+            } => {
+                let params_str = params
+                    .iter()
                     .map(|p| {
                         if let Some(ref t) = p.type_annotation {
                             format!("{}: {:?}", p.name, t)
@@ -78,7 +113,13 @@ impl AstPrinter {
             }
             Statement::Break { .. } => format!("{}break", ind),
             Statement::Continue { .. } => format!("{}continue", ind),
-            Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
+            Statement::If {
+                condition,
+                then_branch,
+                else_if_branches,
+                else_branch,
+                ..
+            } => {
                 let mut out = format!("{}if → {}\n", ind, self.print_expr(condition));
                 self.indent += 1;
                 for s in then_branch {
@@ -107,7 +148,9 @@ impl AstPrinter {
                 out.push_str(&format!("{}end", ind));
                 out
             }
-            Statement::While { condition, body, .. } => {
+            Statement::While {
+                condition, body, ..
+            } => {
                 let mut out = format!("{}while → {}\n", ind, self.print_expr(condition));
                 self.indent += 1;
                 for s in body {
@@ -118,7 +161,9 @@ impl AstPrinter {
                 out.push_str(&format!("{}end", ind));
                 out
             }
-            Statement::DoWhile { body, condition, .. } => {
+            Statement::DoWhile {
+                body, condition, ..
+            } => {
                 let mut out = format!("{}do\n", ind);
                 self.indent += 1;
                 for s in body {
@@ -130,8 +175,18 @@ impl AstPrinter {
                 out.push_str(&format!("{}end", ind));
                 out
             }
-            Statement::For { variable, iterable, body, .. } => {
-                let mut out = format!("{}for → {} in {}\n", ind, variable, self.print_expr(iterable));
+            Statement::For {
+                variable,
+                iterable,
+                body,
+                ..
+            } => {
+                let mut out = format!(
+                    "{}for → {} in {}\n",
+                    ind,
+                    variable,
+                    self.print_expr(iterable)
+                );
                 self.indent += 1;
                 for s in body {
                     out.push_str(&self.print_statement(s));
@@ -155,17 +210,34 @@ impl AstPrinter {
             Statement::Expression(expr) => {
                 format!("{}{}", ind, self.print_expr(expr))
             }
-            Statement::Assert { condition, message, .. } => {
+            Statement::Assert {
+                condition, message, ..
+            } => {
                 if let Some(msg) = message {
-                    format!("{}assert → {} → {}", ind, self.print_expr(condition), self.print_expr(msg))
+                    format!(
+                        "{}assert → {} → {}",
+                        ind,
+                        self.print_expr(condition),
+                        self.print_expr(msg)
+                    )
                 } else {
                     format!("{}assert → {}", ind, self.print_expr(condition))
                 }
             }
-            Statement::Import { modules, from, alias, .. } => {
+            Statement::Import {
+                modules,
+                from,
+                alias,
+                ..
+            } => {
                 let mut out = String::new();
                 if let Some(f) = from {
-                    out.push_str(&format!("{}import → {} from {}", ind, modules.join(", "), f));
+                    out.push_str(&format!(
+                        "{}import → {} from {}",
+                        ind,
+                        modules.join(", "),
+                        f
+                    ));
                 } else {
                     out.push_str(&format!("{}import → {}", ind, modules.join(", ")));
                 }
@@ -181,7 +253,8 @@ impl AstPrinter {
                 format!("{}const → {} → {}", ind, name, self.print_expr(value))
             }
             Statement::Enum { name, variants, .. } => {
-                let vars = variants.iter()
+                let vars = variants
+                    .iter()
                     .map(|(v, val)| {
                         if let Some(e) = val {
                             format!("{} = {}", v, self.print_expr(e))
@@ -194,13 +267,19 @@ impl AstPrinter {
                 format!("{}enum → {} → {{{}}}", ind, name, vars)
             }
             Statement::Struct { name, fields, .. } => {
-                let fields_str = fields.iter()
+                let fields_str = fields
+                    .iter()
                     .map(|(fname, ftype)| format!("{}: {:?}", fname, ftype))
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{}struct {}({})", ind, name, fields_str)
             }
-            Statement::Match { value, cases, default, .. } => {
+            Statement::Match {
+                value,
+                cases,
+                default,
+                ..
+            } => {
                 let mut out = format!("{}match → {}\n", ind, self.print_expr(value));
                 self.indent += 1;
                 for (pat, guard, body) in cases {
@@ -231,7 +310,12 @@ impl AstPrinter {
                 out.push_str(&format!("{}end", ind));
                 out
             }
-            Statement::Try { body, catch, finally, .. } => {
+            Statement::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => {
                 let mut out = format!("{}try\n", ind);
                 self.indent += 1;
                 for s in body {
@@ -260,7 +344,12 @@ impl AstPrinter {
                 out.push_str(&format!("{}end", ind));
                 out
             }
-            Statement::Permission { action, resource, scope, .. } => {
+            Statement::Permission {
+                action,
+                resource,
+                scope,
+                ..
+            } => {
                 if let Some(s) = scope {
                     format!("{}permission → {} → {} {}", ind, action, resource, s)
                 } else {
@@ -280,8 +369,15 @@ impl AstPrinter {
         match expr {
             Expression::Literal(lit) => self.print_literal(lit),
             Expression::Identifier(name) => name.clone(),
-            Expression::BinaryOp { left, op, right, .. } => {
-                format!("{} {} {}", self.print_expr(left), self.print_binop(op), self.print_expr(right))
+            Expression::BinaryOp {
+                left, op, right, ..
+            } => {
+                format!(
+                    "{} {} {}",
+                    self.print_expr(left),
+                    self.print_binop(op),
+                    self.print_expr(right)
+                )
             }
             Expression::UnaryOp { op, operand, .. } => {
                 let op_str = match op {
@@ -293,27 +389,51 @@ impl AstPrinter {
                 };
                 format!("{}{}", op_str, self.print_expr(operand))
             }
-            Expression::FunctionCall { name, arguments, .. } => {
-                let args = arguments.iter().map(|a| self.print_expr(a)).collect::<Vec<_>>().join(", ");
+            Expression::FunctionCall {
+                name, arguments, ..
+            } => {
+                let args = arguments
+                    .iter()
+                    .map(|a| self.print_expr(a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("{}({})", name, args)
             }
-            Expression::MethodCall { object, method, arguments, .. } => {
-                let args = arguments.iter().map(|a| self.print_expr(a)).collect::<Vec<_>>().join(", ");
+            Expression::MethodCall {
+                object,
+                method,
+                arguments,
+                ..
+            } => {
+                let args = arguments
+                    .iter()
+                    .map(|a| self.print_expr(a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("{}.{}({})", self.print_expr(object), method, args)
             }
             Expression::Array { elements, .. } => {
-                let elems = elements.iter().map(|e| self.print_expr(e)).collect::<Vec<_>>().join(", ");
+                let elems = elements
+                    .iter()
+                    .map(|e| self.print_expr(e))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("[{}]", elems)
             }
             Expression::Map { entries, .. } => {
-                let pairs_str = entries.iter()
+                let pairs_str = entries
+                    .iter()
                     .map(|(k, v)| format!("{}: {}", self.print_expr(k), self.print_expr(v)))
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{{{}}}", pairs_str)
             }
             Expression::Set { elements, .. } => {
-                let elems = elements.iter().map(|e| self.print_expr(e)).collect::<Vec<_>>().join(", ");
+                let elems = elements
+                    .iter()
+                    .map(|e| self.print_expr(e))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("{{{}}}", elems)
             }
             Expression::Index { target, index, .. } => {
@@ -325,27 +445,49 @@ impl AstPrinter {
             Expression::OptionalMember { target, name, .. } => {
                 format!("{}?.{}", self.print_expr(target), name)
             }
-            Expression::OptionalCall { target, arguments, .. } => {
-                let args = arguments.iter().map(|a| self.print_expr(a)).collect::<Vec<_>>().join(", ");
+            Expression::OptionalCall {
+                target, arguments, ..
+            } => {
+                let args = arguments
+                    .iter()
+                    .map(|a| self.print_expr(a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("{}?.({})", self.print_expr(target), args)
             }
             Expression::OptionalIndex { target, index, .. } => {
                 format!("{}?.[{}]", self.print_expr(target), self.print_expr(index))
             }
-            Expression::Slice { target, start, end, .. } => {
-                let s = start.as_ref().map(|e| self.print_expr(e)).unwrap_or_default();
+            Expression::Slice {
+                target, start, end, ..
+            } => {
+                let s = start
+                    .as_ref()
+                    .map(|e| self.print_expr(e))
+                    .unwrap_or_default();
                 let e = end.as_ref().map(|e| self.print_expr(e)).unwrap_or_default();
                 format!("{}[{}:{}]", self.print_expr(target), s, e)
             }
             Expression::Lambda { params, body, .. } => {
-                let params_str = params.iter().map(|p| p.name.clone()).collect::<Vec<_>>().join(", ");
+                let params_str = params
+                    .iter()
+                    .map(|p| p.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("({}) → {}", params_str, self.print_expr(body))
             }
-            Expression::Ternary { condition, true_expr, false_expr, .. } => {
-                format!("{} ? {} : {}",
+            Expression::Ternary {
+                condition,
+                true_expr,
+                false_expr,
+                ..
+            } => {
+                format!(
+                    "{} ? {} : {}",
                     self.print_expr(condition),
                     self.print_expr(true_expr),
-                    self.print_expr(false_expr))
+                    self.print_expr(false_expr)
+                )
             }
             Expression::Await { expression, .. } => {
                 format!("await {}", self.print_expr(expression))
@@ -366,7 +508,8 @@ impl AstPrinter {
                 s
             }
             Expression::StructLiteral { name, fields, .. } => {
-                let fields_str = fields.iter()
+                let fields_str = fields
+                    .iter()
                     .map(|(k, v)| format!("{}: {}", k, self.print_expr(v)))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -420,11 +563,16 @@ impl AstPrinter {
             Pattern::Identifier(name) => name.clone(),
             Pattern::Ignore => "_".to_string(),
             Pattern::Array(parts) => {
-                let p = parts.iter().map(|p| self.print_pattern(p)).collect::<Vec<_>>().join(", ");
+                let p = parts
+                    .iter()
+                    .map(|p| self.print_pattern(p))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("[{}]", p)
             }
             Pattern::Struct { fields, rest } => {
-                let mut parts: Vec<String> = fields.iter()
+                let mut parts: Vec<String> = fields
+                    .iter()
                     .map(|(k, v)| format!("{}: {}", k, self.print_pattern(v)))
                     .collect();
                 if let Some(r) = rest {
@@ -433,7 +581,11 @@ impl AstPrinter {
                 format!("{{{}}}", parts.join(", "))
             }
             Pattern::Constructor { type_name, args } => {
-                let a = args.iter().map(|p| self.print_pattern(p)).collect::<Vec<_>>().join(", ");
+                let a = args
+                    .iter()
+                    .map(|p| self.print_pattern(p))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("{}({})", type_name, a)
             }
         }
@@ -508,16 +660,25 @@ mod tests {
         let mut printer = AstPrinter::new();
         let stmt = Statement::If {
             condition: Expression::Literal(Literal::Boolean(true)),
-            then_branch: vec![
-                Statement::Return { value: Some(Expression::Literal(Literal::Integer(1))), span: Span::default() }
-            ],
+            then_branch: vec![Statement::Return {
+                value: Some(Expression::Literal(Literal::Integer(1))),
+                span: Span::default(),
+            }],
             else_if_branches: vec![],
             else_branch: None,
             span: Span::default(),
         };
         let out = printer.print_statement(&stmt);
-        assert!(out.contains("if → true"), "expected 'if → true' in: {}", out);
-        assert!(out.contains("return → 1"), "expected 'return → 1' in: {}", out);
+        assert!(
+            out.contains("if → true"),
+            "expected 'if → true' in: {}",
+            out
+        );
+        assert!(
+            out.contains("return → 1"),
+            "expected 'return → 1' in: {}",
+            out
+        );
         assert!(out.contains("end"), "expected 'end' in: {}", out);
     }
 

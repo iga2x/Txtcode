@@ -1,4 +1,4 @@
-use crate::runtime::{Value, RuntimeError};
+use crate::runtime::{RuntimeError, Value};
 use chrono::{DateTime, Local, TimeZone};
 
 /// Time standard library functions
@@ -20,24 +20,36 @@ impl TimeLib {
                 } else if let Some(Value::Float(f)) = args.first() {
                     *f as u64
                 } else {
-                    return Err(RuntimeError::new("sleep() requires a number argument (milliseconds)".to_string()));
+                    return Err(RuntimeError::new(
+                        "sleep() requires a number argument (milliseconds)".to_string(),
+                    ));
                 };
                 std::thread::sleep(std::time::Duration::from_millis(ms));
                 Ok(Value::Null)
             }
             "format_time" | "time_format" => {
-                if args.len() < 1 || args.len() > 2 {
-                    return Err(RuntimeError::new("format_time requires 1 or 2 arguments (timestamp, format?)".to_string()));
+                if args.is_empty() || args.len() > 2 {
+                    return Err(RuntimeError::new(
+                        "format_time requires 1 or 2 arguments (timestamp, format?)".to_string(),
+                    ));
                 }
                 let timestamp = match &args[0] {
                     Value::Integer(ts) => *ts,
                     Value::Float(ts) => *ts as i64,
-                    _ => return Err(RuntimeError::new("format_time timestamp must be a number".to_string())),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "format_time timestamp must be a number".to_string(),
+                        ))
+                    }
                 };
                 let format_str = if args.len() == 2 {
                     match &args[1] {
                         Value::String(f) => f.as_str(),
-                        _ => return Err(RuntimeError::new("format_time format must be a string".to_string())),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "format_time format must be a string".to_string(),
+                            ))
+                        }
                     }
                 } else {
                     "%Y-%m-%d %H:%M:%S"
@@ -46,19 +58,32 @@ impl TimeLib {
             }
             "parse_time" | "time_parse" => {
                 if args.len() != 2 {
-                    return Err(RuntimeError::new("parse_time requires 2 arguments (time_string, format)".to_string()));
+                    return Err(RuntimeError::new(
+                        "parse_time requires 2 arguments (time_string, format)".to_string(),
+                    ));
                 }
                 let time_str = match &args[0] {
                     Value::String(s) => s.as_str(),
-                    _ => return Err(RuntimeError::new("parse_time time_string must be a string".to_string())),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "parse_time time_string must be a string".to_string(),
+                        ))
+                    }
                 };
                 let format_str = match &args[1] {
                     Value::String(f) => f.as_str(),
-                    _ => return Err(RuntimeError::new("parse_time format must be a string".to_string())),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "parse_time format must be a string".to_string(),
+                        ))
+                    }
                 };
                 Self::parse_time(time_str, format_str)
             }
-            _ => Err(RuntimeError::new(format!("Unknown time function: {}", name))),
+            _ => Err(RuntimeError::new(format!(
+                "Unknown time function: {}",
+                name
+            ))),
         }
     }
 
@@ -79,4 +104,3 @@ impl TimeLib {
         Ok(Value::Integer(dt.timestamp()))
     }
 }
-

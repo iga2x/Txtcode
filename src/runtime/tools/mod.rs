@@ -1,13 +1,13 @@
 // Tool orchestration interface - safe wrapper for external pentest tools
 // Replaces raw exec() with permission-checked, auditable tool execution
 
-pub mod registry;
 pub mod executor;
+pub mod registry;
 pub mod result;
 
-pub use registry::ToolRegistry;
 pub use executor::ToolExecutor;
-pub use result::{ToolResult, ToolOutput};
+pub use registry::ToolRegistry;
+pub use result::{ToolOutput, ToolResult};
 
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::permissions::PermissionResource;
@@ -15,25 +15,25 @@ use crate::runtime::permissions::PermissionResource;
 /// Tool definition - describes a pentest tool that can be executed
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tool {
-    pub name: String,              // Tool name (e.g., "nmap", "nikto", "hydra")
-    pub command: String,            // Base command (e.g., "nmap")
-    pub description: String,        // Human-readable description
-    pub category: ToolCategory,     // Tool category
-    pub requires_sudo: bool,        // Whether tool requires sudo
-    pub default_timeout: u64,       // Default timeout in seconds
+    pub name: String,                 // Tool name (e.g., "nmap", "nikto", "hydra")
+    pub command: String,              // Base command (e.g., "nmap")
+    pub description: String,          // Human-readable description
+    pub category: ToolCategory,       // Tool category
+    pub requires_sudo: bool,          // Whether tool requires sudo
+    pub default_timeout: u64,         // Default timeout in seconds
     pub allowed_actions: Vec<String>, // Allowed actions for this tool (e.g., ["scan", "enum"])
 }
 
 /// Tool category for grouping and policy enforcement
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolCategory {
-    NetworkScanning,      // nmap, masscan, etc.
-    WebTesting,          // nikto, sqlmap, etc.
-    PasswordCracking,    // hydra, john, etc.
-    Exploitation,        // metasploit, etc.
-    SystemInfo,          // system commands (ls, ps, etc.)
-    Wireless,            // aircrack-ng, etc.
-    Other,               // Other tools
+    NetworkScanning,  // nmap, masscan, etc.
+    WebTesting,       // nikto, sqlmap, etc.
+    PasswordCracking, // hydra, john, etc.
+    Exploitation,     // metasploit, etc.
+    SystemInfo,       // system commands (ls, ps, etc.)
+    Wireless,         // aircrack-ng, etc.
+    Other,            // Other tools
 }
 
 /// Tool execution context - provides environment for tool execution
@@ -74,21 +74,27 @@ impl Default for ToolContext {
     }
 }
 
-/// Tool permission check - determines if a tool can be executed
+/// Tool permission check - determines if a tool can be executed.
+///
+/// NOTE: This check is intentionally minimal. The main permission gate is the
+/// `PermissionChecker` trait call in `stdlib/tools.rs` (which runs against the
+/// VM's `PermissionManager`). This function handles tool-level invariants that
+/// do not require access to VM state.
 pub fn check_tool_permission(
     tool: &Tool,
     _resource: &PermissionResource,
     _scope: Option<&str>,
 ) -> Result<(), RuntimeError> {
-    // Tool permission checking logic
-    // For now, basic validation
-    // Phase 4 will add AST-based capability checking
-    
-    // Check if tool requires sudo and if permission is granted
+    // Tools that require sudo cannot be safely executed inside the runtime
+    // sandbox — privilege escalation is never permitted implicitly.
     if tool.requires_sudo {
-        // Additional sudo permission check would go here
+        return Err(RuntimeError::new(format!(
+            "Tool '{}' requires elevated privileges (sudo), which is not permitted \
+             in the runtime sandbox. Grant explicit process permissions or run outside \
+             the sandbox.",
+            tool.name
+        )));
     }
-    
+
     Ok(())
 }
-

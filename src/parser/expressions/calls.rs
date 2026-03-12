@@ -1,11 +1,11 @@
 use crate::parser::ast::*;
-use crate::parser::parser::Parser;
 use crate::parser::expressions::primary;
+use crate::parser::parser::Parser;
 use crate::parser::utils::token_span_to_ast_span;
 
 pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
     let mut expr = primary::parse_primary(parser)?;
-    
+
     loop {
         // Check for generic type arguments: func<T, U>(...)
         // Only parse if followed by '(' to avoid conflicts with comparison operators
@@ -14,66 +14,86 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
             let start_pos = parser.position;
             let mut pos = start_pos + 1; // skip '<'
             let mut found_generic = false;
-            
+
             // Skip whitespace after '<'
-            while pos < parser.tokens.len() &&
-                  (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Whitespace ||
-                   parser.tokens[pos].kind == crate::lexer::token::TokenKind::Newline) {
+            while pos < parser.tokens.len()
+                && (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Whitespace
+                    || parser.tokens[pos].kind == crate::lexer::token::TokenKind::Newline)
+            {
                 pos += 1;
             }
-            
+
             // Check if we have at least one type name
             if pos < parser.tokens.len() {
                 let token = &parser.tokens[pos];
-                if token.kind == crate::lexer::token::TokenKind::Identifier ||
-                   (token.kind == crate::lexer::token::TokenKind::Keyword &&
-                    crate::lexer::keywords::is_type_keyword(&token.value)) {
+                if token.kind == crate::lexer::token::TokenKind::Identifier
+                    || (token.kind == crate::lexer::token::TokenKind::Keyword
+                        && crate::lexer::keywords::is_type_keyword(&token.value))
+                {
                     // Found potential type, continue scanning
                     pos += 1;
-                    
+
                     // Skip whitespace
-                    while pos < parser.tokens.len() &&
-                          (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Whitespace ||
-                           parser.tokens[pos].kind == crate::lexer::token::TokenKind::Newline) {
+                    while pos < parser.tokens.len()
+                        && (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Whitespace
+                            || parser.tokens[pos].kind == crate::lexer::token::TokenKind::Newline)
+                    {
                         pos += 1;
                     }
-                    
+
                     // Look for comma (more types) or '>'
                     while pos < parser.tokens.len() {
                         if parser.tokens[pos].kind == crate::lexer::token::TokenKind::Comma {
                             pos += 1;
                             // Skip whitespace after comma
-                            while pos < parser.tokens.len() &&
-                                  (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Whitespace ||
-                                   parser.tokens[pos].kind == crate::lexer::token::TokenKind::Newline) {
+                            while pos < parser.tokens.len()
+                                && (parser.tokens[pos].kind
+                                    == crate::lexer::token::TokenKind::Whitespace
+                                    || parser.tokens[pos].kind
+                                        == crate::lexer::token::TokenKind::Newline)
+                            {
                                 pos += 1;
                             }
                             // Check for another type
-                            if pos < parser.tokens.len() &&
-                               (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Identifier ||
-                                (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Keyword &&
-                                 crate::lexer::keywords::is_type_keyword(&parser.tokens[pos].value))) {
+                            if pos < parser.tokens.len()
+                                && (parser.tokens[pos].kind
+                                    == crate::lexer::token::TokenKind::Identifier
+                                    || (parser.tokens[pos].kind
+                                        == crate::lexer::token::TokenKind::Keyword
+                                        && crate::lexer::keywords::is_type_keyword(
+                                            &parser.tokens[pos].value,
+                                        )))
+                            {
                                 pos += 1;
                                 // Skip whitespace after type
-                                while pos < parser.tokens.len() &&
-                                      (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Whitespace ||
-                                       parser.tokens[pos].kind == crate::lexer::token::TokenKind::Newline) {
+                                while pos < parser.tokens.len()
+                                    && (parser.tokens[pos].kind
+                                        == crate::lexer::token::TokenKind::Whitespace
+                                        || parser.tokens[pos].kind
+                                            == crate::lexer::token::TokenKind::Newline)
+                                {
                                     pos += 1;
                                 }
                             } else {
                                 break; // Invalid generic syntax
                             }
-                        } else if parser.tokens[pos].kind == crate::lexer::token::TokenKind::Greater {
+                        } else if parser.tokens[pos].kind == crate::lexer::token::TokenKind::Greater
+                        {
                             pos += 1;
                             // Skip whitespace after '>'
-                            while pos < parser.tokens.len() &&
-                                  (parser.tokens[pos].kind == crate::lexer::token::TokenKind::Whitespace ||
-                                   parser.tokens[pos].kind == crate::lexer::token::TokenKind::Newline) {
+                            while pos < parser.tokens.len()
+                                && (parser.tokens[pos].kind
+                                    == crate::lexer::token::TokenKind::Whitespace
+                                    || parser.tokens[pos].kind
+                                        == crate::lexer::token::TokenKind::Newline)
+                            {
                                 pos += 1;
                             }
                             // Check if followed by '('
-                            if pos < parser.tokens.len() &&
-                               parser.tokens[pos].kind == crate::lexer::token::TokenKind::LeftParen {
+                            if pos < parser.tokens.len()
+                                && parser.tokens[pos].kind
+                                    == crate::lexer::token::TokenKind::LeftParen
+                            {
                                 found_generic = true;
                             }
                             break;
@@ -83,46 +103,52 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
                     }
                 }
             }
-            
+
             if found_generic {
                 // Parse the generic type arguments
                 parser.advance(); // consume '<'
                 let mut types = Vec::new();
-                
+
                 loop {
                     // Skip whitespace
-                    while !parser.is_at_end() &&
-                          (parser.peek().kind == crate::lexer::token::TokenKind::Whitespace ||
-                           parser.peek().kind == crate::lexer::token::TokenKind::Newline) {
+                    while !parser.is_at_end()
+                        && (parser.peek().kind == crate::lexer::token::TokenKind::Whitespace
+                            || parser.peek().kind == crate::lexer::token::TokenKind::Newline)
+                    {
                         parser.advance();
                     }
-                    
-                    let type_name = parser.expect_identifier_allow_reserved(true)
-                        .map_err(|_| {
+
+                    let type_name =
+                        parser.expect_identifier_allow_reserved(true).map_err(|_| {
                             let token = parser.peek();
-                            format!("Expected type name in generic type arguments at line {}:{}", token.span.0, token.span.1)
+                            format!(
+                                "Expected type name in generic type arguments at line {}:{}",
+                                token.span.0, token.span.1
+                            )
                         })?;
                     types.push(parser.type_keyword_to_type(&type_name));
-                    
+
                     // Skip whitespace
-                    while !parser.is_at_end() &&
-                          (parser.peek().kind == crate::lexer::token::TokenKind::Whitespace ||
-                           parser.peek().kind == crate::lexer::token::TokenKind::Newline) {
+                    while !parser.is_at_end()
+                        && (parser.peek().kind == crate::lexer::token::TokenKind::Whitespace
+                            || parser.peek().kind == crate::lexer::token::TokenKind::Newline)
+                    {
                         parser.advance();
                     }
-                    
+
                     if parser.check(crate::lexer::token::TokenKind::Comma) {
                         parser.advance();
                     } else {
                         break;
                     }
                 }
-                
+
                 parser.expect(crate::lexer::token::TokenKind::Greater)?;
                 // Skip whitespace after '>'
-                while !parser.is_at_end() &&
-                      (parser.peek().kind == crate::lexer::token::TokenKind::Whitespace ||
-                       parser.peek().kind == crate::lexer::token::TokenKind::Newline) {
+                while !parser.is_at_end()
+                    && (parser.peek().kind == crate::lexer::token::TokenKind::Whitespace
+                        || parser.peek().kind == crate::lexer::token::TokenKind::Newline)
+                {
                     parser.advance();
                 }
                 Some(types)
@@ -132,7 +158,7 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
         } else {
             None
         };
-        
+
         // Check for struct literal: StructName { field: value, ... }
         // Only when expr is an Identifier, next is '{', and lookahead shows 'ident:'
         if parser.check(crate::lexer::token::TokenKind::LeftBrace) {
@@ -141,44 +167,67 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
                 let brace_pos = parser.position; // points to '{'
                 let mut peek = brace_pos + 1;
                 // skip whitespace/newlines
-                while peek < parser.tokens.len() && matches!(parser.tokens[peek].kind,
-                    crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+                while peek < parser.tokens.len()
+                    && matches!(
+                        parser.tokens[peek].kind,
+                        crate::lexer::token::TokenKind::Whitespace
+                            | crate::lexer::token::TokenKind::Newline
+                    )
+                {
                     peek += 1;
                 }
                 let is_struct_literal = {
                     // Empty struct: { }
-                    let is_empty = peek < parser.tokens.len() &&
-                        parser.tokens[peek].kind == crate::lexer::token::TokenKind::RightBrace;
+                    let is_empty = peek < parser.tokens.len()
+                        && parser.tokens[peek].kind == crate::lexer::token::TokenKind::RightBrace;
                     // Non-empty struct: { identifier : ... }
-                    let has_field = peek + 1 < parser.tokens.len() &&
-                        parser.tokens[peek].kind == crate::lexer::token::TokenKind::Identifier &&
-                        parser.tokens[peek + 1].kind == crate::lexer::token::TokenKind::Colon;
+                    let has_field = peek + 1 < parser.tokens.len()
+                        && parser.tokens[peek].kind == crate::lexer::token::TokenKind::Identifier
+                        && parser.tokens[peek + 1].kind == crate::lexer::token::TokenKind::Colon;
                     is_empty || has_field
                 };
                 if is_struct_literal {
                     let name = struct_name.clone();
                     parser.advance(); // consume '{'
-                    // skip whitespace
-                    while !parser.is_at_end() && matches!(parser.peek().kind,
-                        crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+                                      // skip whitespace
+                    while !parser.is_at_end()
+                        && matches!(
+                            parser.peek().kind,
+                            crate::lexer::token::TokenKind::Whitespace
+                                | crate::lexer::token::TokenKind::Newline
+                        )
+                    {
                         parser.advance();
                     }
                     let mut fields = Vec::new();
-                    while !parser.check(crate::lexer::token::TokenKind::RightBrace) && !parser.is_at_end() {
+                    while !parser.check(crate::lexer::token::TokenKind::RightBrace)
+                        && !parser.is_at_end()
+                    {
                         let field_name = parser.expect_identifier()?;
                         parser.expect(crate::lexer::token::TokenKind::Colon)?;
-                        let value = crate::parser::expressions::operators::parse_expression(parser)?;
+                        let value =
+                            crate::parser::expressions::operators::parse_expression(parser)?;
                         fields.push((field_name, value));
                         // skip whitespace
-                        while !parser.is_at_end() && matches!(parser.peek().kind,
-                            crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+                        while !parser.is_at_end()
+                            && matches!(
+                                parser.peek().kind,
+                                crate::lexer::token::TokenKind::Whitespace
+                                    | crate::lexer::token::TokenKind::Newline
+                            )
+                        {
                             parser.advance();
                         }
                         if parser.check(crate::lexer::token::TokenKind::Comma) {
                             parser.advance();
                             // skip whitespace after comma
-                            while !parser.is_at_end() && matches!(parser.peek().kind,
-                                crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+                            while !parser.is_at_end()
+                                && matches!(
+                                    parser.peek().kind,
+                                    crate::lexer::token::TokenKind::Whitespace
+                                        | crate::lexer::token::TokenKind::Newline
+                                )
+                            {
                                 parser.advance();
                             }
                         } else {
@@ -204,28 +253,33 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
             if parser.check(crate::lexer::token::TokenKind::Colon) {
                 // Slice starting with colon: [:end:step]
                 parser.advance(); // consume colon
-                let end = if parser.check(crate::lexer::token::TokenKind::Colon) || 
-                             parser.check(crate::lexer::token::TokenKind::RightBracket) {
+                let end = if parser.check(crate::lexer::token::TokenKind::Colon)
+                    || parser.check(crate::lexer::token::TokenKind::RightBracket)
+                {
                     None
                 } else if parser.check_keyword("end") {
                     // Special 'end' keyword means "to the end" (same as omitting)
                     parser.advance();
                     None
                 } else {
-                    Some(Box::new(crate::parser::expressions::operators::parse_expression(parser)?))
+                    Some(Box::new(
+                        crate::parser::expressions::operators::parse_expression(parser)?,
+                    ))
                 };
-                
+
                 let step = if parser.check(crate::lexer::token::TokenKind::Colon) {
                     parser.advance();
                     if parser.check(crate::lexer::token::TokenKind::RightBracket) {
                         None
                     } else {
-                        Some(Box::new(crate::parser::expressions::operators::parse_expression(parser)?))
+                        Some(Box::new(
+                            crate::parser::expressions::operators::parse_expression(parser)?,
+                        ))
                     }
                 } else {
                     None
                 };
-                
+
                 parser.expect(crate::lexer::token::TokenKind::RightBracket)?;
                 expr = Expression::Slice {
                     target: Box::new(expr),
@@ -237,34 +291,39 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
             } else {
                 // Parse first expression (could be start index or just index)
                 let first_expr = crate::parser::expressions::operators::parse_expression(parser)?;
-                
+
                 if parser.check(crate::lexer::token::TokenKind::Colon) {
                     // It's a slice: [start:end:step]
                     parser.advance(); // consume colon
                     let start = Some(Box::new(first_expr));
-                    
-                    let end = if parser.check(crate::lexer::token::TokenKind::Colon) || 
-                                 parser.check(crate::lexer::token::TokenKind::RightBracket) {
+
+                    let end = if parser.check(crate::lexer::token::TokenKind::Colon)
+                        || parser.check(crate::lexer::token::TokenKind::RightBracket)
+                    {
                         None
                     } else if parser.check_keyword("end") {
                         // Special 'end' keyword means "to the end" (same as omitting)
                         parser.advance();
                         None
                     } else {
-                        Some(Box::new(crate::parser::expressions::operators::parse_expression(parser)?))
+                        Some(Box::new(
+                            crate::parser::expressions::operators::parse_expression(parser)?,
+                        ))
                     };
-                    
+
                     let step = if parser.check(crate::lexer::token::TokenKind::Colon) {
                         parser.advance();
                         if parser.check(crate::lexer::token::TokenKind::RightBracket) {
                             None
                         } else {
-                            Some(Box::new(crate::parser::expressions::operators::parse_expression(parser)?))
+                            Some(Box::new(
+                                crate::parser::expressions::operators::parse_expression(parser)?,
+                            ))
                         }
                     } else {
                         None
                     };
-                    
+
                     parser.expect(crate::lexer::token::TokenKind::RightBracket)?;
                     expr = Expression::Slice {
                         target: Box::new(expr),
@@ -296,7 +355,7 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
             parser.advance(); // consume ?.
             let token = parser.peek().clone();
             let span = token_span_to_ast_span(&token);
-            
+
             // Check what comes after ?.
             if parser.check(crate::lexer::token::TokenKind::LeftParen) {
                 // Optional call: obj?.(args)
@@ -304,7 +363,9 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
                 let mut arguments = Vec::new();
                 if !parser.check(crate::lexer::token::TokenKind::RightParen) {
                     loop {
-                        arguments.push(crate::parser::expressions::operators::parse_expression(parser)?);
+                        arguments.push(crate::parser::expressions::operators::parse_expression(
+                            parser,
+                        )?);
                         if !parser.check(crate::lexer::token::TokenKind::Comma) {
                             break;
                         }
@@ -340,20 +401,31 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
             break;
         }
     }
-    
+
     Ok(expr)
 }
 
-fn finish_call(parser: &mut Parser, callee: Expression, type_args: Option<Vec<crate::typecheck::types::Type>>) -> Result<Expression, String> {
+fn finish_call(
+    parser: &mut Parser,
+    callee: Expression,
+    type_args: Option<Vec<crate::typecheck::types::Type>>,
+) -> Result<Expression, String> {
     // Handle method calls on complex expressions (e.g., arr[0].trim(), map["k"].split(","))
-    if let Expression::Member { target, name: method_name, span } = &callee {
+    if let Expression::Member {
+        target,
+        name: method_name,
+        span,
+    } = &callee
+    {
         if !matches!(target.as_ref(), Expression::Identifier(_)) {
             // Complex expression method call — use MethodCall node
             let obj_expr = target.as_ref().clone();
             parser.expect(crate::lexer::token::TokenKind::LeftParen)?;
             let mut arguments = Vec::new();
             while !parser.check(crate::lexer::token::TokenKind::RightParen) && !parser.is_at_end() {
-                arguments.push(crate::parser::expressions::operators::parse_expression(parser)?);
+                arguments.push(crate::parser::expressions::operators::parse_expression(
+                    parser,
+                )?);
                 if parser.check(crate::lexer::token::TokenKind::Comma) {
                     parser.advance();
                 } else {
@@ -384,22 +456,24 @@ fn finish_call(parser: &mut Parser, callee: Expression, type_args: Option<Vec<cr
         }
         _ => return parser.error("Function call must be on an identifier or member"),
     };
-    
+
     parser.expect(crate::lexer::token::TokenKind::LeftParen)?;
-    
+
     let mut arguments = Vec::new();
     if !parser.check(crate::lexer::token::TokenKind::RightParen) {
         loop {
-            arguments.push(crate::parser::expressions::operators::parse_expression(parser)?);
+            arguments.push(crate::parser::expressions::operators::parse_expression(
+                parser,
+            )?);
             if !parser.check(crate::lexer::token::TokenKind::Comma) {
                 break;
             }
             parser.advance();
         }
     }
-    
+
     parser.expect(crate::lexer::token::TokenKind::RightParen)?;
-    
+
     Ok(Expression::FunctionCall {
         name: function_name,
         type_arguments: type_args,
@@ -407,4 +481,3 @@ fn finish_call(parser: &mut Parser, callee: Expression, type_args: Option<Vec<cr
         span: Span::default(),
     })
 }
-

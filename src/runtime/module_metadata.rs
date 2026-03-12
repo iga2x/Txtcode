@@ -1,4 +1,4 @@
-use crate::runtime::compatibility::{Version, FeatureFlags};
+use crate::runtime::compatibility::{FeatureFlags, Version};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -33,7 +33,7 @@ impl ModuleMetadata {
 
         for line in source.lines() {
             let trimmed = line.trim();
-            
+
             // Skip non-comment lines
             if !trimmed.starts_with('#') {
                 continue;
@@ -59,8 +59,10 @@ impl ModuleMetadata {
                     if let Some((key, value)) = content.split_once(':') {
                         let key = key.trim();
                         let value = value.trim();
-                        metadata.raw_metadata.insert(key.to_string(), value.to_string());
-                        
+                        metadata
+                            .raw_metadata
+                            .insert(key.to_string(), value.to_string());
+
                         // Map to feature flags
                         match key {
                             "legacy_return_syntax" => {
@@ -70,7 +72,8 @@ impl ModuleMetadata {
                                 metadata.feature_flags.deprecated_exec_allowed = value == "true";
                             }
                             "enable_new_permission_system" => {
-                                metadata.feature_flags.enable_new_permission_system = value == "true";
+                                metadata.feature_flags.enable_new_permission_system =
+                                    value == "true";
                             }
                             "strict_path_validation" => {
                                 metadata.feature_flags.strict_path_validation = value == "true";
@@ -125,4 +128,3 @@ mod tests {
         assert!(metadata.feature_flags.deprecated_exec_allowed);
     }
 }
-

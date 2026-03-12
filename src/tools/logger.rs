@@ -1,8 +1,8 @@
+use crate::config::Config;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use crate::config::Config;
 
 /// Log levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,11 +33,11 @@ pub struct Logger {
 
 impl Logger {
     /// Create a new logger instance
-    /// 
+    ///
     /// `name` - Base name for the log file (e.g., "txtcode" → ~/.txtcode/logs/txtcode.log)
     pub fn new(name: &str) -> Result<Self, String> {
         let log_file = Config::get_log_path(name)?;
-        
+
         // Ensure log directory exists
         if let Some(parent) = log_file.parent() {
             std::fs::create_dir_all(parent)
@@ -199,4 +199,3 @@ pub fn log_error(message: &str) {
         let _ = logger.error(message);
     }
 }
-

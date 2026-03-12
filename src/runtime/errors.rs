@@ -124,11 +124,14 @@ impl std::fmt::Display for RuntimeError {
             if !self.stack_trace.is_empty() {
                 write!(f, "\n\nStack trace:")?;
                 for (i, frame) in self.stack_trace.iter().enumerate() {
-                    write!(f, "\n  {}: {} at line {}, column {}",
+                    write!(
+                        f,
+                        "\n  {}: {} at line {}, column {}",
                         self.stack_trace.len() - i,
                         frame.function_name,
                         frame.line,
-                        frame.column)?;
+                        frame.column
+                    )?;
                 }
             }
             Ok(())

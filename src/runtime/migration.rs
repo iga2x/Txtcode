@@ -1,13 +1,19 @@
 use crate::parser::ast::Program;
-use crate::runtime::compatibility::{CompatibilityLayer, Version, MigrationReport, FeatureFlags};
+use crate::runtime::compatibility::{CompatibilityLayer, FeatureFlags, MigrationReport, Version};
 use crate::runtime::errors::RuntimeError;
-use crate::tools::ast_printer::{AstPrinter, detect_version_from_source};
+use crate::tools::ast_printer::{detect_version_from_source, AstPrinter};
 use std::path::PathBuf;
 
 /// Migration framework for automated code migration
 pub struct MigrationFramework {
     compatibility_layer: CompatibilityLayer,
     dry_run: bool,
+}
+
+impl Default for MigrationFramework {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MigrationFramework {
@@ -36,8 +42,13 @@ impl MigrationFramework {
         target_version: Option<Version>,
     ) -> Result<MigrationReport, RuntimeError> {
         // Read file
-        let source_code = std::fs::read_to_string(file_path)
-            .map_err(|e| RuntimeError::new(format!("Failed to read file {}: {}", file_path.display(), e)))?;
+        let source_code = std::fs::read_to_string(file_path).map_err(|e| {
+            RuntimeError::new(format!(
+                "Failed to read file {}: {}",
+                file_path.display(),
+                e
+            ))
+        })?;
 
         // Auto-detect source version from header comment if not provided
         let source_version = source_version.unwrap_or_else(|| {
@@ -55,15 +66,17 @@ impl MigrationFramework {
                 })
                 .unwrap_or_else(|| Version::new(0, 1, 0))
         });
-        let target_version = target_version.unwrap_or_else(|| Version::current());
+        let target_version = target_version.unwrap_or_else(Version::current);
 
         // Parse AST
         let mut lexer = crate::lexer::Lexer::new(source_code);
-        let tokens = lexer.tokenize()
-            .map_err(|e| RuntimeError::new(format!("Failed to tokenize {}: {}", file_path.display(), e)))?;
+        let tokens = lexer.tokenize().map_err(|e| {
+            RuntimeError::new(format!("Failed to tokenize {}: {}", file_path.display(), e))
+        })?;
         let mut parser = crate::parser::Parser::new(tokens);
-        let program = parser.parse()
-            .map_err(|e| RuntimeError::new(format!("Failed to parse {}: {}", file_path.display(), e)))?;
+        let program = parser.parse().map_err(|e| {
+            RuntimeError::new(format!("Failed to parse {}: {}", file_path.display(), e))
+        })?;
 
         // Perform migration
         self.migrate_program(program, source_version, target_version, file_path)
@@ -85,7 +98,9 @@ impl MigrationFramework {
         let flags = self.extract_feature_flags(&program);
 
         // Check deprecations
-        let deprecation_warnings = self.compatibility_layer.check_deprecations(&program, &flags);
+        let deprecation_warnings = self
+            .compatibility_layer
+            .check_deprecations(&program, &flags);
         let strict_mode = self.compatibility_layer.is_strict_mode();
         for warning in deprecation_warnings {
             if strict_mode {
@@ -103,29 +118,35 @@ impl MigrationFramework {
         }
 
         // Perform AST migration
-        let _migrated_program = self.compatibility_layer.migrate_ast(program, Some(source_version.clone()))?;
+        let _migrated_program = self
+            .compatibility_layer
+            .migrate_ast(program, Some(source_version.clone()))?;
 
         // Record transformations
         // Check if any transformations were actually applied
         // (In production, compare AST before/after to detect changes)
-        report.add_transformation(format!("Migrated from {} to {}", 
-            source_version_str, target_version_str));
+        report.add_transformation(format!(
+            "Migrated from {} to {}",
+            source_version_str, target_version_str
+        ));
 
         // If not dry run, regenerate source from migrated AST and write back
         if !self.dry_run {
             let mut printer = AstPrinter::new();
             let new_source = format!(
                 "# version: {}\n{}",
-                target_version.to_string(),
+                target_version,
                 printer.print_program(&_migrated_program)
             );
             report.generated_source = Some(new_source.clone());
             if !_file_path.as_os_str().is_empty() {
-                std::fs::write(_file_path, &new_source)
-                    .map_err(|e| RuntimeError::new(format!(
+                std::fs::write(_file_path, &new_source).map_err(|e| {
+                    RuntimeError::new(format!(
                         "Failed to write migrated file {}: {}",
-                        _file_path.display(), e
-                    )))?;
+                        _file_path.display(),
+                        e
+                    ))
+                })?;
                 report.add_transformation(format!(
                     "Wrote migrated source to {}",
                     _file_path.display()
@@ -135,7 +156,7 @@ impl MigrationFramework {
             report.add_transformation(
                 "DRY RUN: Files were validated but not modified. \
                  Review the warnings above and apply changes manually."
-                .to_string(),
+                    .to_string(),
             );
         }
 
@@ -162,11 +183,17 @@ impl MigrationFramework {
     ) -> Result<Vec<(PathBuf, MigrationReport)>, RuntimeError> {
         let mut results = Vec::new();
 
-        let entries = std::fs::read_dir(dir_path)
-            .map_err(|e| RuntimeError::new(format!("Failed to read directory {}: {}", dir_path.display(), e)))?;
+        let entries = std::fs::read_dir(dir_path).map_err(|e| {
+            RuntimeError::new(format!(
+                "Failed to read directory {}: {}",
+                dir_path.display(),
+                e
+            ))
+        })?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| RuntimeError::new(format!("Failed to read directory entry: {}", e)))?;
+            let entry = entry
+                .map_err(|e| RuntimeError::new(format!("Failed to read directory entry: {}", e)))?;
             let path = entry.path();
 
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("tc") {
@@ -204,15 +231,20 @@ impl MigrationFramework {
             total_errors += report.errors.len();
 
             summary.push_str(&format!("  {}:\n", path.display()));
-            summary.push_str(&format!("    - Transformations: {}\n", report.transformations_applied.len()));
+            summary.push_str(&format!(
+                "    - Transformations: {}\n",
+                report.transformations_applied.len()
+            ));
             summary.push_str(&format!("    - Warnings: {}\n", report.warnings.len()));
             if !report.errors.is_empty() {
                 summary.push_str(&format!("    - Errors: {}\n", report.errors.len()));
             }
         }
 
-        summary.push_str(&format!("\nTotal: {} transformations, {} warnings, {} errors\n",
-            total_transformations, total_warnings, total_errors));
+        summary.push_str(&format!(
+            "\nTotal: {} transformations, {} warnings, {} errors\n",
+            total_transformations, total_warnings, total_errors
+        ));
 
         summary
     }
@@ -253,4 +285,3 @@ mod tests {
         assert!(framework.dry_run);
     }
 }
-

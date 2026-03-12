@@ -65,8 +65,8 @@ pub enum UnaryOperator {
     Not,
     Minus,
     BitNot,
-    Increment,  // ++ (prefix)
-    Decrement,  // -- (prefix)
+    Increment, // ++ (prefix)
+    Decrement, // -- (prefix)
 }
 
 /// Function parameter
@@ -85,10 +85,10 @@ pub enum Pattern {
     Array(Vec<Pattern>),
     Struct {
         fields: Vec<(String, Pattern)>, // field_name, pattern
-        rest: Option<String>, // rest pattern (e.g., ...rest)
+        rest: Option<String>,           // rest pattern (e.g., ...rest)
     },
     Constructor {
-        type_name: String, // e.g., "Point"
+        type_name: String,  // e.g., "Point"
         args: Vec<Pattern>, // e.g., [10, 20] or [x, y]
     },
     Ignore, // _ pattern
@@ -100,4 +100,3 @@ pub enum InterpolatedSegment {
     Text(String),
     Expression(crate::parser::ast::Expression), // Forward reference
 }
-

@@ -23,55 +23,55 @@ pub enum TokenKind {
     Char,
     Boolean,
     Null,
-    
+
     // Identifiers
     Identifier,
     Keyword,
-    
+
     // Operators
-    Arrow,        // -> or → (both supported)
-    Plus,         // +
-    Minus,        // -
-    Star,         // *
-    Slash,        // /
-    Percent,      // %
-    Power,        // **
-    Assignment,   // = (single equals, for compound assignment or future use)
-    Equal,        // ==
-    NotEqual,     // !=
-    Less,         // <
-    Greater,      // >
-    LessEqual,    // <=
-    GreaterEqual, // >=
-    And,          // and
-    Or,           // or
-    Not,          // not
-    NullCoalesce, // ??
+    Arrow,         // -> or → (both supported)
+    Plus,          // +
+    Minus,         // -
+    Star,          // *
+    Slash,         // /
+    Percent,       // %
+    Power,         // **
+    Assignment,    // = (single equals, for compound assignment or future use)
+    Equal,         // ==
+    NotEqual,      // !=
+    Less,          // <
+    Greater,       // >
+    LessEqual,     // <=
+    GreaterEqual,  // >=
+    And,           // and
+    Or,            // or
+    Not,           // not
+    NullCoalesce,  // ??
     OptionalChain, // ?.
-    QuestionMark, // ? (standalone)
-    Pipe,         // |>
-    Increment,    // ++
-    Decrement,    // --
+    QuestionMark,  // ? (standalone)
+    Pipe,          // |>
+    Increment,     // ++
+    Decrement,     // --
 
     // Compound assignment operators
-    PlusAssign,   // +=
-    MinusAssign,  // -=
-    StarAssign,   // *=
-    SlashAssign,  // /=
+    PlusAssign,    // +=
+    MinusAssign,   // -=
+    StarAssign,    // *=
+    SlashAssign,   // /=
     PercentAssign, // %=
-    PowerAssign,  // **=
-    BitAndAssign, // &=
-    BitOrAssign,  // |=
-    BitXorAssign, // ^=
+    PowerAssign,   // **=
+    BitAndAssign,  // &=
+    BitOrAssign,   // |=
+    BitXorAssign,  // ^=
 
     // Bitwise
-    BitAnd,       // &
-    BitOr,        // |
-    BitXor,       // ^
-    LeftShift,    // <<
-    RightShift,   // >>
-    BitNot,       // ~
-    
+    BitAnd,     // &
+    BitOr,      // |
+    BitXor,     // ^
+    LeftShift,  // <<
+    RightShift, // >>
+    BitNot,     // ~
+
     // Delimiters
     LeftParen,    // (
     RightParen,   // )
@@ -84,11 +84,10 @@ pub enum TokenKind {
     Colon,        // :
     Dot,          // .
     Spread,       // ... (spread/rest operator)
-    
+
     // Special
     Eof,
     Newline,
     Whitespace,
     Comment,
 }
-

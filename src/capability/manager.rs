@@ -1,10 +1,10 @@
 // Capability manager - grants, validates, and revokes capability tokens
 // Runtime capability token management
 
-use std::collections::HashMap;
-use std::time::{SystemTime, Duration};
-use crate::runtime::permissions::PermissionResource;
 use crate::runtime::audit::AIMetadata;
+use crate::runtime::permissions::{glob_scope_matches, PermissionResource};
+use std::collections::HashMap;
+use std::time::{Duration, SystemTime};
 
 /// Capability token - runtime, transferable, revocable permission
 #[derive(Debug, Clone, PartialEq)]
@@ -12,11 +12,11 @@ pub struct Capability {
     pub id: String,                      // Unique token ID
     pub resource: PermissionResource,    // Resource type (fs, net, sys)
     pub action: String,                  // Action (read, write, connect)
-    pub scope: Option<String>,          // Scope restriction (e.g., "/tmp/*")
-    pub created_at: SystemTime,         // Creation timestamp
-    pub expires_at: Option<SystemTime>, // Expiration (None = no expiration)
+    pub scope: Option<String>,           // Scope restriction (e.g., "/tmp/*")
+    pub created_at: SystemTime,          // Creation timestamp
+    pub expires_at: Option<SystemTime>,  // Expiration (None = no expiration)
     pub revoked: bool,                   // Revocation flag
-    pub granted_by: Option<String>,     // Function/agent that granted this
+    pub granted_by: Option<String>,      // Function/agent that granted this
     pub ai_metadata: Option<AIMetadata>, // AI context if granted by AI
 }
 
@@ -70,7 +70,7 @@ impl CapabilityManager {
         let resource_str = resource.to_string();
         let token_id = self.generate_token_id(&resource, &action);
         let expires_at = expires_in.map(|d| SystemTime::now() + d);
-        
+
         let capability = Capability {
             id: token_id.clone(),
             resource,
@@ -82,12 +82,15 @@ impl CapabilityManager {
             granted_by,
             ai_metadata,
         };
-        
+
         self.tokens.insert(token_id.clone(), capability);
-        
+
         use crate::tools::logger::log_debug;
-        log_debug(&format!("Granted capability token: {} for {}.{}", token_id, resource_str, action));
-        
+        log_debug(&format!(
+            "Granted capability token: {} for {}.{}",
+            token_id, resource_str, action
+        ));
+
         token_id
     }
 
@@ -101,9 +104,11 @@ impl CapabilityManager {
     ) -> Result<(), CapabilityError> {
         // 1. Find token and extract values (to avoid borrow checker issues)
         let (cap_resource, cap_action, cap_scope, is_revoked, expires_at) = {
-            let capability = self.tokens.get(token_id)
+            let capability = self
+                .tokens
+                .get(token_id)
                 .ok_or_else(|| CapabilityError::NotFound(token_id.to_string()))?;
-            
+
             (
                 capability.resource.clone(),
                 capability.action.clone(),
@@ -112,12 +117,12 @@ impl CapabilityManager {
                 capability.expires_at,
             )
         };
-        
+
         // 2. Check revocation
         if is_revoked {
             return Err(CapabilityError::Revoked(token_id.to_string()));
         }
-        
+
         // 3. Check expiration
         if let Some(expires_at) = expires_at {
             if SystemTime::now() > expires_at {
@@ -128,24 +133,24 @@ impl CapabilityManager {
                 return Err(CapabilityError::Expired(token_id.to_string()));
             }
         }
-        
+
         // 4. Check resource/action match
         if !Self::matches_resource_static(&cap_resource, resource) {
             return Err(CapabilityError::Mismatch {
                 token_id: token_id.to_string(),
-                expected: format!("{}.{}", resource.to_string(), action),
-                got: format!("{}.{}", cap_resource.to_string(), cap_action),
+                expected: format!("{}.{}", resource, action),
+                got: format!("{}.{}", cap_resource, cap_action),
             });
         }
-        
+
         if cap_action != action {
             return Err(CapabilityError::Mismatch {
                 token_id: token_id.to_string(),
-                expected: format!("{}.{}", resource.to_string(), action),
-                got: format!("{}.{}", cap_resource.to_string(), cap_action),
+                expected: format!("{}.{}", resource, action),
+                got: format!("{}.{}", cap_resource, cap_action),
             });
         }
-        
+
         // 5. Check scope (if specified)
         if let Some(cap_scope) = cap_scope {
             if let Some(req_scope) = scope {
@@ -163,21 +168,30 @@ impl CapabilityManager {
                 });
             }
         }
-        
+
         // Token is valid
         Ok(())
     }
 
     /// Revoke a capability token
-    pub fn revoke(&mut self, token_id: &str, reason: Option<String>) -> Result<(), CapabilityError> {
-        let capability = self.tokens.get_mut(token_id)
+    pub fn revoke(
+        &mut self,
+        token_id: &str,
+        reason: Option<String>,
+    ) -> Result<(), CapabilityError> {
+        let capability = self
+            .tokens
+            .get_mut(token_id)
             .ok_or_else(|| CapabilityError::NotFound(token_id.to_string()))?;
-        
+
         capability.revoked = true;
-        
+
         use crate::tools::logger::log_debug;
-        log_debug(&format!("Revoked capability token: {} (reason: {:?})", token_id, reason));
-        
+        log_debug(&format!(
+            "Revoked capability token: {} (reason: {:?})",
+            token_id, reason
+        ));
+
         Ok(())
     }
 
@@ -209,44 +223,36 @@ impl CapabilityManager {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         resource.to_string().hash(&mut hasher);
         action.hash(&mut hasher);
-        SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-            .unwrap().as_nanos().hash(&mut hasher);
+        SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+            .hash(&mut hasher);
         let hash = hasher.finish();
-        
+
         format!("cap_{:016x}", hash)
     }
 
     /// Check if two resources match (static method to avoid borrow issues)
     fn matches_resource_static(a: &PermissionResource, b: &PermissionResource) -> bool {
-        match (a, b) {
-            (PermissionResource::FileSystem(_), PermissionResource::FileSystem(_)) => true,
-            (PermissionResource::Network(_), PermissionResource::Network(_)) => true,
-            (PermissionResource::System(_), PermissionResource::System(_)) => true,
-            (PermissionResource::Process(_), PermissionResource::Process(_)) => true,
-            _ => false,
-        }
+        matches!(
+            (a, b),
+            (
+                PermissionResource::FileSystem(_),
+                PermissionResource::FileSystem(_)
+            ) | (
+                PermissionResource::Network(_),
+                PermissionResource::Network(_)
+            ) | (PermissionResource::System(_), PermissionResource::System(_))
+                | (
+                    PermissionResource::Process(_),
+                    PermissionResource::Process(_)
+                )
+        )
     }
 
-    /// Check if scope matches (glob pattern) (static method to avoid borrow issues)
     fn scope_matches_static(pattern: &str, value: &str) -> bool {
-        // Simple glob matching (can enhance with regex later)
-        if pattern.contains('*') {
-            if pattern.ends_with('*') {
-                value.starts_with(&pattern[..pattern.len() - 1])
-            } else if pattern.starts_with('*') {
-                value.ends_with(&pattern[1..])
-            } else {
-                // Contains * in middle
-                let parts: Vec<&str> = pattern.split('*').collect();
-                if parts.len() == 2 {
-                    value.starts_with(parts[0]) && value.ends_with(parts[1])
-                } else {
-                    pattern == value
-                }
-            }
-        } else {
-            pattern == value
-        }
+        glob_scope_matches(pattern, value)
     }
 }
 
@@ -256,9 +262,20 @@ pub enum CapabilityError {
     NotFound(String),
     Revoked(String),
     Expired(String),
-    Mismatch { token_id: String, expected: String, got: String },
-    ScopeMismatch { token_id: String, expected: String, got: String },
-    ScopeRequired { token_id: String, required: String },
+    Mismatch {
+        token_id: String,
+        expected: String,
+        got: String,
+    },
+    ScopeMismatch {
+        token_id: String,
+        expected: String,
+        got: String,
+    },
+    ScopeRequired {
+        token_id: String,
+        required: String,
+    },
 }
 
 impl std::fmt::Display for CapabilityError {
@@ -267,14 +284,34 @@ impl std::fmt::Display for CapabilityError {
             CapabilityError::NotFound(id) => write!(f, "Capability token not found: {}", id),
             CapabilityError::Revoked(id) => write!(f, "Capability token revoked: {}", id),
             CapabilityError::Expired(id) => write!(f, "Capability token expired: {}", id),
-            CapabilityError::Mismatch { token_id, expected, got } => {
-                write!(f, "Capability token mismatch: {} (expected: {}, got: {})", token_id, expected, got)
+            CapabilityError::Mismatch {
+                token_id,
+                expected,
+                got,
+            } => {
+                write!(
+                    f,
+                    "Capability token mismatch: {} (expected: {}, got: {})",
+                    token_id, expected, got
+                )
             }
-            CapabilityError::ScopeMismatch { token_id, expected, got } => {
-                write!(f, "Capability token scope mismatch: {} (expected: {}, got: {})", token_id, expected, got)
+            CapabilityError::ScopeMismatch {
+                token_id,
+                expected,
+                got,
+            } => {
+                write!(
+                    f,
+                    "Capability token scope mismatch: {} (expected: {}, got: {})",
+                    token_id, expected, got
+                )
             }
             CapabilityError::ScopeRequired { token_id, required } => {
-                write!(f, "Capability token requires scope: {} (required: {})", token_id, required)
+                write!(
+                    f,
+                    "Capability token requires scope: {} (required: {})",
+                    token_id, required
+                )
             }
         }
     }
@@ -287,4 +324,3 @@ impl Default for CapabilityManager {
         Self::new()
     }
 }
-

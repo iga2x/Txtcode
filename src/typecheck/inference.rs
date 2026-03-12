@@ -1,5 +1,5 @@
 use crate::parser::ast::*;
-use crate::typecheck::types::{Type, TypeContext, InferenceResult};
+use crate::typecheck::types::{InferenceResult, Type, TypeContext};
 use std::collections::HashMap;
 
 /// Type inference engine
@@ -15,6 +15,12 @@ pub struct TypeConstraint {
     pub right: Type,
 }
 
+impl Default for TypeInference {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TypeInference {
     pub fn new() -> Self {
         Self {
@@ -24,7 +30,10 @@ impl TypeInference {
     }
 
     /// Infer types for a program
-    pub fn infer_program(&mut self, program: &Program) -> Result<HashMap<String, Type>, Vec<String>> {
+    pub fn infer_program(
+        &mut self,
+        program: &Program,
+    ) -> Result<HashMap<String, Type>, Vec<String>> {
         let mut type_map = HashMap::new();
         let mut errors = Vec::new();
 
@@ -50,26 +59,37 @@ impl TypeInference {
         let mut types = HashMap::new();
 
         match statement {
-            Statement::Assignment { pattern, type_annotation: _, value, .. } => {
-                    // Infer type from value
+            Statement::Assignment {
+                pattern,
+                type_annotation: _,
+                value,
+                ..
+            } => {
+                // Infer type from value
                 let value_type = match self.infer_expression(value) {
                     InferenceResult::Known(ty) => ty,
-                        InferenceResult::Unknown => {
+                    InferenceResult::Unknown => {
                         return Err("Cannot infer type for assignment value".to_string());
-                        }
-                        InferenceResult::Error(msg) => {
-                            return Err(msg);
+                    }
+                    InferenceResult::Error(msg) => {
+                        return Err(msg);
                     }
                 };
-                
+
                 // Bind pattern to type
                 self.bind_pattern_type(pattern, &value_type, &mut types)?;
             }
-            Statement::FunctionDef { name, type_params: _, params, return_type, .. } => {
+            Statement::FunctionDef {
+                name,
+                type_params: _,
+                params,
+                return_type,
+                ..
+            } => {
                 let param_types: Vec<Type> = params
                     .iter()
                     .map(|p| {
-                        p.type_annotation.clone().unwrap_or_else(|| {
+                        p.type_annotation.clone().unwrap_or({
                             // Try to infer from usage
                             Type::Int // Default
                         })
@@ -77,7 +97,7 @@ impl TypeInference {
                     .collect();
 
                 let func_return = return_type.clone().unwrap_or(Type::Int);
-                
+
                 // Store function type (with generic parameters)
                 // Note: Generic parameters are stored but substitution happens at call site
                 let func_type = crate::typecheck::types::FunctionType {
@@ -85,7 +105,7 @@ impl TypeInference {
                     return_type: Box::new(func_return),
                 };
                 self.context.define_function(name.clone(), func_type);
-                
+
                 // Store generic type parameters for this function
                 // (In a full implementation, we'd track these in the context)
             }
@@ -99,16 +119,14 @@ impl TypeInference {
 
     pub fn infer_expression(&mut self, expr: &Expression) -> InferenceResult {
         match expr {
-            Expression::Literal(lit) => {
-                InferenceResult::Known(match lit {
-                    Literal::Integer(_) => Type::Int,
-                    Literal::Float(_) => Type::Float,
-                    Literal::String(_) => Type::String,
-                    Literal::Char(_) => Type::Char,
-                    Literal::Boolean(_) => Type::Bool,
-                    Literal::Null => Type::Identifier("null".to_string()),
-                })
-            }
+            Expression::Literal(lit) => InferenceResult::Known(match lit {
+                Literal::Integer(_) => Type::Int,
+                Literal::Float(_) => Type::Float,
+                Literal::String(_) => Type::String,
+                Literal::Char(_) => Type::Char,
+                Literal::Boolean(_) => Type::Bool,
+                Literal::Null => Type::Identifier("null".to_string()),
+            }),
             Expression::Identifier(name) => {
                 if let Some(ty) = self.context.get_variable(name) {
                     InferenceResult::Known(ty.clone())
@@ -116,29 +134,46 @@ impl TypeInference {
                     InferenceResult::Error(format!("Undefined variable: {}", name))
                 }
             }
-            Expression::BinaryOp { left, op, right, .. } => {
+            Expression::BinaryOp {
+                left, op, right, ..
+            } => {
                 let left_type = self.infer_expression(left);
                 let right_type = self.infer_expression(right);
 
                 match (left_type, right_type) {
                     (InferenceResult::Known(left_ty), InferenceResult::Known(right_ty)) => {
                         match op {
-                            BinaryOperator::Add | BinaryOperator::Subtract | BinaryOperator::Multiply | BinaryOperator::Divide => {
-                                match (left_ty.clone(), right_ty.clone()) {
-                                    (Type::Int, Type::Int) => InferenceResult::Known(Type::Int),
-                                    (Type::Float, Type::Float) => InferenceResult::Known(Type::Float),
-                                    (Type::Int, Type::Float) | (Type::Float, Type::Int) => InferenceResult::Known(Type::Float),
-                                    (Type::String, _) | (_, Type::String) if matches!(op, BinaryOperator::Add) => {
-                                        InferenceResult::Known(Type::String)
-                                    }
-                                    _ => InferenceResult::Error(format!("Cannot apply {:?} to {} and {}", op, self.type_to_string(&left_ty), self.type_to_string(&right_ty))),
+                            BinaryOperator::Add
+                            | BinaryOperator::Subtract
+                            | BinaryOperator::Multiply
+                            | BinaryOperator::Divide => match (left_ty.clone(), right_ty.clone()) {
+                                (Type::Int, Type::Int) => InferenceResult::Known(Type::Int),
+                                (Type::Float, Type::Float) => InferenceResult::Known(Type::Float),
+                                (Type::Int, Type::Float) | (Type::Float, Type::Int) => {
+                                    InferenceResult::Known(Type::Float)
                                 }
-                            }
-                            BinaryOperator::Equal | BinaryOperator::NotEqual => InferenceResult::Known(Type::Bool),
-                            BinaryOperator::Less | BinaryOperator::Greater | BinaryOperator::LessEqual | BinaryOperator::GreaterEqual => {
+                                (Type::String, _) | (_, Type::String)
+                                    if matches!(op, BinaryOperator::Add) =>
+                                {
+                                    InferenceResult::Known(Type::String)
+                                }
+                                _ => InferenceResult::Error(format!(
+                                    "Cannot apply {:?} to {} and {}",
+                                    op,
+                                    self.type_to_string(&left_ty),
+                                    self.type_to_string(&right_ty)
+                                )),
+                            },
+                            BinaryOperator::Equal | BinaryOperator::NotEqual => {
                                 InferenceResult::Known(Type::Bool)
                             }
-                            BinaryOperator::And | BinaryOperator::Or => InferenceResult::Known(Type::Bool),
+                            BinaryOperator::Less
+                            | BinaryOperator::Greater
+                            | BinaryOperator::LessEqual
+                            | BinaryOperator::GreaterEqual => InferenceResult::Known(Type::Bool),
+                            BinaryOperator::And | BinaryOperator::Or => {
+                                InferenceResult::Known(Type::Bool)
+                            }
                             BinaryOperator::NullCoalesce => {
                                 // Null coalesce returns the left type if not null, otherwise right type
                                 InferenceResult::Known(left_ty)
@@ -146,7 +181,9 @@ impl TypeInference {
                             _ => InferenceResult::Known(Type::Int), // Default for other operations
                         }
                     }
-                    (InferenceResult::Error(msg), _) | (_, InferenceResult::Error(msg)) => InferenceResult::Error(msg),
+                    (InferenceResult::Error(msg), _) | (_, InferenceResult::Error(msg)) => {
+                        InferenceResult::Error(msg)
+                    }
                     _ => InferenceResult::Unknown,
                 }
             }
@@ -176,20 +213,24 @@ impl TypeInference {
                     InferenceResult::Unknown => InferenceResult::Unknown,
                 }
             }
-            Expression::FunctionCall { name, arguments: _arguments, .. } => {
+            Expression::FunctionCall {
+                name,
+                arguments: _arguments,
+                ..
+            } => {
                 if let Some(func_type) = self.context.get_function(name) {
                     InferenceResult::Known(*func_type.return_type.clone())
                 } else {
-                // Built-in functions
-                match name.as_str() {
-                    "print" => InferenceResult::Known(Type::Int), // print returns nothing
-                    "http_get" | "http_post" | "tcp_connect" => {
-                        // Async stdlib functions return Future<T>
-                        // For now, assume they return Future<String>
-                        InferenceResult::Known(Type::Future(Box::new(Type::String)))
+                    // Built-in functions
+                    match name.as_str() {
+                        "print" => InferenceResult::Known(Type::Int), // print returns nothing
+                        "http_get" | "http_post" | "tcp_connect" => {
+                            // Async stdlib functions return Future<T>
+                            // For now, assume they return Future<String>
+                            InferenceResult::Known(Type::Future(Box::new(Type::String)))
+                        }
+                        _ => InferenceResult::Error(format!("Unknown function: {}", name)),
                     }
-                    _ => InferenceResult::Error(format!("Unknown function: {}", name)),
-                }
                 }
             }
             Expression::Array { elements, .. } => {
@@ -198,7 +239,9 @@ impl TypeInference {
                 } else {
                     let first_type = self.infer_expression(&elements[0]);
                     match first_type {
-                        InferenceResult::Known(ty) => InferenceResult::Known(Type::Array(Box::new(ty))),
+                        InferenceResult::Known(ty) => {
+                            InferenceResult::Known(Type::Array(Box::new(ty)))
+                        }
                         _ => first_type,
                     }
                 }
@@ -209,7 +252,9 @@ impl TypeInference {
                 } else {
                     let first_value_type = self.infer_expression(&entries[0].1);
                     match first_value_type {
-                        InferenceResult::Known(ty) => InferenceResult::Known(Type::Map(Box::new(ty))),
+                        InferenceResult::Known(ty) => {
+                            InferenceResult::Known(Type::Map(Box::new(ty)))
+                        }
                         _ => first_value_type,
                     }
                 }
@@ -220,12 +265,18 @@ impl TypeInference {
                 } else {
                     let first_element_type = self.infer_expression(&elements[0]);
                     match first_element_type {
-                        InferenceResult::Known(ty) => InferenceResult::Known(Type::Set(Box::new(ty))),
+                        InferenceResult::Known(ty) => {
+                            InferenceResult::Known(Type::Set(Box::new(ty)))
+                        }
                         _ => first_element_type,
                     }
                 }
             }
-            Expression::Index { target, index: _index, .. } => {
+            Expression::Index {
+                target,
+                index: _index,
+                ..
+            } => {
                 let target_type = self.infer_expression(target);
                 match target_type {
                     InferenceResult::Known(Type::Array(element_type)) => {
@@ -234,15 +285,21 @@ impl TypeInference {
                     InferenceResult::Known(Type::Map(value_type)) => {
                         InferenceResult::Known(*value_type)
                     }
-                    InferenceResult::Known(_) => InferenceResult::Error("Cannot index this type".to_string()),
+                    InferenceResult::Known(_) => {
+                        InferenceResult::Error("Cannot index this type".to_string())
+                    }
                     other => other,
                 }
             }
             Expression::Member { target, .. } => {
                 let target_type = self.infer_expression(target);
                 match target_type {
-                    InferenceResult::Known(Type::Map(value_type)) => InferenceResult::Known(*value_type),
-                    InferenceResult::Known(_) => InferenceResult::Error("Cannot access member on this type".to_string()),
+                    InferenceResult::Known(Type::Map(value_type)) => {
+                        InferenceResult::Known(*value_type)
+                    }
+                    InferenceResult::Known(_) => {
+                        InferenceResult::Error("Cannot access member on this type".to_string())
+                    }
                     other => other,
                 }
             }
@@ -254,16 +311,19 @@ impl TypeInference {
 
                 let return_type = self.infer_expression(body);
                 match return_type {
-                    InferenceResult::Known(ty) => {
-                        InferenceResult::Known(Type::Function {
-                            params: param_types,
-                            return_type: Box::new(ty),
-                        })
-                    }
+                    InferenceResult::Known(ty) => InferenceResult::Known(Type::Function {
+                        params: param_types,
+                        return_type: Box::new(ty),
+                    }),
                     other => other,
                 }
             }
-            Expression::Ternary { condition: _condition, true_expr, false_expr, .. } => {
+            Expression::Ternary {
+                condition: _condition,
+                true_expr,
+                false_expr,
+                ..
+            } => {
                 let true_type = self.infer_expression(true_expr);
                 let false_type = self.infer_expression(false_expr);
                 match (true_type, false_type) {
@@ -278,9 +338,7 @@ impl TypeInference {
                     InferenceResult::Known(Type::Array(element_type)) => {
                         InferenceResult::Known(Type::Array(element_type))
                     }
-                    InferenceResult::Known(Type::String) => {
-                        InferenceResult::Known(Type::String)
-                    }
+                    InferenceResult::Known(Type::String) => InferenceResult::Known(Type::String),
                     other => other,
                 }
             }
@@ -301,12 +359,17 @@ impl TypeInference {
                         if let Type::Future(inner) = return_type.as_ref() {
                             InferenceResult::Known(*inner.clone())
                         } else {
-                            InferenceResult::Error("Cannot await non-Future return type".to_string())
+                            InferenceResult::Error(
+                                "Cannot await non-Future return type".to_string(),
+                            )
                         }
                     }
                     InferenceResult::Known(ty) => {
                         // If it's not a Future, that's an error
-                        InferenceResult::Error(format!("Cannot await non-Future type: {}", self.type_to_string(&ty)))
+                        InferenceResult::Error(format!(
+                            "Cannot await non-Future type: {}",
+                            self.type_to_string(&ty)
+                        ))
                     }
                     other => other,
                 }
@@ -351,23 +414,31 @@ impl TypeInference {
         }
     }
 
-    fn bind_pattern_type(&self, pattern: &crate::parser::ast::Pattern, value_type: &Type, types: &mut HashMap<String, Type>) -> Result<(), String> {
+    fn bind_pattern_type(
+        &self,
+        pattern: &crate::parser::ast::Pattern,
+        value_type: &Type,
+        types: &mut HashMap<String, Type>,
+    ) -> Result<(), String> {
         use crate::parser::ast::Pattern;
-        
+
         match pattern {
             Pattern::Identifier(name) => {
                 types.insert(name.clone(), value_type.clone());
             }
             Pattern::Array(patterns) => {
                 if let Type::Array(element_type) = value_type {
-                    if patterns.len() > 0 {
+                    if !patterns.is_empty() {
                         // All elements should have the same type
                         for pattern in patterns {
                             self.bind_pattern_type(pattern, element_type, types)?;
                         }
                     }
                 } else {
-                    return Err(format!("Cannot destructure non-array type: {:?}", value_type));
+                    return Err(format!(
+                        "Cannot destructure non-array type: {:?}",
+                        value_type
+                    ));
                 }
             }
             Pattern::Struct { fields, .. } => {
@@ -390,7 +461,10 @@ impl TypeInference {
                         self.bind_pattern_type(pattern, &Type::Int, types)?; // Placeholder
                     }
                 } else {
-                    return Err(format!("Cannot destructure non-struct/map type: {:?}", value_type));
+                    return Err(format!(
+                        "Cannot destructure non-struct/map type: {:?}",
+                        value_type
+                    ));
                 }
             }
             Pattern::Constructor { type_name, args } => {
@@ -398,9 +472,12 @@ impl TypeInference {
                 // Type-check constructor pattern
                 if let Type::Identifier(struct_type) = value_type {
                     if struct_type != type_name {
-                        return Err(format!("Type mismatch: expected {}, got {}", type_name, struct_type));
+                        return Err(format!(
+                            "Type mismatch: expected {}, got {}",
+                            type_name, struct_type
+                        ));
                     }
-                    
+
                     // For now, type-check each argument pattern
                     // In a full implementation, we'd look up the struct definition
                     // and get each field's type
@@ -408,14 +485,17 @@ impl TypeInference {
                         self.bind_pattern_type(pattern, &Type::Int, types)?; // Placeholder
                     }
                 } else {
-                    return Err(format!("Constructor pattern requires struct type, got {:?}", value_type));
+                    return Err(format!(
+                        "Constructor pattern requires struct type, got {:?}",
+                        value_type
+                    ));
                 }
             }
             Pattern::Ignore => {
                 // Ignore pattern - do nothing
             }
         }
-        
+
         Ok(())
     }
 
@@ -429,9 +509,17 @@ impl TypeInference {
             Type::Array(inner) => format!("array[{}]", self.type_to_string(inner)),
             Type::Map(inner) => format!("map[{}]", self.type_to_string(inner)),
             Type::Set(inner) => format!("set[{}]", self.type_to_string(inner)),
-            Type::Function { params, return_type } => {
-                let param_strs: Vec<String> = params.iter().map(|p| self.type_to_string(p)).collect();
-                format!("({}) -> {}", param_strs.join(", "), self.type_to_string(return_type))
+            Type::Function {
+                params,
+                return_type,
+            } => {
+                let param_strs: Vec<String> =
+                    params.iter().map(|p| self.type_to_string(p)).collect();
+                format!(
+                    "({}) -> {}",
+                    param_strs.join(", "),
+                    self.type_to_string(return_type)
+                )
             }
             Type::Future(inner) => format!("Future[{}]", self.type_to_string(inner)),
             Type::Identifier(name) => name.clone(),

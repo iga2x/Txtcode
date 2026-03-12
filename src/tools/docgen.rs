@@ -91,9 +91,17 @@ impl DocGenerator {
         let mut docs = String::new();
         docs.push_str("# Txt-code Documentation\n\n");
 
-        let mut iter = program.statements.iter().peekable();
-        while let Some(statement) = iter.next() {
-            if let Statement::FunctionDef { name, params, return_type, intent, ai_hint, .. } = statement {
+        let iter = program.statements.iter().peekable();
+        for statement in iter {
+            if let Statement::FunctionDef {
+                name,
+                params,
+                return_type,
+                intent,
+                ai_hint,
+                ..
+            } = statement
+            {
                 docs.push_str(&format!("## Function: `{}`\n\n", name));
 
                 // doc → "description" (shown as the function description)
@@ -112,9 +120,9 @@ impl DocGenerator {
                         if let Some(ty) = &param.type_annotation {
                             docs.push_str(&format!(": {:?}", ty));
                         }
-                        docs.push_str("\n");
+                        docs.push('\n');
                     }
-                    docs.push_str("\n");
+                    docs.push('\n');
                 }
 
                 if let Some(ty) = return_type {
@@ -160,9 +168,9 @@ fn extract_doc_comments(source: &str) -> std::collections::HashMap<String, Strin
             continue;
         }
 
-        if trimmed.starts_with("## ") {
+        if let Some(stripped) = trimmed.strip_prefix("## ") {
             // Single-line doc comment (not a block toggle)
-            pending_doc.push(&trimmed[3..]);
+            pending_doc.push(stripped);
             continue;
         }
 
@@ -234,7 +242,10 @@ fn markdown_to_html(markdown: &str) -> String {
 
     for line in markdown.lines() {
         if line.trim_start().starts_with("```") {
-            if in_list { html.push_str("</ul>\n"); in_list = false; }
+            if in_list {
+                html.push_str("</ul>\n");
+                in_list = false;
+            }
             flush_para(&mut para_lines, &mut html);
             if in_code_block {
                 html.push_str("</code></pre>\n");
@@ -252,33 +263,55 @@ fn markdown_to_html(markdown: &str) -> String {
             continue;
         }
 
-        if line.starts_with("### ") {
-            if in_list { html.push_str("</ul>\n"); in_list = false; }
+        if let Some(stripped) = line.strip_prefix("### ") {
+            if in_list {
+                html.push_str("</ul>\n");
+                in_list = false;
+            }
             flush_para(&mut para_lines, &mut html);
-            html.push_str(&format!("<h3>{}</h3>\n", inline_md(&line[4..])));
-        } else if line.starts_with("## ") {
-            if in_list { html.push_str("</ul>\n"); in_list = false; }
+            html.push_str(&format!("<h3>{}</h3>\n", inline_md(stripped)));
+        } else if let Some(stripped) = line.strip_prefix("## ") {
+            if in_list {
+                html.push_str("</ul>\n");
+                in_list = false;
+            }
             flush_para(&mut para_lines, &mut html);
-            html.push_str(&format!("<h2>{}</h2>\n", inline_md(&line[3..])));
-        } else if line.starts_with("# ") {
-            if in_list { html.push_str("</ul>\n"); in_list = false; }
+            html.push_str(&format!("<h2>{}</h2>\n", inline_md(stripped)));
+        } else if let Some(stripped) = line.strip_prefix("# ") {
+            if in_list {
+                html.push_str("</ul>\n");
+                in_list = false;
+            }
             flush_para(&mut para_lines, &mut html);
-            html.push_str(&format!("<h1>{}</h1>\n", inline_md(&line[2..])));
+            html.push_str(&format!("<h1>{}</h1>\n", inline_md(stripped)));
         } else if line.starts_with("- ") || line.starts_with("* ") {
             flush_para(&mut para_lines, &mut html);
-            if !in_list { html.push_str("<ul>\n"); in_list = true; }
+            if !in_list {
+                html.push_str("<ul>\n");
+                in_list = true;
+            }
             html.push_str(&format!("<li>{}</li>\n", inline_md(&line[2..])));
         } else if line.trim().is_empty() {
-            if in_list { html.push_str("</ul>\n"); in_list = false; }
+            if in_list {
+                html.push_str("</ul>\n");
+                in_list = false;
+            }
             flush_para(&mut para_lines, &mut html);
         } else {
-            if in_list { html.push_str("</ul>\n"); in_list = false; }
+            if in_list {
+                html.push_str("</ul>\n");
+                in_list = false;
+            }
             para_lines.push(line);
         }
     }
 
-    if in_list { html.push_str("</ul>\n"); }
-    if in_code_block { html.push_str("</code></pre>\n"); }
+    if in_list {
+        html.push_str("</ul>\n");
+    }
+    if in_code_block {
+        html.push_str("</code></pre>\n");
+    }
     flush_para(&mut para_lines, &mut html);
 
     html.push_str("</body>\n</html>\n");
@@ -287,8 +320,8 @@ fn markdown_to_html(markdown: &str) -> String {
 
 fn html_escape_text(s: &str) -> String {
     s.replace('&', "&amp;")
-     .replace('<', "&lt;")
-     .replace('>', "&gt;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Process inline markdown: `code`, **bold** → proper HTML.
@@ -297,8 +330,8 @@ fn inline_md(s: &str) -> String {
     // Backtick code spans
     let mut out = String::new();
     let mut in_code = false;
-    let mut chars = escaped.chars().peekable();
-    while let Some(c) = chars.next() {
+    let chars = escaped.chars().peekable();
+    for c in chars {
         if c == '`' {
             if in_code {
                 out.push_str("</code>");
@@ -310,7 +343,9 @@ fn inline_md(s: &str) -> String {
             out.push(c);
         }
     }
-    if in_code { out.push_str("</code>"); }
+    if in_code {
+        out.push_str("</code>");
+    }
     out
 }
 

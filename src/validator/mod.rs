@@ -1,13 +1,13 @@
 // Validator layer - separates parsing from validation
 // Validates syntax, semantics, and pentest-specific restrictions
 
-pub mod syntax;
-pub mod semantics;
 pub mod restrictions;
+pub mod semantics;
+pub mod syntax;
 
-pub use syntax::SyntaxValidator;
-pub use semantics::SemanticsValidator;
 pub use restrictions::RestrictionChecker;
+pub use semantics::SemanticsValidator;
+pub use syntax::SyntaxValidator;
 
 use crate::parser::ast::Program;
 
@@ -19,13 +19,13 @@ impl Validator {
     pub fn validate_program(program: &Program) -> Result<(), ValidationError> {
         // 1. Syntax validation
         SyntaxValidator::check_program(program)?;
-        
+
         // 2. Semantic validation (type checking)
         SemanticsValidator::check_program(program)?;
-        
+
         // 3. Restriction checking (pentest-specific rules)
         RestrictionChecker::check_program(program)?;
-        
+
         Ok(())
     }
 }
@@ -55,4 +55,3 @@ impl std::fmt::Display for ValidationError {
 }
 
 impl std::error::Error for ValidationError {}
-

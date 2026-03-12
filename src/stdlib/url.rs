@@ -1,4 +1,4 @@
-use crate::runtime::{Value, RuntimeError};
+use crate::runtime::{RuntimeError, Value};
 
 /// URL encoding/decoding library
 pub struct UrlLib;
@@ -9,46 +9,58 @@ impl UrlLib {
         match name {
             "url_encode" | "encode_uri" => {
                 if args.len() != 1 {
-                    return Err(RuntimeError::new("url_encode requires 1 argument".to_string()));
+                    return Err(RuntimeError::new(
+                        "url_encode requires 1 argument".to_string(),
+                    ));
                 }
                 match &args[0] {
                     Value::String(s) => Ok(Value::String(Self::url_encode(s))),
-                    _ => Err(RuntimeError::new("url_encode requires a string argument".to_string())),
+                    _ => Err(RuntimeError::new(
+                        "url_encode requires a string argument".to_string(),
+                    )),
                 }
             }
             "url_decode" | "decode_uri" => {
                 if args.len() != 1 {
-                    return Err(RuntimeError::new("url_decode requires 1 argument".to_string()));
+                    return Err(RuntimeError::new(
+                        "url_decode requires 1 argument".to_string(),
+                    ));
                 }
                 match &args[0] {
-                    Value::String(s) => {
-                        Self::url_decode(s)
-                            .map(Value::String)
-                            .map_err(|e| RuntimeError::new(format!("Invalid URL encoding: {}", e)))
-                    }
-                    _ => Err(RuntimeError::new("url_decode requires a string argument".to_string())),
+                    Value::String(s) => Self::url_decode(s)
+                        .map(Value::String)
+                        .map_err(|e| RuntimeError::new(format!("Invalid URL encoding: {}", e))),
+                    _ => Err(RuntimeError::new(
+                        "url_decode requires a string argument".to_string(),
+                    )),
                 }
             }
             "url_encode_component" | "encode_uri_component" => {
                 if args.len() != 1 {
-                    return Err(RuntimeError::new("url_encode_component requires 1 argument".to_string()));
+                    return Err(RuntimeError::new(
+                        "url_encode_component requires 1 argument".to_string(),
+                    ));
                 }
                 match &args[0] {
                     Value::String(s) => Ok(Value::String(Self::url_encode_component(s))),
-                    _ => Err(RuntimeError::new("url_encode_component requires a string argument".to_string())),
+                    _ => Err(RuntimeError::new(
+                        "url_encode_component requires a string argument".to_string(),
+                    )),
                 }
             }
             "url_decode_component" | "decode_uri_component" => {
                 if args.len() != 1 {
-                    return Err(RuntimeError::new("url_decode_component requires 1 argument".to_string()));
+                    return Err(RuntimeError::new(
+                        "url_decode_component requires 1 argument".to_string(),
+                    ));
                 }
                 match &args[0] {
-                    Value::String(s) => {
-                        Self::url_decode(s)
-                            .map(Value::String)
-                            .map_err(|e| RuntimeError::new(format!("Invalid URL encoding: {}", e)))
-                    }
-                    _ => Err(RuntimeError::new("url_decode_component requires a string argument".to_string())),
+                    Value::String(s) => Self::url_decode(s)
+                        .map(Value::String)
+                        .map_err(|e| RuntimeError::new(format!("Invalid URL encoding: {}", e))),
+                    _ => Err(RuntimeError::new(
+                        "url_decode_component requires a string argument".to_string(),
+                    )),
                 }
             }
             _ => Err(RuntimeError::new(format!("Unknown URL function: {}", name))),
@@ -77,7 +89,17 @@ impl UrlLib {
         let mut encoded = String::new();
         for byte in s.bytes() {
             match byte {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'*' | b'\'' | b'(' | b')' => {
+                b'A'..=b'Z'
+                | b'a'..=b'z'
+                | b'0'..=b'9'
+                | b'-'
+                | b'_'
+                | b'.'
+                | b'!'
+                | b'*'
+                | b'\''
+                | b'('
+                | b')' => {
                     encoded.push(byte as char);
                 }
                 _ => {
@@ -111,8 +133,6 @@ impl UrlLib {
             }
         }
 
-        String::from_utf8(decoded)
-            .map_err(|e| format!("Invalid UTF-8 in decoded string: {}", e))
+        String::from_utf8(decoded).map_err(|e| format!("Invalid UTF-8 in decoded string: {}", e))
     }
 }
-

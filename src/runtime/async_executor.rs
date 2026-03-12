@@ -1,5 +1,5 @@
-use crate::runtime::Value;
 use crate::runtime::errors::RuntimeError;
+use crate::runtime::Value;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ impl AsyncExecutor {
     pub fn new() -> Result<Self, RuntimeError> {
         let runtime = Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
-        
+
         Ok(Self {
             runtime: Arc::new(runtime),
         })
@@ -32,12 +32,12 @@ impl AsyncExecutor {
     {
         let (tx, rx) = oneshot::channel();
         let runtime = self.runtime.clone();
-        
+
         runtime.spawn(async move {
             let result = future.await;
             let _ = tx.send(result);
         });
-        
+
         Box::pin(async move {
             rx.await
                 .map_err(|e| RuntimeError::new(format!("Future cancelled: {}", e)))?
@@ -73,4 +73,3 @@ pub fn value_to_future(value: Value) -> TxtcodeFuture {
 pub fn result_to_future(result: Result<Value, RuntimeError>) -> TxtcodeFuture {
     Box::pin(async move { result })
 }
-

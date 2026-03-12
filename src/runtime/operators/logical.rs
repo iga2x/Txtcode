@@ -8,9 +8,16 @@ pub struct LogicalOps;
 impl LogicalOps {
     pub fn apply(op: &BinaryOperator, left: &Value, right: &Value) -> Result<Value, RuntimeError> {
         match op {
-            BinaryOperator::And => Ok(Value::Boolean(Self::is_truthy(left) && Self::is_truthy(right))),
-            BinaryOperator::Or => Ok(Value::Boolean(Self::is_truthy(left) || Self::is_truthy(right))),
-            _ => Err(RuntimeError::new(format!("Not a logical operator: {:?}", op))),
+            BinaryOperator::And => Ok(Value::Boolean(
+                Self::is_truthy(left) && Self::is_truthy(right),
+            )),
+            BinaryOperator::Or => Ok(Value::Boolean(
+                Self::is_truthy(left) || Self::is_truthy(right),
+            )),
+            _ => Err(RuntimeError::new(format!(
+                "Not a logical operator: {:?}",
+                op
+            ))),
         }
     }
 
@@ -25,4 +32,3 @@ impl LogicalOps {
         }
     }
 }
-

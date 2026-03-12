@@ -1,4 +1,4 @@
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 /// Code integrity and version management system
@@ -38,10 +38,12 @@ impl IntegritySystem {
         hasher.update(key);
         hasher.update(self.version.as_bytes());
         let signature = hasher.finalize().to_vec();
-        
-        self.signatures.insert(identifier.clone(), signature.clone());
-        self.checksums.insert(identifier, self.calculate_checksum(data));
-        
+
+        self.signatures
+            .insert(identifier.clone(), signature.clone());
+        self.checksums
+            .insert(identifier, self.calculate_checksum(data));
+
         signature
     }
 
@@ -53,7 +55,7 @@ impl IntegritySystem {
             hasher.update(key);
             hasher.update(self.version.as_bytes());
             let calculated = hasher.finalize().to_vec();
-            
+
             calculated == *expected_signature
         } else {
             false
@@ -91,10 +93,7 @@ impl IntegritySystem {
                 CompatibilityResult::BackwardCompatible
             } else {
                 CompatibilityResult::Incompatible {
-                    reason: format!(
-                        "Minor version too old: {} < {}",
-                        other_minor, current_minor
-                    ),
+                    reason: format!("Minor version too old: {} < {}", other_minor, current_minor),
                 }
             }
         } else if current_patch != other_patch {
@@ -148,7 +147,10 @@ pub struct MigrationScript {
 impl MigrationScript {
     pub fn execute(&self) -> Result<(), String> {
         // In a real implementation, this would perform the actual migration
-        println!("Migrating from {} to {}", self.from_version, self.to_version);
+        println!(
+            "Migrating from {} to {}",
+            self.from_version, self.to_version
+        );
         for step in &self.steps {
             println!("  {}", step);
         }

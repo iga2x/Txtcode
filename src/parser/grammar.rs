@@ -9,4 +9,3 @@ impl Grammar {
         "Txt-code grammar specification"
     }
 }
-

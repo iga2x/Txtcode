@@ -1,10 +1,10 @@
+use crate::config::Config;
+use semver::{Version, VersionReq};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
-use crate::config::Config;
-use std::collections::HashMap;
-use semver::{Version, VersionReq};
-use sha2::{Sha256, Digest};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PackageConfig {
@@ -142,10 +142,12 @@ impl PackageRegistry {
 
                 // Extract tarball
                 let status = std::process::Command::new("tar")
-                    .args(["-xzf", tarball_path.to_str().unwrap_or("")]
-                        .iter()
-                        .chain(std::iter::once(&"-C"))
-                        .chain(std::iter::once(&dest.to_str().unwrap_or(""))))
+                    .args(
+                        ["-xzf", tarball_path.to_str().unwrap_or("")]
+                            .iter()
+                            .chain(std::iter::once(&"-C"))
+                            .chain(std::iter::once(&dest.to_str().unwrap_or(""))),
+                    )
                     .status();
 
                 if let Ok(s) = status {
@@ -218,8 +220,7 @@ impl DependencyResolver {
             visited.insert(name.clone());
 
             // Resolve version using semver constraint
-            let resolved_version =
-                self.resolve_version_constraint(&name, &version_constraint);
+            let resolved_version = self.resolve_version_constraint(&name, &version_constraint);
             let version = resolved_version.unwrap_or(version_constraint.clone());
 
             let package_path = self.packages_dir.join(&name).join(&version);
@@ -246,11 +247,7 @@ impl DependencyResolver {
 
     /// Resolve a semver constraint against locally installed versions.
     /// Falls back to the constraint string itself if no match found.
-    pub fn resolve_version_constraint(
-        &self,
-        name: &str,
-        constraint: &str,
-    ) -> Option<String> {
+    pub fn resolve_version_constraint(&self, name: &str, constraint: &str) -> Option<String> {
         let package_dir = self.packages_dir.join(name);
         if !package_dir.exists() {
             return None;
@@ -424,24 +421,24 @@ pub fn remove_dependency(name: String) -> Result<(), Box<dyn std::error::Error>>
     // Remove from lockfile
     let lock_path = PathBuf::from("Txtcode.lock");
     if lock_path.exists() {
-        if let Ok(lock_content) = fs::read_to_string(&lock_path) {
-            let cleaned: Vec<&str> = lock_content
-                .lines()
-                .filter(|l| !l.starts_with(&format!("{}@", name)) && !l.starts_with(&format!("{}=", name)))
-                .collect();
-            let _ = fs::write(&lock_path, cleaned.join("\n") + "\n");
+        if let Ok(mut lock) = LockFile::load(&lock_path) {
+            if lock.packages.remove(&name).is_some() {
+                let _ = lock.save(&lock_path);
+            }
         }
     }
 
     // Remove installed package files from all envs
     let removed_from = remove_package_files(&name);
     if removed_from > 0 {
-        println!("Uninstalled '{}' from {} environment(s)", name, removed_from);
+        println!(
+            "Uninstalled '{}' from {} environment(s)",
+            name, removed_from
+        );
     }
 
     // Also try global packages dir
-    let global_pkg_dir = dirs::home_dir()
-        .map(|h| h.join(".txtcode").join("packages").join(&name));
+    let global_pkg_dir = dirs::home_dir().map(|h| h.join(".txtcode").join("packages").join(&name));
     if let Some(ref pkg_path) = global_pkg_dir {
         if pkg_path.exists() {
             let _ = fs::remove_dir_all(pkg_path);
@@ -456,17 +453,17 @@ pub fn remove_dependency(name: String) -> Result<(), Box<dyn std::error::Error>>
 fn remove_package_files(name: &str) -> usize {
     let mut count = 0;
     let env_dir = PathBuf::from(".txtcode-env");
-    if !env_dir.exists() { return 0; }
+    if !env_dir.exists() {
+        return 0;
+    }
     let entries = match fs::read_dir(&env_dir) {
         Ok(e) => e,
         Err(_) => return 0,
     };
     for entry in entries.flatten() {
         let pkg_path = entry.path().join("packages").join(name);
-        if pkg_path.exists() {
-            if fs::remove_dir_all(&pkg_path).is_ok() {
-                count += 1;
-            }
+        if pkg_path.exists() && fs::remove_dir_all(&pkg_path).is_ok() {
+            count += 1;
         }
     }
     count

@@ -1,4 +1,4 @@
-use crate::parser::ast::{Pattern, Expression};
+use crate::parser::ast::{Expression, Pattern};
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use std::collections::{HashMap, HashSet};
@@ -8,14 +8,18 @@ use super::VirtualMachine;
 /// Helper functions for VirtualMachine
 impl VirtualMachine {
     /// Bind a pattern to a value (destructuring)
-    pub(super) fn bind_pattern(&mut self, pattern: &Pattern, value: &Value) -> Result<(), RuntimeError> {
+    pub(super) fn bind_pattern(
+        &mut self,
+        pattern: &Pattern,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
         match pattern {
             Pattern::Identifier(name) => {
                 // Check if this is a literal pattern (starts with "__literal_")
                 if name.starts_with("__literal_") {
                     // Extract the literal value from the pattern name
                     let literal_str = name.strip_prefix("__literal_").unwrap();
-                    
+
                     // Parse and match against the actual value
                     // Try to parse as integer
                     if let Ok(pattern_int) = literal_str.parse::<i64>() {
@@ -57,8 +61,7 @@ impl VirtualMachine {
                                 )));
                             }
                         }
-                    }
-                    else if literal_str == "false" {
+                    } else if literal_str == "false" {
                         match value {
                             Value::Boolean(false) => return Ok(()),
                             _ => {
@@ -68,8 +71,7 @@ impl VirtualMachine {
                                 )));
                             }
                         }
-                    }
-                    else if literal_str == "null" {
+                    } else if literal_str == "null" {
                         match value {
                             Value::Null => return Ok(()),
                             _ => {
@@ -82,14 +84,15 @@ impl VirtualMachine {
                     }
                     // Try as string (remove quotes if present)
                     else {
-                        let string_val = if literal_str.starts_with('"') && literal_str.ends_with('"') {
-                            &literal_str[1..literal_str.len()-1]
-                        } else if literal_str.starts_with('\'') && literal_str.ends_with('\'') {
-                            &literal_str[1..literal_str.len()-1]
+                        let string_val = if (literal_str.starts_with('"')
+                            && literal_str.ends_with('"'))
+                            || (literal_str.starts_with('\'') && literal_str.ends_with('\''))
+                        {
+                            &literal_str[1..literal_str.len() - 1]
                         } else {
                             literal_str
                         };
-                        
+
                         match value {
                             Value::String(v) if v == string_val => {
                                 return Ok(());
@@ -110,10 +113,11 @@ impl VirtualMachine {
             Pattern::Array(patterns) => {
                 if let Value::Array(arr) = value {
                     // Count non-ignore patterns to determine minimum required elements
-                    let required_count = patterns.iter()
+                    let required_count = patterns
+                        .iter()
                         .filter(|p| !matches!(p, Pattern::Ignore))
                         .count();
-                    
+
                     // Check if we have enough elements (at least as many as non-ignore patterns)
                     if arr.len() < required_count {
                         return Err(self.create_error(format!(
@@ -122,7 +126,7 @@ impl VirtualMachine {
                             arr.len()
                         )));
                     }
-                    
+
                     // Bind patterns, skipping ignore patterns but still consuming array elements
                     let mut arr_index = 0;
                     for pattern in patterns.iter() {
@@ -137,17 +141,16 @@ impl VirtualMachine {
                                 self.bind_pattern(pattern, &arr[arr_index])?;
                                 arr_index += 1;
                             } else {
-                                return Err(self.create_error(format!(
+                                return Err(self.create_error(
                                     "Array destructuring: not enough elements for pattern"
-                                )));
+                                        .to_string(),
+                                ));
                             }
                         }
                     }
                 } else {
-                    return Err(self.create_error(format!(
-                        "Cannot destructure non-array value: {:?}",
-                        value
-                    )));
+                    return Err(self
+                        .create_error(format!("Cannot destructure non-array value: {:?}", value)));
                 }
             }
             Pattern::Struct { fields, rest } => {
@@ -164,7 +167,7 @@ impl VirtualMachine {
                                 )));
                             }
                         }
-                        
+
                         // Handle rest pattern
                         if let Some(rest_name) = rest {
                             let mut rest_fields = HashMap::new();
@@ -189,7 +192,7 @@ impl VirtualMachine {
                                 )));
                             }
                         }
-                        
+
                         // Handle rest pattern
                         if let Some(rest_name) = rest {
                             let mut rest_fields = HashMap::new();
@@ -221,22 +224,23 @@ impl VirtualMachine {
                             type_name, struct_type
                         )));
                     }
-                    
+
                     // Get struct definition to know field order
                     // Clone the field names to avoid borrow checker issues
-                    let field_names: Vec<String> = if let Some(field_defs) = self.struct_defs.get(type_name) {
-                        // Match arguments to fields in order
-                        if args.len() != field_defs.len() {
-                            return Err(self.create_error(format!(
+                    let field_names: Vec<String> =
+                        if let Some(field_defs) = self.struct_defs.get(type_name) {
+                            // Match arguments to fields in order
+                            if args.len() != field_defs.len() {
+                                return Err(self.create_error(format!(
                                 "Constructor pattern argument count mismatch: expected {}, got {}",
                                 field_defs.len(), args.len()
                             )));
-                        }
-                        field_defs.iter().map(|(name, _)| name.clone()).collect()
-                    } else {
-                        Vec::new()
-                    };
-                    
+                            }
+                            field_defs.iter().map(|(name, _)| name.clone()).collect()
+                        } else {
+                            Vec::new()
+                        };
+
                     if !field_names.is_empty() {
                         // Bind each argument pattern to the corresponding field value
                         for (idx, field_name) in field_names.iter().enumerate() {
@@ -244,9 +248,9 @@ impl VirtualMachine {
                                 if idx < args.len() {
                                     self.bind_pattern(&args[idx], field_value)?;
                                 } else {
-                                    return Err(self.create_error(format!(
-                                        "Constructor pattern: not enough arguments"
-                                    )));
+                                    return Err(self.create_error(
+                                        "Constructor pattern: not enough arguments".to_string(),
+                                    ));
                                 }
                             } else if idx < struct_fields.len() {
                                 // Try by position if field name doesn't match
@@ -272,10 +276,11 @@ impl VirtualMachine {
                         if args.len() != struct_fields.len() {
                             return Err(self.create_error(format!(
                                 "Constructor pattern argument count mismatch: expected {}, got {}",
-                                struct_fields.len(), args.len()
+                                struct_fields.len(),
+                                args.len()
                             )));
                         }
-                        
+
                         // Bind arguments to fields in order (assuming same order)
                         let field_values: Vec<_> = struct_fields.values().collect();
                         for (pattern, field_value) in args.iter().zip(field_values.iter()) {
@@ -293,14 +298,17 @@ impl VirtualMachine {
                 // Ignore pattern - do nothing
             }
         }
-        
+
         Ok(())
     }
 
     /// Extract free variables (variables used but not defined) from an expression
-    pub(super) fn extract_free_variables(expr: &Expression, param_names: &HashSet<String>) -> HashSet<String> {
+    pub(super) fn extract_free_variables(
+        expr: &Expression,
+        param_names: &HashSet<String>,
+    ) -> HashSet<String> {
         let mut free_vars = HashSet::new();
-        
+
         match expr {
             Expression::Identifier(name) => {
                 if !param_names.contains(name) {
@@ -349,12 +357,23 @@ impl VirtualMachine {
                 }
                 free_vars.extend(Self::extract_free_variables(body, &lambda_params));
             }
-            Expression::Ternary { condition, true_expr, false_expr, .. } => {
+            Expression::Ternary {
+                condition,
+                true_expr,
+                false_expr,
+                ..
+            } => {
                 free_vars.extend(Self::extract_free_variables(condition, param_names));
                 free_vars.extend(Self::extract_free_variables(true_expr, param_names));
                 free_vars.extend(Self::extract_free_variables(false_expr, param_names));
             }
-            Expression::Slice { target, start, end, step, .. } => {
+            Expression::Slice {
+                target,
+                start,
+                end,
+                step,
+                ..
+            } => {
                 free_vars.extend(Self::extract_free_variables(target, param_names));
                 if let Some(s) = start {
                     free_vars.extend(Self::extract_free_variables(s, param_names));
@@ -380,7 +399,9 @@ impl VirtualMachine {
             Expression::OptionalMember { target, .. } => {
                 free_vars.extend(Self::extract_free_variables(target, param_names));
             }
-            Expression::OptionalCall { target, arguments, .. } => {
+            Expression::OptionalCall {
+                target, arguments, ..
+            } => {
                 free_vars.extend(Self::extract_free_variables(target, param_names));
                 for arg in arguments {
                     free_vars.extend(Self::extract_free_variables(arg, param_names));
@@ -390,7 +411,9 @@ impl VirtualMachine {
                 free_vars.extend(Self::extract_free_variables(target, param_names));
                 free_vars.extend(Self::extract_free_variables(index, param_names));
             }
-            Expression::MethodCall { object, arguments, .. } => {
+            Expression::MethodCall {
+                object, arguments, ..
+            } => {
                 free_vars.extend(Self::extract_free_variables(object, param_names));
                 for arg in arguments {
                     free_vars.extend(Self::extract_free_variables(arg, param_names));
@@ -413,7 +436,10 @@ impl VirtualMachine {
     }
 
     /// Capture the current environment for given variable names
-    pub(super) fn capture_environment(&self, var_names: &HashSet<String>) -> HashMap<String, Value> {
+    pub(super) fn capture_environment(
+        &self,
+        var_names: &HashSet<String>,
+    ) -> HashMap<String, Value> {
         let mut captured = HashMap::new();
         for name in var_names {
             if let Some(val) = self.get_variable(name) {
@@ -423,4 +449,3 @@ impl VirtualMachine {
         captured
     }
 }
-

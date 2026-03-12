@@ -3,8 +3,8 @@
 #
 # Requires network.http.serve capability.
 
-capability → network.http.serve
-capability → audit.log
+# capability: network.http.serve
+# capability: audit.log
 
 store → port → 8080
 

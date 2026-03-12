@@ -1,8 +1,8 @@
 use super::VirtualMachine;
-use crate::runtime::permissions::PermissionResource;
 use crate::capability::CapabilityManager;
-use crate::runtime::errors::RuntimeError;
 use crate::runtime::audit::{AIMetadata, AuditResult};
+use crate::runtime::errors::RuntimeError;
+use crate::runtime::permissions::PermissionResource;
 
 /// Capability management methods for VirtualMachine
 impl VirtualMachine {
@@ -16,16 +16,8 @@ impl VirtualMachine {
         granted_by: Option<String>,
         ai_metadata: Option<AIMetadata>,
     ) -> String {
-        let ai_meta_for_log = if let Some(ref meta) = ai_metadata {
-            if !meta.is_empty() {
-                Some(meta)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        
+        let ai_meta_for_log = ai_metadata.as_ref().filter(|meta| !meta.is_empty());
+
         let token_id = self.capability_manager.grant(
             resource,
             action.clone(),
@@ -34,7 +26,7 @@ impl VirtualMachine {
             granted_by,
             ai_metadata.clone(),
         );
-        
+
         // Log capability grant to audit trail
         let _ = self.audit_trail.log_action(
             format!("capability.granted.{}", action),
@@ -47,9 +39,9 @@ impl VirtualMachine {
                 Some(&self.ai_metadata)
             } else {
                 None
-            }
+            },
         );
-        
+
         token_id
     }
 
@@ -75,24 +67,33 @@ impl VirtualMachine {
     }
 
     /// Revoke a capability token
-    pub fn revoke_capability(&mut self, token_id: &str, reason: Option<String>) -> Result<(), RuntimeError> {
-        self.capability_manager.revoke(token_id, reason.clone())
+    pub fn revoke_capability(
+        &mut self,
+        token_id: &str,
+        reason: Option<String>,
+    ) -> Result<(), RuntimeError> {
+        self.capability_manager
+            .revoke(token_id, reason.clone())
             .map_err(|e| self.create_error(format!("Capability revocation error: {}", e)))?;
-        
+
         // If revoked capability is active, clear it
         if self.active_capability.as_ref() == Some(&token_id.to_string()) {
             self.active_capability = None;
         }
-        
+
         // Log revocation to audit trail
         let _ = self.audit_trail.log_action(
-            format!("capability.revoked"),
+            "capability.revoked".to_string(),
             token_id.to_string(),
             Some("capability".to_string()),
             AuditResult::Denied,
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) }
+            if self.ai_metadata.is_empty() {
+                None
+            } else {
+                Some(&self.ai_metadata)
+            },
         );
-        
+
         Ok(())
     }
 
@@ -106,4 +107,3 @@ impl VirtualMachine {
         self.capability_manager.is_valid(token_id)
     }
 }
-

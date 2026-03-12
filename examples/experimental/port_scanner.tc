@@ -5,9 +5,9 @@
 # Txt-code policy enforcement will block unauthorized network operations
 # unless the capability is declared below.
 
-# Declare required capabilities
-capability → network.tcp.connect
-capability → audit.log
+# Declare required capabilities (runtime enforcement — not yet a keyword)
+# capability: network.tcp.connect
+# capability: audit.log
 
 store → target → "127.0.0.1"
 store → open_ports → []
@@ -23,7 +23,7 @@ for → port in ports
     conn.close()
     open_ports.append(port)
     print → "  [OPEN]   " + port
-  catch → error
+  catch error
     print → "  [CLOSED] " + port
   end
 end

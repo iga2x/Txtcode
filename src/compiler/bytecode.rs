@@ -1,5 +1,5 @@
 use crate::parser::ast::*;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Bytecode representation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,70 +71,70 @@ impl std::cmp::PartialEq for Constant {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Instruction {
     // Stack operations
-    PushConstant(usize),  // Push constant from constant pool
-    Pop,                   // Pop top of stack
-    Dup,                   // Duplicate top of stack
-    
+    PushConstant(usize), // Push constant from constant pool
+    Pop,                 // Pop top of stack
+    Dup,                 // Duplicate top of stack
+
     // Variable operations
-    LoadVar(String),       // Load variable onto stack
-    StoreVar(String),      // Store top of stack to variable
-    LoadGlobal(String),    // Load global variable
-    
+    LoadVar(String),    // Load variable onto stack
+    StoreVar(String),   // Store top of stack to variable
+    LoadGlobal(String), // Load global variable
+
     // Arithmetic operations
-    Add,                   // Pop two values, push sum
-    Subtract,              // Pop two values, push difference
-    Multiply,              // Pop two values, push product
-    Divide,                // Pop two values, push quotient
-    Modulo,                // Pop two values, push remainder
-    Power,                 // Pop two values, push power
-    Negate,                // Pop value, push negated
-    
+    Add,      // Pop two values, push sum
+    Subtract, // Pop two values, push difference
+    Multiply, // Pop two values, push product
+    Divide,   // Pop two values, push quotient
+    Modulo,   // Pop two values, push remainder
+    Power,    // Pop two values, push power
+    Negate,   // Pop value, push negated
+
     // Comparison operations
-    Equal,                 // Pop two values, push equality
-    NotEqual,              // Pop two values, push inequality
-    Less,                  // Pop two values, push less than
-    Greater,               // Pop two values, push greater than
-    LessEqual,             // Pop two values, push less or equal
-    GreaterEqual,          // Pop two values, push greater or equal
-    
+    Equal,        // Pop two values, push equality
+    NotEqual,     // Pop two values, push inequality
+    Less,         // Pop two values, push less than
+    Greater,      // Pop two values, push greater than
+    LessEqual,    // Pop two values, push less or equal
+    GreaterEqual, // Pop two values, push greater or equal
+
     // Logical operations
-    And,                   // Pop two values, push AND
-    Or,                    // Pop two values, push OR
-    Not,                   // Pop value, push NOT
-    
+    And, // Pop two values, push AND
+    Or,  // Pop two values, push OR
+    Not, // Pop value, push NOT
+
     // Bitwise operations
-    BitAnd,                // Pop two values, push bitwise AND
-    BitOr,                 // Pop two values, push bitwise OR
-    BitXor,                // Pop two values, push bitwise XOR
-    LeftShift,             // Pop two values, push left shift
-    RightShift,            // Pop two values, push right shift
-    BitNot,                // Pop value, push bitwise NOT
-    
+    BitAnd,     // Pop two values, push bitwise AND
+    BitOr,      // Pop two values, push bitwise OR
+    BitXor,     // Pop two values, push bitwise XOR
+    LeftShift,  // Pop two values, push left shift
+    RightShift, // Pop two values, push right shift
+    BitNot,     // Pop value, push bitwise NOT
+
     // Control flow
-    Jump(usize),           // Unconditional jump to instruction index
-    JumpIfFalse(usize),    // Pop value, jump if false
-    JumpIfTrue(usize),     // Pop value, jump if true
-    
+    Jump(usize),        // Unconditional jump to instruction index
+    JumpIfFalse(usize), // Pop value, jump if false
+    JumpIfTrue(usize),  // Pop value, jump if true
+
     // Function operations
-    Call(String, usize),   // Call function with name and arg count
-    Return,                // Return from function
-    ReturnValue,           // Pop value and return it
+    Call(String, usize), // Call function with name and arg count
+    Return,              // Return from function
+    ReturnValue,         // Pop value and return it
     /// Register a user-defined function: name, param names, body start IP.
     /// Emitted after a jump-around so normal execution skips the body.
     RegisterFunction(String, Vec<String>, usize),
-    
+
     // Array/Map operations
-    BuildArray(usize),     // Pop N values, build array
-    BuildMap(usize),       // Pop 2N values (key-value pairs), build map
-    Index,                 // Pop index/key and object, push indexed value
-    SetIndex,              // Pop value, index/key, and object, set indexed value
-    
+    BuildArray(usize), // Pop N values, build array
+    BuildMap(usize),   // Pop 2N values (key-value pairs), build map
+    Index,             // Pop index/key and object, push indexed value
+    SetIndex,          // Pop value, index/key, and object, set indexed value
+
     // Object operations
-    GetField(String),      // Pop object, push field value
-    SetField(String),      // Pop value and object, set field
-    
+    GetField(String), // Pop object, push field value
+    SetField(String), // Pop value and object, set field
+
     // Type operations
-    TypeOf,                // Pop value, push type string
+    TypeOf, // Pop value, push type string
 
     // Null-safe operations
     /// Pop two values (value, default); push value if not null, else push default.
@@ -153,7 +153,7 @@ pub enum Instruction {
     OptionalCall(String, usize),
 
     // Control flow helpers
-    Label(usize),          // Label for jump targets
+    Label(usize), // Label for jump targets
 
     // For-loop iterator support
     /// Pop iterable from stack, set up iterator for `var`. If iterable is empty, jump to `usize`.
@@ -247,11 +247,11 @@ impl BytecodeCompiler {
     /// Compile a program to bytecode
     pub fn compile(&mut self, program: &Program) -> Bytecode {
         let mut instructions = Vec::new();
-        
+
         for statement in &program.statements {
             self.compile_statement(statement, &mut instructions);
         }
-        
+
         Bytecode {
             instructions,
             constants: self.constants.clone(),
@@ -271,7 +271,9 @@ impl BytecodeCompiler {
                     }
                 }
             }
-            Statement::FunctionDef { name, params, body, .. } => {
+            Statement::FunctionDef {
+                name, params, body, ..
+            } => {
                 // Jump over function body (patched below)
                 let jump_idx = instructions.len();
                 instructions.push(Instruction::Nop); // placeholder: Jump(after_body)
@@ -290,9 +292,7 @@ impl BytecodeCompiler {
                 instructions[jump_idx] = Instruction::Jump(after_body);
 
                 // Extract positional param names
-                let param_names: Vec<String> = params.iter()
-                    .map(|p| p.name.clone())
-                    .collect();
+                let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
 
                 // Emit registration instruction (runs at definition time)
                 instructions.push(Instruction::RegisterFunction(
@@ -313,7 +313,13 @@ impl BytecodeCompiler {
                 self.compile_expression(expr, instructions);
                 instructions.push(Instruction::Pop);
             }
-            Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
+            Statement::If {
+                condition,
+                then_branch,
+                else_if_branches,
+                else_branch,
+                ..
+            } => {
                 // Compile: if cond { then } else if c2 { b2 } ... else { els }
                 // Desugared into nested JumpIfFalse chains.
                 let mut end_patches: Vec<usize> = Vec::new();
@@ -358,7 +364,9 @@ impl BytecodeCompiler {
                     instructions[ep] = Instruction::Jump(end_idx);
                 }
             }
-            Statement::While { condition, body, .. } => {
+            Statement::While {
+                condition, body, ..
+            } => {
                 let loop_start = instructions.len();
 
                 self.loop_context.push(LoopContext {
@@ -386,7 +394,9 @@ impl BytecodeCompiler {
                     instructions[bp] = Instruction::Jump(end_idx);
                 }
             }
-            Statement::DoWhile { body, condition, .. } => {
+            Statement::DoWhile {
+                body, condition, ..
+            } => {
                 let loop_start = instructions.len();
 
                 self.loop_context.push(LoopContext {
@@ -421,7 +431,12 @@ impl BytecodeCompiler {
                 // Suppress unused warning
                 let _ = condition_start;
             }
-            Statement::For { variable, iterable, body, .. } => {
+            Statement::For {
+                variable,
+                iterable,
+                body,
+                ..
+            } => {
                 self.compile_expression(iterable, instructions);
 
                 // ForSetup: pop array, if empty jump to end (placeholder)
@@ -516,7 +531,12 @@ impl BytecodeCompiler {
                 self.compile_expression(value, instructions);
                 instructions.push(Instruction::StoreVar(name.clone()));
             }
-            Statement::Match { value, cases, default, .. } => {
+            Statement::Match {
+                value,
+                cases,
+                default,
+                ..
+            } => {
                 // Compile: evaluate match value once, store in hidden var, compare each case.
                 // Each case compiles to: load hidden, compare with pattern constant, JumpIfFalse(next)
                 self.compile_expression(value, instructions);
@@ -558,7 +578,8 @@ impl BytecodeCompiler {
                                         instructions.push(Instruction::PushConstant(idx));
                                     } else {
                                         // String literal (value as-is)
-                                        let idx = self.add_constant(&Literal::String(raw.to_string()));
+                                        let idx =
+                                            self.add_constant(&Literal::String(raw.to_string()));
                                         instructions.push(Instruction::PushConstant(idx));
                                     }
                                 } else {
@@ -574,18 +595,23 @@ impl BytecodeCompiler {
                                 //   LoadVar __match__; PushConstant(index); Index; StoreVar name
                                 let fail_patch = instructions.len();
                                 instructions.push(Instruction::Nop); // JumpIfFalse(next) if not array (type check not done; treated as wildcard match then destructure)
-                                // Pop the loaded match value - we'll re-load for each element
+                                                                     // Pop the loaded match value - we'll re-load for each element
                                 instructions.push(Instruction::Pop);
                                 let _ = case_fail_patch.take(); // handled inline
-                                // Destructure: bind each indexed element
+                                                                // Destructure: bind each indexed element
                                 for (idx, sub_pat) in sub_pats.iter().enumerate() {
-                                    if let crate::parser::ast::Pattern::Identifier(var_name) = sub_pat {
+                                    if let crate::parser::ast::Pattern::Identifier(var_name) =
+                                        sub_pat
+                                    {
                                         if !var_name.starts_with("__literal_") && var_name != "_" {
-                                            let idx_const = self.add_constant(&Literal::Integer(idx as i64));
-                                            instructions.push(Instruction::LoadVar(match_var.clone()));
+                                            let idx_const =
+                                                self.add_constant(&Literal::Integer(idx as i64));
+                                            instructions
+                                                .push(Instruction::LoadVar(match_var.clone()));
                                             instructions.push(Instruction::PushConstant(idx_const));
                                             instructions.push(Instruction::Index);
-                                            instructions.push(Instruction::StoreVar(var_name.clone()));
+                                            instructions
+                                                .push(Instruction::StoreVar(var_name.clone()));
                                         }
                                     }
                                 }
@@ -594,7 +620,9 @@ impl BytecodeCompiler {
                                     self.compile_expression(g, instructions);
                                     let gfail = instructions.len();
                                     instructions.push(Instruction::Nop);
-                                    for s in body { self.compile_statement(s, instructions); }
+                                    for s in body {
+                                        self.compile_statement(s, instructions);
+                                    }
                                     let ep = instructions.len();
                                     instructions.push(Instruction::Nop);
                                     end_patches.push(ep);
@@ -602,11 +630,14 @@ impl BytecodeCompiler {
                                     instructions[fail_patch] = Instruction::JumpIfFalse(next);
                                     instructions[gfail] = Instruction::JumpIfFalse(next);
                                 } else {
-                                    for s in body { self.compile_statement(s, instructions); }
+                                    for s in body {
+                                        self.compile_statement(s, instructions);
+                                    }
                                     let ep = instructions.len();
                                     instructions.push(Instruction::Nop);
                                     end_patches.push(ep);
-                                    instructions[fail_patch] = Instruction::JumpIfFalse(instructions.len());
+                                    instructions[fail_patch] =
+                                        Instruction::JumpIfFalse(instructions.len());
                                 }
                                 continue;
                             }
@@ -616,10 +647,13 @@ impl BytecodeCompiler {
                                 instructions.push(Instruction::Pop); // remove the match value loaded above
                                 for (field_name, sub_pat) in fields {
                                     let var_name = match sub_pat {
-                                        crate::parser::ast::Pattern::Identifier(n) if n != "_" => n.clone(),
+                                        crate::parser::ast::Pattern::Identifier(n) if n != "_" => {
+                                            n.clone()
+                                        }
                                         _ => field_name.clone(),
                                     };
-                                    let key_idx = self.add_constant(&Literal::String(field_name.clone()));
+                                    let key_idx =
+                                        self.add_constant(&Literal::String(field_name.clone()));
                                     instructions.push(Instruction::LoadVar(match_var.clone()));
                                     instructions.push(Instruction::PushConstant(key_idx));
                                     instructions.push(Instruction::Index);
@@ -629,13 +663,18 @@ impl BytecodeCompiler {
                                     self.compile_expression(g, instructions);
                                     let gfail = instructions.len();
                                     instructions.push(Instruction::Nop);
-                                    for s in body { self.compile_statement(s, instructions); }
+                                    for s in body {
+                                        self.compile_statement(s, instructions);
+                                    }
                                     let ep = instructions.len();
                                     instructions.push(Instruction::Nop);
                                     end_patches.push(ep);
-                                    instructions[gfail] = Instruction::JumpIfFalse(instructions.len());
+                                    instructions[gfail] =
+                                        Instruction::JumpIfFalse(instructions.len());
                                 } else {
-                                    for s in body { self.compile_statement(s, instructions); }
+                                    for s in body {
+                                        self.compile_statement(s, instructions);
+                                    }
                                     let ep = instructions.len();
                                     instructions.push(Instruction::Nop);
                                     end_patches.push(ep);
@@ -649,13 +688,17 @@ impl BytecodeCompiler {
                                     self.compile_expression(g, instructions);
                                     let gp = instructions.len();
                                     instructions.push(Instruction::Nop);
-                                    for s in body { self.compile_statement(s, instructions); }
+                                    for s in body {
+                                        self.compile_statement(s, instructions);
+                                    }
                                     let ep = instructions.len();
                                     instructions.push(Instruction::Nop);
                                     end_patches.push(ep);
                                     instructions[gp] = Instruction::JumpIfFalse(ep + 1);
                                 } else {
-                                    for s in body { self.compile_statement(s, instructions); }
+                                    for s in body {
+                                        self.compile_statement(s, instructions);
+                                    }
                                     let ep = instructions.len();
                                     instructions.push(Instruction::Nop);
                                     end_patches.push(ep);
@@ -675,7 +718,9 @@ impl BytecodeCompiler {
                         instructions.push(Instruction::Nop);
                         // If guard fails, also skip to next case
                         if let Some(cfp) = case_fail_patch {
-                            for s in body { self.compile_statement(s, instructions); }
+                            for s in body {
+                                self.compile_statement(s, instructions);
+                            }
                             let ep = instructions.len();
                             instructions.push(Instruction::Nop);
                             end_patches.push(ep);
@@ -683,7 +728,9 @@ impl BytecodeCompiler {
                             instructions[cfp] = Instruction::JumpIfFalse(next);
                             instructions[gfail] = Instruction::JumpIfFalse(next);
                         } else {
-                            for s in body { self.compile_statement(s, instructions); }
+                            for s in body {
+                                self.compile_statement(s, instructions);
+                            }
                             let ep = instructions.len();
                             instructions.push(Instruction::Nop);
                             end_patches.push(ep);
@@ -693,7 +740,9 @@ impl BytecodeCompiler {
                     }
 
                     // Compile case body
-                    for s in body { self.compile_statement(s, instructions); }
+                    for s in body {
+                        self.compile_statement(s, instructions);
+                    }
                     let ep = instructions.len();
                     instructions.push(Instruction::Nop); // Jump(end)
                     end_patches.push(ep);
@@ -706,7 +755,9 @@ impl BytecodeCompiler {
 
                 // Compile default branch
                 if let Some(default_body) = default {
-                    for s in default_body { self.compile_statement(s, instructions); }
+                    for s in default_body {
+                        self.compile_statement(s, instructions);
+                    }
                 }
 
                 let end_idx = instructions.len();
@@ -714,7 +765,12 @@ impl BytecodeCompiler {
                     instructions[ep] = Instruction::Jump(end_idx);
                 }
             }
-            Statement::Try { body, catch, finally, .. } => {
+            Statement::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => {
                 // Real try-catch with error interception via SetupCatch/PopCatch.
                 // Layout:
                 //   SetupCatch(catch_ip, finally_ip, err_var)
@@ -735,7 +791,9 @@ impl BytecodeCompiler {
                 instructions.push(Instruction::Nop); // placeholder: SetupCatch(catch_ip, finally_ip, err_var)
 
                 // Compile try body
-                for s in body { self.compile_statement(s, instructions); }
+                for s in body {
+                    self.compile_statement(s, instructions);
+                }
 
                 // PopCatch (success path)
                 instructions.push(Instruction::PopCatch);
@@ -748,7 +806,9 @@ impl BytecodeCompiler {
 
                 // Compile catch body
                 if let Some((_, catch_body)) = catch {
-                    for s in catch_body { self.compile_statement(s, instructions); }
+                    for s in catch_body {
+                        self.compile_statement(s, instructions);
+                    }
                 }
 
                 // Jump to finally (or end)
@@ -759,14 +819,21 @@ impl BytecodeCompiler {
 
                 // Compile finally body
                 if let Some(finally_body) = finally {
-                    for s in finally_body { self.compile_statement(s, instructions); }
+                    for s in finally_body {
+                        self.compile_statement(s, instructions);
+                    }
                 }
 
                 // Patch placeholders
                 // Both success and catch paths jump to finally_ip;
                 // if no finally body, finally_ip == end_idx so this is correct.
-                let finally_ip_opt = if finally.is_some() { Some(finally_ip) } else { None };
-                instructions[setup_idx] = Instruction::SetupCatch(catch_ip, finally_ip_opt, err_var);
+                let finally_ip_opt = if finally.is_some() {
+                    Some(finally_ip)
+                } else {
+                    None
+                };
+                instructions[setup_idx] =
+                    Instruction::SetupCatch(catch_ip, finally_ip_opt, err_var);
                 instructions[jump_over_catch] = Instruction::Jump(finally_ip);
                 instructions[jump_to_finally] = Instruction::Jump(finally_ip);
             }
@@ -778,7 +845,7 @@ impl BytecodeCompiler {
                         let jump_idx = instructions.len();
                         instructions.push(Instruction::Nop); // placeholder Jump(end)
                         ctx.break_patches.push(jump_idx - 1); // ForCleanup idx; patch is at jump_idx
-                        // Actually record jump_idx as the placeholder:
+                                                              // Actually record jump_idx as the placeholder:
                         ctx.break_patches.pop();
                         ctx.break_patches.push(jump_idx);
                     } else {
@@ -805,7 +872,12 @@ impl BytecodeCompiler {
                     instructions.push(Instruction::Nop); // continue outside loop = no-op
                 }
             }
-            Statement::IndexAssignment { target, index, value, .. } => {
+            Statement::IndexAssignment {
+                target,
+                index,
+                value,
+                ..
+            } => {
                 // Stack: push new_value, push index, push target_obj, SetIndex, store back
                 self.compile_expression(value, instructions);
                 self.compile_expression(index, instructions);
@@ -822,7 +894,9 @@ impl BytecodeCompiler {
                     }
                 }
             }
-            Statement::CompoundAssignment { name, op, value, .. } => {
+            Statement::CompoundAssignment {
+                name, op, value, ..
+            } => {
                 instructions.push(Instruction::LoadVar(name.clone()));
                 self.compile_expression(value, instructions);
                 instructions.push(match op {
@@ -877,7 +951,9 @@ impl BytecodeCompiler {
             Expression::Identifier(name) => {
                 instructions.push(Instruction::LoadVar(name.clone()));
             }
-            Expression::BinaryOp { left, op, right, .. } => {
+            Expression::BinaryOp {
+                left, op, right, ..
+            } => {
                 self.compile_expression(left, instructions);
                 self.compile_expression(right, instructions);
                 instructions.push(match op {
@@ -926,7 +1002,11 @@ impl BytecodeCompiler {
                         } else {
                             // Non-identifier operand (e.g. ++arr[0]) — not supported.
                             // Emit a runtime error instead of silently doing nothing.
-                            let op_name = if matches!(op, UnaryOperator::Increment) { "++" } else { "--" };
+                            let op_name = if matches!(op, UnaryOperator::Increment) {
+                                "++"
+                            } else {
+                                "--"
+                            };
                             let err_idx = self.add_constant(&Literal::String(format!(
                                 "{} operator only supports simple variable names (e.g. {}x). Use x = x {} 1 instead.",
                                 op_name, op_name, if matches!(op, UnaryOperator::Increment) { "+" } else { "-" }
@@ -946,14 +1026,18 @@ impl BytecodeCompiler {
                     }
                 }
             }
-            Expression::FunctionCall { name, arguments, .. } => {
+            Expression::FunctionCall {
+                name, arguments, ..
+            } => {
                 for arg in arguments {
                     self.compile_expression(arg, instructions);
                 }
                 instructions.push(Instruction::Call(name.clone(), arguments.len()));
             }
             Expression::Array { elements, .. } => {
-                let has_spread = elements.iter().any(|e| matches!(e, Expression::Spread { .. }));
+                let has_spread = elements
+                    .iter()
+                    .any(|e| matches!(e, Expression::Spread { .. }));
                 if has_spread {
                     // Build with spread: start with empty array, append/extend each element
                     instructions.push(Instruction::BuildArray(0)); // empty array on stack
@@ -997,7 +1081,9 @@ impl BytecodeCompiler {
                 // Emit a named placeholder; BytecodeVM will raise a clear error at runtime.
                 instructions.push(Instruction::OptionalGetField(name.clone()));
             }
-            Expression::OptionalCall { target, arguments, .. } => {
+            Expression::OptionalCall {
+                target, arguments, ..
+            } => {
                 self.compile_expression(target, instructions);
                 for arg in arguments {
                     self.compile_expression(arg, instructions);
@@ -1027,7 +1113,12 @@ impl BytecodeCompiler {
                     instructions.push(Instruction::Add); // concatenate
                 }
             }
-            Expression::Ternary { condition, true_expr, false_expr, .. } => {
+            Expression::Ternary {
+                condition,
+                true_expr,
+                false_expr,
+                ..
+            } => {
                 self.compile_expression(condition, instructions);
                 let false_jump = instructions.len();
                 instructions.push(Instruction::Nop); // JumpIfFalse(false_branch)
@@ -1071,7 +1162,12 @@ impl BytecodeCompiler {
                 let name_idx = self.add_constant(&Literal::String(lambda_name));
                 instructions.push(Instruction::PushConstant(name_idx));
             }
-            Expression::MethodCall { object, method, arguments, .. } => {
+            Expression::MethodCall {
+                object,
+                method,
+                arguments,
+                ..
+            } => {
                 // Push object first, then args; CallMethod pops args then object.
                 self.compile_expression(object, instructions);
                 for arg in arguments {
@@ -1079,7 +1175,13 @@ impl BytecodeCompiler {
                 }
                 instructions.push(Instruction::CallMethod(method.clone(), arguments.len()));
             }
-            Expression::Slice { target, start, end, step, .. } => {
+            Expression::Slice {
+                target,
+                start,
+                end,
+                step,
+                ..
+            } => {
                 self.compile_expression(target, instructions);
                 match start {
                     Some(e) => self.compile_expression(e, instructions),
@@ -1135,7 +1237,7 @@ impl BytecodeCompiler {
             Literal::Char(c) => Constant::String(c.to_string()),
             Literal::Null => Constant::Null,
         };
-        
+
         if let Some(&idx) = self.constant_map.get(&constant) {
             idx
         } else {

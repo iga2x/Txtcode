@@ -1,7 +1,7 @@
 use crate::lexer::Lexer;
-use crate::parser::Parser;
-use crate::parser::ast::*;
 use crate::parser::ast::common::InterpolatedSegment;
+use crate::parser::ast::*;
+use crate::parser::Parser;
 use crate::typecheck::TypeChecker;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -150,7 +150,10 @@ fn check_unused_variables(program: &Program) -> Vec<LintIssue> {
 
     // ── Function scope: unused params + local variables
     for stmt in &program.statements {
-        if let Statement::FunctionDef { params, body, span, .. } = stmt {
+        if let Statement::FunctionDef {
+            params, body, span, ..
+        } = stmt
+        {
             let mut used_in_body: HashSet<String> = HashSet::new();
             for s in body {
                 collect_stmt_used(s, &mut used_in_body);
@@ -171,7 +174,10 @@ fn check_unused_variables(program: &Program) -> Vec<LintIssue> {
             // Unused local variables (assignments in function body)
             let mut local_defined: HashMap<String, usize> = HashMap::new();
             for s in body {
-                if let Statement::Assignment { pattern, span: sp, .. } = s {
+                if let Statement::Assignment {
+                    pattern, span: sp, ..
+                } = s
+                {
                     for n in collect_pattern_names(pattern) {
                         if !n.starts_with('_') {
                             local_defined.insert(n, sp.line);
@@ -210,9 +216,7 @@ fn collect_pattern_names(pattern: &Pattern) -> Vec<String> {
             }
             names
         }
-        Pattern::Constructor { args, .. } => {
-            args.iter().flat_map(collect_pattern_names).collect()
-        }
+        Pattern::Constructor { args, .. } => args.iter().flat_map(collect_pattern_names).collect(),
         Pattern::Ignore => vec![],
     }
 }
@@ -221,7 +225,12 @@ fn collect_pattern_names(pattern: &Pattern) -> Vec<String> {
 fn collect_stmt_used(stmt: &Statement, used: &mut HashSet<String>) {
     match stmt {
         Statement::Assignment { value, .. } => collect_expr_idents(value, used),
-        Statement::IndexAssignment { target, index, value, .. } => {
+        Statement::IndexAssignment {
+            target,
+            index,
+            value,
+            ..
+        } => {
             collect_expr_idents(target, used);
             collect_expr_idents(index, used);
             collect_expr_idents(value, used);
@@ -240,7 +249,13 @@ fn collect_stmt_used(stmt: &Statement, used: &mut HashSet<String>) {
                 collect_expr_idents(v, used);
             }
         }
-        Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
+        Statement::If {
+            condition,
+            then_branch,
+            else_if_branches,
+            else_branch,
+            ..
+        } => {
             collect_expr_idents(condition, used);
             for s in then_branch {
                 collect_stmt_used(s, used);
@@ -257,19 +272,28 @@ fn collect_stmt_used(stmt: &Statement, used: &mut HashSet<String>) {
                 }
             }
         }
-        Statement::While { condition, body, .. } => {
+        Statement::While {
+            condition, body, ..
+        } => {
             collect_expr_idents(condition, used);
             for s in body {
                 collect_stmt_used(s, used);
             }
         }
-        Statement::DoWhile { body, condition, .. } => {
+        Statement::DoWhile {
+            body, condition, ..
+        } => {
             for s in body {
                 collect_stmt_used(s, used);
             }
             collect_expr_idents(condition, used);
         }
-        Statement::For { variable, iterable, body, .. } => {
+        Statement::For {
+            variable,
+            iterable,
+            body,
+            ..
+        } => {
             used.insert(variable.clone());
             collect_expr_idents(iterable, used);
             for s in body {
@@ -283,13 +307,20 @@ fn collect_stmt_used(stmt: &Statement, used: &mut HashSet<String>) {
             }
         }
         Statement::Expression(e) => collect_expr_idents(e, used),
-        Statement::Assert { condition, message, .. } => {
+        Statement::Assert {
+            condition, message, ..
+        } => {
             collect_expr_idents(condition, used);
             if let Some(m) = message {
                 collect_expr_idents(m, used);
             }
         }
-        Statement::Try { body, catch, finally, .. } => {
+        Statement::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
             for s in body {
                 collect_stmt_used(s, used);
             }
@@ -305,7 +336,12 @@ fn collect_stmt_used(stmt: &Statement, used: &mut HashSet<String>) {
                 }
             }
         }
-        Statement::Match { value, cases, default, .. } => {
+        Statement::Match {
+            value,
+            cases,
+            default,
+            ..
+        } => {
             collect_expr_idents(value, used);
             for (_, guard, case_body) in cases {
                 if let Some(g) = guard {
@@ -374,17 +410,27 @@ fn collect_expr_idents(expr: &Expression, used: &mut HashSet<String>) {
             collect_expr_idents(target, used);
             collect_expr_idents(index, used);
         }
-        Expression::Member { target, .. }
-        | Expression::OptionalMember { target, .. } => {
+        Expression::Member { target, .. } | Expression::OptionalMember { target, .. } => {
             collect_expr_idents(target, used);
         }
         Expression::Lambda { body, .. } => collect_expr_idents(body, used),
-        Expression::Ternary { condition, true_expr, false_expr, .. } => {
+        Expression::Ternary {
+            condition,
+            true_expr,
+            false_expr,
+            ..
+        } => {
             collect_expr_idents(condition, used);
             collect_expr_idents(true_expr, used);
             collect_expr_idents(false_expr, used);
         }
-        Expression::Slice { target, start, end, step, .. } => {
+        Expression::Slice {
+            target,
+            start,
+            end,
+            step,
+            ..
+        } => {
             collect_expr_idents(target, used);
             if let Some(s) = start {
                 collect_expr_idents(s, used);
@@ -404,7 +450,9 @@ fn collect_expr_idents(expr: &Expression, used: &mut HashSet<String>) {
             }
         }
         Expression::Await { expression, .. } => collect_expr_idents(expression, used),
-        Expression::OptionalCall { target, arguments, .. } => {
+        Expression::OptionalCall {
+            target, arguments, ..
+        } => {
             collect_expr_idents(target, used);
             for arg in arguments {
                 collect_expr_idents(arg, used);
@@ -414,7 +462,9 @@ fn collect_expr_idents(expr: &Expression, used: &mut HashSet<String>) {
             collect_expr_idents(target, used);
             collect_expr_idents(index, used);
         }
-        Expression::MethodCall { object, arguments, .. } => {
+        Expression::MethodCall {
+            object, arguments, ..
+        } => {
             collect_expr_idents(object, used);
             for arg in arguments {
                 collect_expr_idents(arg, used);
@@ -475,7 +525,12 @@ fn recurse_stmts(stmt: &Statement, issues: &mut Vec<LintIssue>) {
         Statement::FunctionDef { body, .. } => {
             check_stmts_for_unreachable(body, issues);
         }
-        Statement::If { then_branch, else_if_branches, else_branch, .. } => {
+        Statement::If {
+            then_branch,
+            else_if_branches,
+            else_branch,
+            ..
+        } => {
             check_stmts_for_unreachable(then_branch, issues);
             for (_, branch) in else_if_branches {
                 check_stmts_for_unreachable(branch, issues);
@@ -492,7 +547,12 @@ fn recurse_stmts(stmt: &Statement, issues: &mut Vec<LintIssue>) {
         Statement::DoWhile { body, .. } => {
             check_stmts_for_unreachable(body, issues);
         }
-        Statement::Try { body, catch, finally, .. } => {
+        Statement::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
             check_stmts_for_unreachable(body, issues);
             if let Some((_, catch_body)) = catch {
                 check_stmts_for_unreachable(catch_body, issues);
@@ -589,7 +649,13 @@ fn check_stmt_map_keys(stmt: &Statement, issues: &mut Vec<LintIssue>) {
                 check_stmt_map_keys(s, issues);
             }
         }
-        Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
+        Statement::If {
+            condition,
+            then_branch,
+            else_if_branches,
+            else_branch,
+            ..
+        } => {
             check_expr_map_keys(condition, issues);
             for s in then_branch {
                 check_stmt_map_keys(s, issues);
@@ -606,8 +672,14 @@ fn check_stmt_map_keys(stmt: &Statement, issues: &mut Vec<LintIssue>) {
                 }
             }
         }
-        Statement::While { condition, body, .. }
-        | Statement::For { iterable: condition, body, .. } => {
+        Statement::While {
+            condition, body, ..
+        }
+        | Statement::For {
+            iterable: condition,
+            body,
+            ..
+        } => {
             check_expr_map_keys(condition, issues);
             for s in body {
                 check_stmt_map_keys(s, issues);
@@ -652,7 +724,12 @@ fn check_expr_map_keys(expr: &Expression, issues: &mut Vec<LintIssue>) {
                 check_expr_map_keys(a, issues);
             }
         }
-        Expression::Ternary { condition, true_expr, false_expr, .. } => {
+        Expression::Ternary {
+            condition,
+            true_expr,
+            false_expr,
+            ..
+        } => {
             check_expr_map_keys(condition, issues);
             check_expr_map_keys(true_expr, issues);
             check_expr_map_keys(false_expr, issues);
@@ -686,7 +763,13 @@ fn check_stmt_suspicious(stmt: &Statement, issues: &mut Vec<LintIssue>) {
     match stmt {
         Statement::Expression(e) => check_expr_suspicious(e, issues),
         Statement::Assignment { value, .. } => check_expr_suspicious(value, issues),
-        Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
+        Statement::If {
+            condition,
+            then_branch,
+            else_if_branches,
+            else_branch,
+            ..
+        } => {
             check_expr_suspicious(condition, issues);
             for s in then_branch {
                 check_stmt_suspicious(s, issues);
@@ -703,7 +786,9 @@ fn check_stmt_suspicious(stmt: &Statement, issues: &mut Vec<LintIssue>) {
                 }
             }
         }
-        Statement::While { condition, body, .. } => {
+        Statement::While {
+            condition, body, ..
+        } => {
             check_expr_suspicious(condition, issues);
             for s in body {
                 check_stmt_suspicious(s, issues);
@@ -720,10 +805,20 @@ fn check_stmt_suspicious(stmt: &Statement, issues: &mut Vec<LintIssue>) {
 }
 
 fn check_expr_suspicious(expr: &Expression, issues: &mut Vec<LintIssue>) {
-    if let Expression::BinaryOp { left, op, right, span } = expr {
+    if let Expression::BinaryOp {
+        left,
+        op,
+        right,
+        span,
+    } = expr
+    {
         match op {
             BinaryOperator::Equal | BinaryOperator::NotEqual => {
-                let op_str = if *op == BinaryOperator::Equal { "==" } else { "!=" };
+                let op_str = if *op == BinaryOperator::Equal {
+                    "=="
+                } else {
+                    "!="
+                };
                 let eq = *op == BinaryOperator::Equal;
 
                 // x == true  → use `x` instead
@@ -739,9 +834,7 @@ fn check_expr_suspicious(expr: &Expression, issues: &mut Vec<LintIssue>) {
                         column: span.column,
                         message: format!(
                             "Suspicious comparison with boolean literal ({} {}): {}",
-                            op_str,
-                            b,
-                            suggestion
+                            op_str, b, suggestion
                         ),
                         severity: Severity::Warning,
                     });
@@ -758,9 +851,7 @@ fn check_expr_suspicious(expr: &Expression, issues: &mut Vec<LintIssue>) {
                         column: span.column,
                         message: format!(
                             "Suspicious comparison with boolean literal ({} {}): {}",
-                            op_str,
-                            b,
-                            suggestion
+                            op_str, b, suggestion
                         ),
                         severity: Severity::Warning,
                     });
@@ -790,7 +881,10 @@ fn check_expr_suspicious(expr: &Expression, issues: &mut Vec<LintIssue>) {
 fn check_recursion_risk(program: &Program) -> Vec<LintIssue> {
     let mut issues = Vec::new();
     for stmt in &program.statements {
-        if let Statement::FunctionDef { name, body, span, .. } = stmt {
+        if let Statement::FunctionDef {
+            name, body, span, ..
+        } = stmt
+        {
             if body_calls_function(body, name) {
                 issues.push(LintIssue {
                     line: span.line,
@@ -817,7 +911,13 @@ fn stmt_calls(stmt: &Statement, func_name: &str) -> bool {
         Statement::Expression(e) => expr_calls(e, func_name),
         Statement::Assignment { value, .. } => expr_calls(value, func_name),
         Statement::Return { value: Some(v), .. } => expr_calls(v, func_name),
-        Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
+        Statement::If {
+            condition,
+            then_branch,
+            else_if_branches,
+            else_branch,
+            ..
+        } => {
             expr_calls(condition, func_name)
                 || body_calls_function(then_branch, func_name)
                 || else_if_branches
@@ -825,23 +925,32 @@ fn stmt_calls(stmt: &Statement, func_name: &str) -> bool {
                     .any(|(c, b)| expr_calls(c, func_name) || body_calls_function(b, func_name))
                 || else_branch
                     .as_ref()
-                    .map_or(false, |b| body_calls_function(b, func_name))
+                    .is_some_and(|b| body_calls_function(b, func_name))
         }
-        Statement::While { condition, body, .. }
-        | Statement::For { iterable: condition, body, .. } => {
-            expr_calls(condition, func_name) || body_calls_function(body, func_name)
+        Statement::While {
+            condition, body, ..
         }
+        | Statement::For {
+            iterable: condition,
+            body,
+            ..
+        } => expr_calls(condition, func_name) || body_calls_function(body, func_name),
         Statement::Repeat { count, body, .. } => {
             expr_calls(count, func_name) || body_calls_function(body, func_name)
         }
-        Statement::Try { body, catch, finally, .. } => {
+        Statement::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
             body_calls_function(body, func_name)
                 || catch
                     .as_ref()
-                    .map_or(false, |(_, b)| body_calls_function(b, func_name))
+                    .is_some_and(|(_, b)| body_calls_function(b, func_name))
                 || finally
                     .as_ref()
-                    .map_or(false, |b| body_calls_function(b, func_name))
+                    .is_some_and(|b| body_calls_function(b, func_name))
         }
         _ => false,
     }
@@ -849,22 +958,27 @@ fn stmt_calls(stmt: &Statement, func_name: &str) -> bool {
 
 fn expr_calls(expr: &Expression, func_name: &str) -> bool {
     match expr {
-        Expression::FunctionCall { name, arguments, .. } => {
-            name == func_name || arguments.iter().any(|a| expr_calls(a, func_name))
-        }
+        Expression::FunctionCall {
+            name, arguments, ..
+        } => name == func_name || arguments.iter().any(|a| expr_calls(a, func_name)),
         Expression::BinaryOp { left, right, .. } => {
             expr_calls(left, func_name) || expr_calls(right, func_name)
         }
         Expression::UnaryOp { operand, .. } => expr_calls(operand, func_name),
-        Expression::Ternary { condition, true_expr, false_expr, .. } => {
+        Expression::Ternary {
+            condition,
+            true_expr,
+            false_expr,
+            ..
+        } => {
             expr_calls(condition, func_name)
                 || expr_calls(true_expr, func_name)
                 || expr_calls(false_expr, func_name)
         }
         Expression::Array { elements, .. } => elements.iter().any(|e| expr_calls(e, func_name)),
-        Expression::Map { entries, .. } => {
-            entries.iter().any(|(k, v)| expr_calls(k, func_name) || expr_calls(v, func_name))
-        }
+        Expression::Map { entries, .. } => entries
+            .iter()
+            .any(|(k, v)| expr_calls(k, func_name) || expr_calls(v, func_name)),
         _ => false,
     }
 }
@@ -875,8 +989,22 @@ fn expr_calls(expr: &Expression, func_name: &str) -> bool {
 
 /// Standard library module names that are always resolvable.
 const STDLIB_MODULES: &[&str] = &[
-    "core", "io", "net", "crypto", "sys", "time", "json", "log", "regex", "url", "path",
-    "capabilities", "math", "string", "collections", "test",
+    "core",
+    "io",
+    "net",
+    "crypto",
+    "sys",
+    "time",
+    "json",
+    "log",
+    "regex",
+    "url",
+    "path",
+    "capabilities",
+    "math",
+    "string",
+    "collections",
+    "test",
 ];
 
 fn check_imports_exist(program: &Program, file_path: Option<&Path>) -> Vec<LintIssue> {
@@ -884,7 +1012,13 @@ fn check_imports_exist(program: &Program, file_path: Option<&Path>) -> Vec<LintI
     let base_dir = file_path.and_then(|p| p.parent());
 
     for stmt in &program.statements {
-        if let Statement::Import { modules, from, span, .. } = stmt {
+        if let Statement::Import {
+            modules,
+            from,
+            span,
+            ..
+        } = stmt
+        {
             // `from "module" import name1, name2`
             if let Some(from_path) = from {
                 if !is_stdlib(from_path) && !resolve_module(from_path, base_dir) {
@@ -923,8 +1057,7 @@ fn resolve_module(name: &str, base_dir: Option<&Path>) -> bool {
         None => return false,
     };
     // Try <name>.tc or <name>/ (directory with main.tc)
-    base.join(format!("{}.tc", name)).exists()
-        || base.join(name).join("main.tc").exists()
+    base.join(format!("{}.tc", name)).exists() || base.join(name).join("main.tc").exists()
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -956,7 +1089,10 @@ fn check_shadowed_variables(program: &Program) -> Vec<LintIssue> {
     }
 
     for stmt in &program.statements {
-        if let Statement::FunctionDef { params, body, span, .. } = stmt {
+        if let Statement::FunctionDef {
+            params, body, span, ..
+        } = stmt
+        {
             let param_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
 
             // Check if any local assignment in the body shadows a parameter
@@ -1000,7 +1136,12 @@ fn recurse_stmts_for_shadowing(
     issues: &mut Vec<LintIssue>,
 ) {
     match stmt {
-        Statement::If { then_branch, else_if_branches, else_branch, .. } => {
+        Statement::If {
+            then_branch,
+            else_if_branches,
+            else_branch,
+            ..
+        } => {
             check_body_for_shadowing(then_branch, outer, fn_line, issues);
             for (_, b) in else_if_branches {
                 check_body_for_shadowing(b, outer, fn_line, issues);
@@ -1015,7 +1156,12 @@ fn recurse_stmts_for_shadowing(
         | Statement::DoWhile { body, .. } => {
             check_body_for_shadowing(body, outer, fn_line, issues);
         }
-        Statement::Try { body, catch, finally, .. } => {
+        Statement::Try {
+            body,
+            catch,
+            finally,
+            ..
+        } => {
             check_body_for_shadowing(body, outer, fn_line, issues);
             if let Some((_, b)) = catch {
                 check_body_for_shadowing(b, outer, fn_line, issues);
@@ -1051,7 +1197,14 @@ fn check_mutable_globals(program: &Program) -> Vec<LintIssue> {
     }
 
     for stmt in &program.statements {
-        if let Statement::FunctionDef { name: fn_name, params, body, span, .. } = stmt {
+        if let Statement::FunctionDef {
+            name: fn_name,
+            params,
+            body,
+            span,
+            ..
+        } = stmt
+        {
             // Exclude param names and local assignments from the global check
             let local_names: HashSet<String> = params.iter().map(|p| p.name.clone()).collect();
             check_body_for_global_mutation(
@@ -1116,20 +1269,53 @@ fn check_body_for_global_mutation(
                     });
                 }
             }
-            Statement::If { then_branch, else_if_branches, else_branch, .. } => {
-                check_body_for_global_mutation(then_branch, globals, &locally_defined, fn_name, fn_line, issues);
+            Statement::If {
+                then_branch,
+                else_if_branches,
+                else_branch,
+                ..
+            } => {
+                check_body_for_global_mutation(
+                    then_branch,
+                    globals,
+                    &locally_defined,
+                    fn_name,
+                    fn_line,
+                    issues,
+                );
                 for (_, b) in else_if_branches {
-                    check_body_for_global_mutation(b, globals, &locally_defined, fn_name, fn_line, issues);
+                    check_body_for_global_mutation(
+                        b,
+                        globals,
+                        &locally_defined,
+                        fn_name,
+                        fn_line,
+                        issues,
+                    );
                 }
                 if let Some(b) = else_branch {
-                    check_body_for_global_mutation(b, globals, &locally_defined, fn_name, fn_line, issues);
+                    check_body_for_global_mutation(
+                        b,
+                        globals,
+                        &locally_defined,
+                        fn_name,
+                        fn_line,
+                        issues,
+                    );
                 }
             }
             Statement::While { body, .. }
             | Statement::For { body, .. }
             | Statement::Repeat { body, .. }
             | Statement::DoWhile { body, .. } => {
-                check_body_for_global_mutation(body, globals, &locally_defined, fn_name, fn_line, issues);
+                check_body_for_global_mutation(
+                    body,
+                    globals,
+                    &locally_defined,
+                    fn_name,
+                    fn_line,
+                    issues,
+                );
             }
             _ => {}
         }
@@ -1178,18 +1364,26 @@ mod tests {
     }
 
     fn has_warning(issues: &[LintIssue], msg_contains: &str) -> bool {
-        issues.iter().any(|i| i.message.contains(msg_contains) && i.severity == Severity::Warning)
+        issues
+            .iter()
+            .any(|i| i.message.contains(msg_contains) && i.severity == Severity::Warning)
     }
 
     fn has_error(issues: &[LintIssue], msg_contains: &str) -> bool {
-        issues.iter().any(|i| i.message.contains(msg_contains) && i.severity == Severity::Error)
+        issues
+            .iter()
+            .any(|i| i.message.contains(msg_contains) && i.severity == Severity::Error)
     }
 
     #[test]
     fn test_unused_variable() {
         let src = "store → unused → 42\nprint → 1";
         let issues = lint(src);
-        assert!(has_warning(&issues, "Unused variable 'unused'"), "got: {:?}", issues);
+        assert!(
+            has_warning(&issues, "Unused variable 'unused'"),
+            "got: {:?}",
+            issues
+        );
     }
 
     #[test]
@@ -1210,28 +1404,44 @@ mod tests {
     fn test_duplicate_map_key() {
         let src = r#"store → m → {"a": 1, "a": 2}"#;
         let issues = lint(src);
-        assert!(has_error(&issues, "Duplicate map key 'a'"), "got: {:?}", issues);
+        assert!(
+            has_error(&issues, "Duplicate map key 'a'"),
+            "got: {:?}",
+            issues
+        );
     }
 
     #[test]
     fn test_no_duplicate_map_key() {
         let src = r#"store → m → {"a": 1, "b": 2}"#;
         let issues = lint(src);
-        assert!(!has_error(&issues, "Duplicate map key"), "got: {:?}", issues);
+        assert!(
+            !has_error(&issues, "Duplicate map key"),
+            "got: {:?}",
+            issues
+        );
     }
 
     #[test]
     fn test_suspicious_comparison_true() {
         let src = "if → x == true\nprint → x\nend";
         let issues = lint(src);
-        assert!(has_warning(&issues, "Suspicious comparison"), "got: {:?}", issues);
+        assert!(
+            has_warning(&issues, "Suspicious comparison"),
+            "got: {:?}",
+            issues
+        );
     }
 
     #[test]
     fn test_recursion_risk() {
         let src = "define → fib → (n)\nreturn → fib(n)\nend";
         let issues = lint(src);
-        assert!(has_warning(&issues, "calls itself recursively"), "got: {:?}", issues);
+        assert!(
+            has_warning(&issues, "calls itself recursively"),
+            "got: {:?}",
+            issues
+        );
     }
 
     #[test]
@@ -1246,7 +1456,11 @@ mod tests {
         // Local assignment shadows parameter 'x'
         let src = "define → f → (x)\nstore → x → 99\nreturn → x\nend";
         let issues = lint(src);
-        assert!(has_warning(&issues, "shadows a parameter"), "got: {:?}", issues);
+        assert!(
+            has_warning(&issues, "shadows a parameter"),
+            "got: {:?}",
+            issues
+        );
     }
 
     #[test]
@@ -1261,7 +1475,11 @@ mod tests {
         // Function modifies a global variable
         let src = "store → counter → 0\ndefine → inc → ()\nstore → counter → counter + 1\nend";
         let issues = lint(src);
-        assert!(has_warning(&issues, "modifies global variable"), "got: {:?}", issues);
+        assert!(
+            has_warning(&issues, "modifies global variable"),
+            "got: {:?}",
+            issues
+        );
     }
 
     #[test]

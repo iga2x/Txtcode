@@ -8,7 +8,7 @@ pub struct ToolResult {
     pub tool_name: String,
     pub success: bool,
     pub output: ToolOutput,
-    pub duration: u64,        // Execution duration in seconds
+    pub duration: u64, // Execution duration in seconds
     pub timestamp: SystemTime,
 }
 
@@ -67,4 +67,3 @@ impl ToolResult {
         }
     }
 }
-

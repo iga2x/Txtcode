@@ -4,4 +4,3 @@
 pub fn run() {
     // Runner implementation
 }
-

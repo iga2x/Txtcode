@@ -1,13 +1,14 @@
 // Tool executor - executes tools with permission checking and audit logging
 
-use super::{Tool, ToolContext, ToolRegistry, check_tool_permission};
-use super::result::{ToolResult, ToolOutput};
+use super::result::{ToolOutput, ToolResult};
+use super::{check_tool_permission, Tool, ToolContext, ToolRegistry};
+use crate::runtime::audit::{AIMetadata, AuditResult, AuditTrail};
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::permissions::PermissionResource;
-use crate::runtime::audit::{AuditTrail, AuditResult, AIMetadata};
+use crate::stdlib::PermissionChecker;
 use crate::tools::logger::log_debug;
 use std::process::Command;
-use std::time::{SystemTime, Duration};
+use std::time::{Duration, SystemTime};
 
 /// Tool executor - executes pentest tools safely
 pub struct ToolExecutor {
@@ -25,7 +26,11 @@ impl ToolExecutor {
         Self { registry }
     }
 
-    /// Execute a tool by name with arguments
+    /// Execute a tool by name with arguments.
+    ///
+    /// `permission_checker` should be the VM's `PermissionChecker` implementation
+    /// so that `deny_permission()` / `grant_permission()` rules are enforced here,
+    /// not just in the stdlib path.
     pub fn execute_tool(
         &self,
         tool_name: &str,
@@ -33,17 +38,25 @@ impl ToolExecutor {
         context: Option<ToolContext>,
         audit_trail: Option<&mut AuditTrail>,
         ai_metadata: Option<&AIMetadata>,
+        permission_checker: Option<&dyn PermissionChecker>,
     ) -> Result<ToolResult, RuntimeError> {
         // Get tool from registry
-        let tool = self.registry.get(tool_name)
-            .ok_or_else(|| RuntimeError::new(format!("Tool '{}' not found in registry", tool_name)))?;
+        let tool = self.registry.get(tool_name).ok_or_else(|| {
+            RuntimeError::new(format!("Tool '{}' not found in registry", tool_name))
+        })?;
 
         // Create execution context
         let ctx = context.unwrap_or_else(|| ToolContext::new().with_timeout(tool.default_timeout));
 
-        // Check permissions
-        let resource = PermissionResource::System("tool_exec".to_string());
-        check_tool_permission(tool, &resource, None)?;
+        // Tool-level invariant check (requires_sudo, etc.)
+        let resource = PermissionResource::Process(vec![tool.command.clone()]);
+        check_tool_permission(tool, &resource, Some(tool_name))?;
+
+        // VM permission check — enforces the grant/deny policy set on the VM.
+        // This is the same authority path used by the stdlib.
+        if let Some(checker) = permission_checker {
+            checker.check_permission(&resource, Some(tool_name))?;
+        }
 
         // Log to audit trail if provided
         if let Some(audit) = audit_trail {
@@ -59,7 +72,10 @@ impl ToolExecutor {
             );
         }
 
-        log_debug(&format!("Executing tool '{}' with args: {:?}", tool_name, args));
+        log_debug(&format!(
+            "Executing tool '{}' with args: {:?}",
+            tool_name, args
+        ));
 
         // Execute tool
         let start_time = SystemTime::now();
@@ -106,11 +122,13 @@ impl ToolExecutor {
         // Execute command
         let output = if timeout > 0 {
             // For now, just execute - timeout handling would use tokio::process in async context
-            command.output()
+            command
+                .output()
                 .map_err(|e| RuntimeError::new(format!("Tool execution failed: {}", e)))?
         } else {
             // No timeout - direct execution
-            command.output()
+            command
+                .output()
                 .map_err(|e| RuntimeError::new(format!("Tool execution failed: {}", e)))?
         };
 
@@ -137,4 +155,3 @@ impl Default for ToolExecutor {
         Self::new()
     }
 }
-

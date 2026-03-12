@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use txtcode::compiler::bytecode::BytecodeCompiler;
 use txtcode::lexer::Lexer;
 use txtcode::parser::Parser;
-use txtcode::compiler::bytecode::BytecodeCompiler;
 
 const FIB_PROGRAM: &str = include_str!("programs/fib.txt");
 const LOOP_PROGRAM: &str = include_str!("programs/loop.txt");
@@ -95,5 +95,11 @@ fn bench_vm_interpret(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_lexer, bench_parser, bench_compile, bench_vm_interpret);
+criterion_group!(
+    benches,
+    bench_lexer,
+    bench_parser,
+    bench_compile,
+    bench_vm_interpret
+);
 criterion_main!(benches);

@@ -1,6 +1,6 @@
 // Expression AST nodes
 
-use super::common::{Span, Literal, BinaryOperator, UnaryOperator, Parameter, InterpolatedSegment};
+use super::common::{BinaryOperator, InterpolatedSegment, Literal, Parameter, Span, UnaryOperator};
 
 /// Expression nodes
 #[derive(Debug, Clone, PartialEq)]
@@ -107,4 +107,3 @@ pub enum Expression {
         span: Span,
     },
 }
-

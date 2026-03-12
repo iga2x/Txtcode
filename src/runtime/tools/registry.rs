@@ -13,10 +13,10 @@ impl ToolRegistry {
         let mut registry = Self {
             tools: HashMap::new(),
         };
-        
+
         // Register common pentest tools
         registry.register_default_tools();
-        
+
         registry
     }
 
@@ -58,7 +58,7 @@ impl ToolRegistry {
             command: "masscan".to_string(),
             description: "Fast port scanner".to_string(),
             category: ToolCategory::NetworkScanning,
-            requires_sudo: true, // Requires sudo for raw sockets
+            requires_sudo: true,  // Requires sudo for raw sockets
             default_timeout: 600, // 10 minutes
             allowed_actions: vec!["scan".to_string()],
         });
@@ -95,16 +95,11 @@ impl ToolRegistry {
             allowed_actions: vec!["crack".to_string()],
         });
 
-        // System info tools (safe, basic commands)
-        self.register(Tool {
-            name: "system".to_string(),
-            command: "sh".to_string(), // Generic shell for system commands
-            description: "System command executor (safe subset)".to_string(),
-            category: ToolCategory::SystemInfo,
-            requires_sudo: false,
-            default_timeout: 30, // 30 seconds for system commands
-            allowed_actions: vec!["info".to_string(), "list".to_string()],
-        });
+        // NOTE: A generic "system" → "sh" tool is intentionally NOT registered.
+        // Mapping a tool to a shell interpreter gives any caller with net.connect
+        // or process permissions a shell escape vector. Tools must map to specific
+        // named binaries. Use `sys.exec()` (which requires explicit `sys.exec`
+        // permission and direct-argv execution) for one-off commands.
     }
 }
 
@@ -113,4 +108,3 @@ impl Default for ToolRegistry {
         Self::new()
     }
 }
-

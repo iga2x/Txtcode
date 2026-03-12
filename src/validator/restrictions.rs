@@ -1,7 +1,7 @@
 // Restriction checking - pentest-specific rules and constraints
 
-use crate::parser::ast::{Program, Statement};
 use super::ValidationError;
+use crate::parser::ast::{Program, Statement};
 
 pub struct RestrictionChecker;
 
@@ -13,16 +13,22 @@ impl RestrictionChecker {
         }
         Ok(())
     }
-    
+
     fn check_statement(stmt: &Statement) -> Result<(), ValidationError> {
         match stmt {
-            Statement::FunctionDef { name: _name, allowed_actions, forbidden_actions, body, .. } => {
+            Statement::FunctionDef {
+                name: _name,
+                allowed_actions,
+                forbidden_actions,
+                body,
+                ..
+            } => {
                 // Check capability declarations are not empty
                 if allowed_actions.is_empty() && forbidden_actions.is_empty() {
                     // Note: Empty capabilities are allowed - they just mean no explicit restrictions
                     // We could warn about this in the future, but it's not an error
                 }
-                
+
                 // Validate capability expressions (already validated during parsing, but double-check)
                 for cap in allowed_actions {
                     // Validate capability format - all valid formats are handled in CapabilityExpr::from_string
@@ -32,24 +38,24 @@ impl RestrictionChecker {
                 for cap in forbidden_actions {
                     let _ = cap; // Use variable to avoid unused warning
                 }
-                
+
                 // Check nested functions
                 for body_stmt in body {
                     Self::check_statement(body_stmt)?;
                 }
-                
+
                 // Future restrictions:
                 // - Reject functions without intent declarations in AI-generated code
                 // - Require timeout declarations for network operations
                 // - Validate capability scope matches usage
             }
-            Statement::If { .. } |
-            Statement::While { .. } |
-            Statement::DoWhile { .. } |
-            Statement::For { .. } |
-            Statement::Repeat { .. } |
-            Statement::Match { .. } |
-            Statement::Try { .. } => {
+            Statement::If { .. }
+            | Statement::While { .. }
+            | Statement::DoWhile { .. }
+            | Statement::For { .. }
+            | Statement::Repeat { .. }
+            | Statement::Match { .. }
+            | Statement::Try { .. } => {
                 // Recursively check nested statements
                 for stmt in Self::extract_nested_statements(stmt) {
                     Self::check_statement(&stmt)?;
@@ -61,10 +67,15 @@ impl RestrictionChecker {
         }
         Ok(())
     }
-    
+
     fn extract_nested_statements(stmt: &Statement) -> Vec<Statement> {
         match stmt {
-            Statement::If { then_branch, else_if_branches, else_branch, .. } => {
+            Statement::If {
+                then_branch,
+                else_if_branches,
+                else_branch,
+                ..
+            } => {
                 let mut result = then_branch.clone();
                 for (_, branch) in else_if_branches {
                     result.extend(branch.clone());
@@ -74,10 +85,10 @@ impl RestrictionChecker {
                 }
                 result
             }
-            Statement::While { body, .. } | Statement::DoWhile { body, .. } |
-            Statement::For { body, .. } | Statement::Repeat { body, .. } => {
-                body.clone()
-            }
+            Statement::While { body, .. }
+            | Statement::DoWhile { body, .. }
+            | Statement::For { body, .. }
+            | Statement::Repeat { body, .. } => body.clone(),
             Statement::Match { cases, default, .. } => {
                 let mut result = Vec::new();
                 for (_, _, body) in cases {
@@ -88,7 +99,12 @@ impl RestrictionChecker {
                 }
                 result
             }
-            Statement::Try { body, catch, finally, .. } => {
+            Statement::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => {
                 let mut result = body.clone();
                 if let Some((_, body)) = catch {
                     result.extend(body.clone());
@@ -98,11 +114,8 @@ impl RestrictionChecker {
                 }
                 result
             }
-            Statement::FunctionDef { body, .. } => {
-                body.clone()
-            }
+            Statement::FunctionDef { body, .. } => body.clone(),
             _ => Vec::new(),
         }
     }
 }
-

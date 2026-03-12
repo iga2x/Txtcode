@@ -4,36 +4,51 @@
 ##
 ## Covers: string parsing, maps, functions, error handling
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+define → has_key → (m, key)
+  store → found → false
+  try
+    store → _ → m[key]
+    store → found → true
+  catch e
+    store → found → false
+  end
+  return → found
+end
+
 # ── Parser ────────────────────────────────────────────────────────────────────
 
 define → parse_config → (text)
-  store → config → {}
+  store → config → {"_": ""}
   store → section → "global"
-  store → config[section] → {}
+  store → config[section] → {"_": ""}
 
   for → raw_line in split(text, "\n")
     store → line → trim(raw_line)
 
     # Skip blank lines and comments
-    if → line == "" or starts_with(line, "#") or starts_with(line, ";")
+    if → line == "" or startsWith(line, "#") or startsWith(line, ";")
       continue
     end
 
     # Section header: [section_name]
-    if → starts_with(line, "[") and ends_with(line, "]")
-      store → section → slice(line, 1, len(line) - 1)
+    if → startsWith(line, "[") and endsWith(line, "]")
+      store → section → substring(line, 1, len(line) - 1)
       if → not has_key(config, section)
-        store → config[section] → {}
+        store → config[section] → {"_": ""}
       end
       continue
     end
 
     # Key = value
-    store → eq_pos → index_of(line, "=")
+    store → eq_pos → indexOf(line, "=")
     if → eq_pos > 0
-      store → key → trim(slice(line, 0, eq_pos))
-      store → val → trim(slice(line, eq_pos + 1, len(line)))
-      store → config[section][key] → coerce_value(val)
+      store → key → trim(substring(line, 0, eq_pos))
+      store → val → trim(substring(line, eq_pos + 1, len(line)))
+      store → section_map → config[section]
+      store → section_map[key] → coerce_value(val)
+      store → config[section] → section_map
     end
   end
 
@@ -48,13 +63,14 @@ define → coerce_value → (val)
   if → val == "false" or val == "no" or val == "0"
     return → false
   end
-  # Numeric coercion
-  if → is_numeric(val)
-    return → to_number(val)
-  end
   # Strip surrounding quotes
-  if → starts_with(val, "\"") and ends_with(val, "\"")
-    return → slice(val, 1, len(val) - 1)
+  if → startsWith(val, "\"") and endsWith(val, "\"")
+    return → substring(val, 1, len(val) - 1)
+  end
+  # Numeric coercion using int()
+  try
+    return → int(val)
+  catch _e
   end
   return → val
 end
@@ -113,12 +129,12 @@ define → validate_config → (cfg)
 
   store → p → get_config(cfg, "server", "port", 0)
   if → p < 1 or p > 65535
-    push(errors, "server.port must be 1-65535, got: " + p)
+    store → errors → concat(errors, ["server.port must be 1-65535, got: " + p])
   end
 
   store → pool → get_config(cfg, "database", "pool_size", 0)
   if → pool < 1
-    push(errors, "database.pool_size must be >= 1")
+    store → errors → concat(errors, ["database.pool_size must be >= 1"])
   end
 
   return → errors

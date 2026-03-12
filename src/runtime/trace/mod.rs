@@ -1,15 +1,15 @@
 // Execution trace system - structured, replayable execution graphs
 // Records execution flow for debugging, auditing, and AI feedback
 
-pub mod recorder;
-pub mod graph;
 pub mod export;
+pub mod graph;
+pub mod recorder;
 
-pub use recorder::TraceRecorder;
-pub use graph::{ExecutionTrace, TraceNode, TraceNodeType, VariableState};
 pub use export::export_trace_json;
+pub use graph::{ExecutionTrace, TraceNode, TraceNodeType, VariableState};
+pub use recorder::TraceRecorder;
 
-use crate::parser::ast::{Statement, Expression};
+use crate::parser::ast::{Expression, Statement};
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 
@@ -42,12 +42,22 @@ impl ExecutionTraceSystem {
     }
 
     /// Record variable assignment
-    pub fn record_variable_assignment(&mut self, name: String, value: Value, scope: Option<String>) {
+    pub fn record_variable_assignment(
+        &mut self,
+        name: String,
+        value: Value,
+        scope: Option<String>,
+    ) {
         self.recorder.record_variable_assignment(name, value, scope);
     }
 
     /// Record function call
-    pub fn record_function_call(&mut self, name: String, args: Vec<Value>, result: Result<Value, RuntimeError>) {
+    pub fn record_function_call(
+        &mut self,
+        name: String,
+        args: Vec<Value>,
+        result: Result<Value, RuntimeError>,
+    ) {
         self.recorder.record_function_call(name, args, result);
     }
 
@@ -87,4 +97,3 @@ impl Default for ExecutionTraceSystem {
         Self::new()
     }
 }
-

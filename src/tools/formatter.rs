@@ -96,10 +96,9 @@ impl Formatter {
 
             // ── blank-line insertion logic ───────────────────────────────────
             // Insert a blank line before top-level defines/structs/enums
-            if !is_first_content && depth == 0 && is_block_opener_keyword(code) {
-                out.push('\n');
-                blank_pending = false;
-            } else if blank_pending && !is_first_content {
+            if (!is_first_content && depth == 0 && is_block_opener_keyword(code))
+                || (blank_pending && !is_first_content)
+            {
                 out.push('\n');
                 blank_pending = false;
             }
@@ -173,10 +172,12 @@ fn format_tokens(code: &str) -> String {
     // Track whether the previous *emitted* token was a "value" (identifier, literal, ), ])
     let mut prev_was_value = false;
 
-    for tok in tokens
-        .iter()
-        .filter(|t| !matches!(t.kind, TokenKind::Eof | TokenKind::Newline | TokenKind::Whitespace))
-    {
+    for tok in tokens.iter().filter(|t| {
+        !matches!(
+            t.kind,
+            TokenKind::Eof | TokenKind::Newline | TokenKind::Whitespace
+        )
+    }) {
         let text = emit_token(tok);
 
         if out.is_empty() {
@@ -319,11 +320,26 @@ fn is_binary_operator(k: &TokenKind) -> bool {
     use TokenKind::*;
     matches!(
         k,
-        Plus | Minus | Star | Slash | Percent | Power
-            | Equal | NotEqual | Less | Greater | LessEqual | GreaterEqual
-            | And | Or
-            | BitAnd | BitOr | BitXor | LeftShift | RightShift
-            | NullCoalesce | Assignment
+        Plus | Minus
+            | Star
+            | Slash
+            | Percent
+            | Power
+            | Equal
+            | NotEqual
+            | Less
+            | Greater
+            | LessEqual
+            | GreaterEqual
+            | And
+            | Or
+            | BitAnd
+            | BitOr
+            | BitXor
+            | LeftShift
+            | RightShift
+            | NullCoalesce
+            | Assignment
     )
 }
 
@@ -416,14 +432,12 @@ fn split_code_comment(line: &str) -> (&str, &str) {
             if b == string_char {
                 in_string = false;
             }
-        } else {
-            if b == b'"' || b == b'\'' {
-                in_string = true;
-                string_char = b;
-            } else if b == b'#' {
-                // Found comment start
-                return (&line[..i], &line[i..]);
-            }
+        } else if b == b'"' || b == b'\'' {
+            in_string = true;
+            string_char = b;
+        } else if b == b'#' {
+            // Found comment start
+            return (&line[..i], &line[i..]);
         }
         i += 1;
     }
@@ -530,7 +544,10 @@ mod tests {
     fn test_max_one_blank_line() {
         let src = "store → a → 1\n\n\n\nstore → b → 2";
         let out = fmt(src);
-        assert!(!out.contains("\n\n\n"), "more than one consecutive blank line");
+        assert!(
+            !out.contains("\n\n\n"),
+            "more than one consecutive blank line"
+        );
     }
 
     #[test]

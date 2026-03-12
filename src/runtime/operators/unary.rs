@@ -21,14 +21,18 @@ impl UnaryOps {
         match val {
             Value::Integer(i) => Ok(Value::Integer(-i)),
             Value::Float(f) => Ok(Value::Float(-f)),
-            _ => Err(RuntimeError::new("Invalid operand for negation".to_string())),
+            _ => Err(RuntimeError::new(
+                "Invalid operand for negation".to_string(),
+            )),
         }
     }
 
     fn bit_not(val: &Value) -> Result<Value, RuntimeError> {
         match val {
             Value::Integer(i) => Ok(Value::Integer(!i)),
-            _ => Err(RuntimeError::new("Bitwise not requires an integer".to_string())),
+            _ => Err(RuntimeError::new(
+                "Bitwise not requires an integer".to_string(),
+            )),
         }
     }
 
@@ -48,4 +52,3 @@ impl UnaryOps {
         }
     }
 }
-

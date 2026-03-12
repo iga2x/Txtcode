@@ -1,7 +1,7 @@
 // Syntax validation - checks for forbidden patterns and syntax violations
 
-use crate::parser::ast::{Program, Statement, Expression};
 use super::ValidationError;
+use crate::parser::ast::{Expression, Program, Statement};
 
 pub struct SyntaxValidator;
 
@@ -13,7 +13,7 @@ impl SyntaxValidator {
         }
         Ok(())
     }
-    
+
     fn check_statement(stmt: &Statement) -> Result<(), ValidationError> {
         match stmt {
             Statement::Expression(expr) => {
@@ -24,7 +24,12 @@ impl SyntaxValidator {
                     Self::check_statement(body_stmt)?;
                 }
             }
-            Statement::If { then_branch, else_if_branches, else_branch, .. } => {
+            Statement::If {
+                then_branch,
+                else_if_branches,
+                else_branch,
+                ..
+            } => {
                 for stmt in then_branch {
                     Self::check_statement(stmt)?;
                 }
@@ -39,8 +44,10 @@ impl SyntaxValidator {
                     }
                 }
             }
-            Statement::While { body, .. } | Statement::DoWhile { body, .. } |
-            Statement::For { body, .. } | Statement::Repeat { body, .. } => {
+            Statement::While { body, .. }
+            | Statement::DoWhile { body, .. }
+            | Statement::For { body, .. }
+            | Statement::Repeat { body, .. } => {
                 for stmt in body {
                     Self::check_statement(stmt)?;
                 }
@@ -57,7 +64,12 @@ impl SyntaxValidator {
                     }
                 }
             }
-            Statement::Try { body, catch, finally, .. } => {
+            Statement::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => {
                 for stmt in body {
                     Self::check_statement(stmt)?;
                 }
@@ -78,14 +90,15 @@ impl SyntaxValidator {
         }
         Ok(())
     }
-    
+
     fn check_expression(expr: &Expression) -> Result<(), ValidationError> {
         match expr {
             Expression::FunctionCall { name, .. } => {
                 // Reject eval() calls - not allowed in Txtcode
                 if name == "eval" {
                     return Err(ValidationError::Syntax(
-                        "eval() function is not allowed in Txtcode for security reasons".to_string()
+                        "eval() function is not allowed in Txtcode for security reasons"
+                            .to_string(),
                     ));
                 }
                 // Check other dangerous patterns
@@ -111,7 +124,12 @@ impl SyntaxValidator {
             Expression::Lambda { body, .. } => {
                 Self::check_expression(body)?;
             }
-            Expression::Ternary { condition, true_expr, false_expr, .. } => {
+            Expression::Ternary {
+                condition,
+                true_expr,
+                false_expr,
+                ..
+            } => {
                 Self::check_expression(condition)?;
                 Self::check_expression(true_expr)?;
                 Self::check_expression(false_expr)?;
@@ -123,4 +141,3 @@ impl SyntaxValidator {
         Ok(())
     }
 }
-

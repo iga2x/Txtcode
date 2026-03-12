@@ -7,7 +7,7 @@
 ##
 ## Covers: import, export, module functions, namespacing
 
-from "math_utils" import gcd, lcm, is_prime, primes_up_to, factorial, fib
+import → gcd, lcm, is_prime, primes_up_to, factorial, fib from "math_utils"
 
 # ── GCD and LCM ───────────────────────────────────────────────────────────────
 

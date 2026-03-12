@@ -7,11 +7,8 @@
 ##
 ## Covers: import, stdlib io/json/time/crypto, error handling, assertions
 
-# ── Standard library imports ──────────────────────────────────────────────────
-
-import → json
-import → time
-import → crypto
+# json_encode/json_decode, now(), time_format(), sha256(), random_bytes() are
+# available as stdlib functions without explicit imports.
 
 # ── JSON serialization ────────────────────────────────────────────────────────
 
@@ -25,15 +22,15 @@ store → user → {
   "active": true
 }
 
-store → serialized → json.encode(user)
+store → serialized → json_encode(user)
 print → "Serialized: " + serialized
 
-store → decoded → json.decode(serialized)
+store → decoded → json_decode(serialized)
 print → "Name: " + decoded["name"]
 print → "Roles: " + join(decoded["roles"], ", ")
 
 # JSON with nested objects
-store → api_response → json.decode("{\"status\":\"ok\",\"data\":{\"count\":42}}")
+store → api_response → json_decode("{\"status\":\"ok\",\"data\":{\"count\":42}}")
 print → "API status: " + api_response["status"]
 print → "API count: " + api_response["data"]["count"]
 
@@ -41,21 +38,21 @@ print → "API count: " + api_response["data"]["count"]
 
 print → "\n=== Time ==="
 
-store → now → time.now()
-print → "Current timestamp (ms): " + now
+store → ts → now()
+print → "Current timestamp (ms): " + ts
 
-store → formatted → time.format(now, "YYYY-MM-DD")
+store → formatted → time_format(ts, "YYYY-MM-DD")
 print → "Today: " + formatted
 
 # Measure elapsed time
-store → start → time.now()
+store → start → now()
 store → sum → 0
 store → i → 0
 while → i < 1000
   store → sum → sum + i
   store → i → i + 1
 end
-store → elapsed → time.now() - start
+store → elapsed → now() - start
 print → "Sum 0..999 = " + sum + " (took " + elapsed + "ms)"
 
 # ── Cryptography ──────────────────────────────────────────────────────────────
@@ -63,15 +60,15 @@ print → "Sum 0..999 = " + sum + " (took " + elapsed + "ms)"
 print → "\n=== Crypto ==="
 
 store → message → "Hello, Txt-code!"
-store → hash → crypto.sha256(message)
+store → hash → sha256(message)
 print → "SHA-256: " + hash
 
-store → token → crypto.random_bytes(16)
+store → token → random_bytes(16)
 print → "Random token (hex): " + token
 
 # Verify hashing is deterministic
-store → hash2 → crypto.sha256(message)
-assert → hash == hash2, "SHA-256 should be deterministic"
+store → hash2 → sha256(message)
+assert(hash == hash2, "SHA-256 should be deterministic")
 print → "Hash verification: OK"
 
 # ── Putting it together: build a simple event log ─────────────────────────────
@@ -80,23 +77,19 @@ print → "\n=== Event Log ==="
 
 define → make_event → (kind, data)
   return → {
-    "id": crypto.random_bytes(4),
+    "id": random_bytes(4),
     "kind": kind,
     "data": data,
-    "ts": time.now()
+    "ts": now()
   }
 end
 
-store → events → [
-  make_event("user.login",   {"user": "alice"}),
-  make_event("page.view",    {"path": "/dashboard"}),
-  make_event("user.logout",  {"user": "alice"})
-]
+store → events → [make_event("user.login", {"user": "alice"}), make_event("page.view", {"path": "/dashboard"}), make_event("user.logout", {"user": "alice"})]
 
 for → evt in events
   store → line → "[" + evt["kind"] + "] id=" + evt["id"] + " ts=" + evt["ts"]
   print → line
 end
 
-store → log_json → json.encode(events)
+store → log_json → json_encode(events)
 print → "\nLog as JSON (" + len(log_json) + " bytes)"

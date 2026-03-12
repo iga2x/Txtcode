@@ -46,7 +46,7 @@ define → primes_up_to → (n)
   store → i → 2
   while → i <= n
     if → is_prime(i)
-      push(result, i)
+      store → result → concat(result, [i])
     end
     store → i → i + 1
   end
@@ -83,7 +83,7 @@ define → fib → (n)
   while → i < n
     store → a → seq[i - 2]
     store → b → seq[i - 1]
-    push(seq, a + b)
+    store → seq → concat(seq, [a + b])
     store → i → i + 1
   end
   return → seq

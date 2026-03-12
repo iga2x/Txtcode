@@ -1,12 +1,18 @@
 // Scope policy - controls resource access scope
 
+use crate::runtime::permissions::glob_scope_matches;
 use std::collections::HashSet;
 
-/// Scope policy configuration
+/// Scope policy configuration.
+///
+/// NOTE: `ScopePolicy` is not wired to `PolicyEngine` or the VM's
+/// `PermissionManager`. It is available for direct use in library consumers,
+/// but the VM enforces scopes through `PermissionManager::scope_matches`.
+/// Connecting the two is tracked as a future architectural consolidation task.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopePolicy {
-    pub allowed_scopes: HashSet<String>,  // Allowed resource scopes (e.g., "/tmp/*", "example.com")
-    pub denied_scopes: HashSet<String>,   // Denied resource scopes
+    pub allowed_scopes: HashSet<String>, // Allowed resource scopes (e.g., "/tmp/*", "example.com")
+    pub denied_scopes: HashSet<String>,  // Denied resource scopes
 }
 
 impl ScopePolicy {
@@ -53,25 +59,8 @@ impl ScopePolicy {
         Ok(())
     }
 
-    /// Simple glob pattern matching
     fn matches(pattern: &str, value: &str) -> bool {
-        if pattern.contains('*') {
-            if pattern.ends_with('*') {
-                value.starts_with(&pattern[..pattern.len() - 1])
-            } else if pattern.starts_with('*') {
-                value.ends_with(&pattern[1..])
-            } else {
-                // Contains * in middle
-                let parts: Vec<&str> = pattern.split('*').collect();
-                if parts.len() == 2 {
-                    value.starts_with(parts[0]) && value.ends_with(parts[1])
-                } else {
-                    pattern == value
-                }
-            }
-        } else {
-            pattern == value
-        }
+        glob_scope_matches(pattern, value)
     }
 }
 
@@ -80,4 +69,3 @@ impl Default for ScopePolicy {
         Self::new()
     }
 }
-

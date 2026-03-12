@@ -1,8 +1,8 @@
 // Statement AST nodes
 
-use super::common::{Span, Pattern, BinaryOperator};
-use super::Expression;
 use super::capabilities::CapabilityExpr;
+use super::common::{BinaryOperator, Pattern, Span};
+use super::Expression;
 
 /// Statement nodes
 #[derive(Debug, Clone, PartialEq)]
@@ -14,9 +14,9 @@ pub enum Statement {
         span: Span,
     },
     IndexAssignment {
-        target: Expression,  // The object being indexed (e.g., results)
-        index: Expression,   // The index/key (e.g., "device")
-        value: Expression,   // The value to assign
+        target: Expression, // The object being indexed (e.g., results)
+        index: Expression,  // The index/key (e.g., "device")
+        value: Expression,  // The value to assign
         span: Span,
     },
     CompoundAssignment {
@@ -31,7 +31,7 @@ pub enum Statement {
         params: Vec<super::common::Parameter>,
         return_type: Option<crate::typecheck::types::Type>,
         body: Vec<Statement>,
-        is_async: bool, // Whether this is an async function
+        is_async: bool,                         // Whether this is an async function
         intent: Option<String>, // Intent declaration (what this function is meant to do)
         ai_hint: Option<String>, // AI guidance hint
         allowed_actions: Vec<CapabilityExpr>, // Explicitly allowed capabilities (e.g., [CapabilityExpr::Simple { resource: "fs", action: "read" }])
@@ -144,4 +144,3 @@ pub enum Statement {
 pub struct Program {
     pub statements: Vec<Statement>,
 }
-

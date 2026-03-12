@@ -466,6 +466,11 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
         VirtualMachine::set_variable(self, name, value)
     }
 
+    fn define_local_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError> {
+        self.scope_manager.define_local(name, value);
+        Ok(())
+    }
+
     fn push_scope(&mut self) {
         VirtualMachine::push_scope(self)
     }

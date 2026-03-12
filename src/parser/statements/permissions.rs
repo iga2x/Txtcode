@@ -6,12 +6,12 @@ pub fn parse_permission(parser: &mut Parser) -> Result<Option<Statement>, String
     let start_token = parser.peek().clone();
     parser.expect_keyword("permission")?;
     parser.expect_arrow()?;
-    
+
     // Parse resource.action (e.g., "fs.read")
-    let resource = parser.expect_identifier()?;  // "fs"
+    let resource = parser.expect_identifier()?; // "fs"
     parser.expect(crate::lexer::token::TokenKind::Dot)?;
-    let action = parser.expect_identifier()?;    // "read"
-    
+    let action = parser.expect_identifier()?; // "read"
+
     // Optional scope after arrow
     let scope = if parser.check(crate::lexer::token::TokenKind::Arrow) {
         parser.advance();
@@ -26,7 +26,7 @@ pub fn parse_permission(parser: &mut Parser) -> Result<Option<Statement>, String
     } else {
         None
     };
-    
+
     let span = token_span_to_ast_span(&start_token);
     Ok(Some(Statement::Permission {
         resource,
@@ -35,4 +35,3 @@ pub fn parse_permission(parser: &mut Parser) -> Result<Option<Statement>, String
         span,
     }))
 }
-

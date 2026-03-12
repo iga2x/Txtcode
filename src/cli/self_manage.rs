@@ -269,15 +269,17 @@ fn clean_path_entries() {
 fn remove_binary_deferred(bin_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     {
-        let tmp = std::env::temp_dir().join("txtcode_remove.sh");
+        // Include PID in temp name to prevent predictable-path races (TOCTOU)
+        let tmp = std::env::temp_dir()
+            .join(format!("txtcode_remove_{}.sh", std::process::id()));
         let script = format!(
             "#!/bin/sh\nsleep 1\nrm -f \"{}\"\nrm -f \"$0\"\n",
             bin_path.display()
         );
-        fs::write(&tmp, script)?;
+        fs::write(&tmp, &script)?;
         // Make executable
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))?;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o700))?;
         // Run in background and exit
         std::process::Command::new("sh").arg(&tmp).spawn()?;
     }
@@ -436,7 +438,9 @@ fn download_file(url: &str, dest: &PathBuf) -> Result<(), Box<dyn std::error::Er
 
 #[cfg(unix)]
 fn apply_update_deferred(current: &Path, new_bin: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let tmp_script = std::env::temp_dir().join("txtcode_update.sh");
+    // Include PID in temp name to prevent predictable-path races (TOCTOU)
+    let tmp_script = std::env::temp_dir()
+        .join(format!("txtcode_update_{}.sh", std::process::id()));
     let script = format!(
         "#!/bin/sh\nsleep 1\ncp -f \"{}\" \"{}\"\nchmod 755 \"{}\"\nrm -f \"$0\"\n",
         new_bin.display(),
@@ -445,7 +449,7 @@ fn apply_update_deferred(current: &Path, new_bin: &Path) -> Result<(), Box<dyn s
     );
     fs::write(&tmp_script, &script)?;
     use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(&tmp_script, fs::Permissions::from_mode(0o755))?;
+    fs::set_permissions(&tmp_script, fs::Permissions::from_mode(0o700))?;
     std::process::Command::new("sh").arg(&tmp_script).spawn()?;
     Ok(())
 }
@@ -455,7 +459,9 @@ fn apply_update_deferred(
     current: &PathBuf,
     new_bin: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let tmp_script = std::env::temp_dir().join("txtcode_update.bat");
+    // Include PID in temp name to prevent predictable-path races (TOCTOU)
+    let tmp_script = std::env::temp_dir()
+        .join(format!("txtcode_update_{}.bat", std::process::id()));
     let script = format!(
         "@echo off\nping -n 2 127.0.0.1 >nul\ncopy /Y \"{}\" \"{}\" >nul\ndel \"%~f0\"\n",
         new_bin.display(),

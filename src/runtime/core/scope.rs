@@ -79,6 +79,17 @@ impl ScopeManager {
         self.const_vars.contains(name)
     }
 
+    /// Define a variable directly in the CURRENT (most local) scope, bypassing outer-scope
+    /// lookup.  Use this for function parameter binding so a parameter named `x` never
+    /// accidentally overwrites a same-named variable in an enclosing scope.
+    pub fn define_local(&mut self, name: String, value: Value) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, value);
+        } else {
+            self.globals.insert(name, value);
+        }
+    }
+
     /// Push a new scope
     pub fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());

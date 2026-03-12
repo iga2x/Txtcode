@@ -1,6 +1,6 @@
-use crate::runtime::{Value, RuntimeError};
-use std::io::{self, Write};
+use crate::runtime::{RuntimeError, Value};
 use chrono::Local;
+use std::io::{self, Write};
 
 /// Logging library
 pub struct LogLib;
@@ -27,8 +27,8 @@ impl LogLevel {
         match self {
             LogLevel::Debug => "\x1b[36m", // Cyan
             LogLevel::Info => "\x1b[32m",  // Green
-            LogLevel::Warn => "\x1b[33m",   // Yellow
-            LogLevel::Error => "\x1b[31m",  // Red
+            LogLevel::Warn => "\x1b[33m",  // Yellow
+            LogLevel::Error => "\x1b[31m", // Red
         }
     }
 }
@@ -44,7 +44,9 @@ impl LogLib {
             "log" => {
                 // log(level, message) - explicit level
                 if args.len() != 2 {
-                    return Err(RuntimeError::new("log requires 2 arguments (level, message)".to_string()));
+                    return Err(RuntimeError::new(
+                        "log requires 2 arguments (level, message)".to_string(),
+                    ));
                 }
                 let level_str = match &args[0] {
                     Value::String(s) => s.to_uppercase(),
@@ -55,7 +57,12 @@ impl LogLib {
                     "INFO" => LogLevel::Info,
                     "WARN" | "WARNING" => LogLevel::Warn,
                     "ERROR" | "ERR" => LogLevel::Error,
-                    _ => return Err(RuntimeError::new(format!("Invalid log level: {}", level_str))),
+                    _ => {
+                        return Err(RuntimeError::new(format!(
+                            "Invalid log level: {}",
+                            level_str
+                        )))
+                    }
                 };
                 let message = match &args[1] {
                     Value::String(s) => s.clone(),
@@ -68,7 +75,10 @@ impl LogLib {
         };
 
         if args.is_empty() {
-            return Err(RuntimeError::new(format!("{} requires at least 1 argument (message)", name)));
+            return Err(RuntimeError::new(format!(
+                "{} requires at least 1 argument (message)",
+                name
+            )));
         }
 
         // Format message from arguments
@@ -93,7 +103,7 @@ impl LogLib {
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let reset = "\x1b[0m";
         let color = level.color_code();
-        
+
         let output = format!(
             "{}[{}] {} {}{}\n",
             color,
@@ -113,4 +123,3 @@ impl LogLib {
         let _ = target.flush();
     }
 }
-

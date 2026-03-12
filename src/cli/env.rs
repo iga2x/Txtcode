@@ -17,8 +17,7 @@
 ///     +-- env.toml
 ///     +-- packages/
 /// ```
-
-use crate::config::{Config, EnvConfig, LOCAL_ENV_DIR, DEFAULT_ENV_NAME};
+use crate::config::{Config, EnvConfig, DEFAULT_ENV_NAME, LOCAL_ENV_DIR};
 use crate::runtime::errors::RuntimeError;
 use colored::Colorize;
 use std::fs;
@@ -109,7 +108,8 @@ fn require_env_dir(require: bool) -> Result<Option<PathBuf>, RuntimeError> {
         Some(p) => Ok(Some(p)),
         None if require => Err(RuntimeError::new(
             "No .txtcode-env/ found in this directory or any parent.\n\
-             Run `txtcode env init` first to create one.".to_string(),
+             Run `txtcode env init` first to create one."
+                .to_string(),
         )),
         None => Ok(None),
     }
@@ -137,8 +137,8 @@ fn template_for(name: &str, sandbox: bool) -> &'static str {
     } else {
         match name {
             "prod" | "production" => TEMPLATE_PROD,
-            "test" | "testing"   => TEMPLATE_TEST,
-            _                    => TEMPLATE_DEV,   // dev / default / custom
+            "test" | "testing" => TEMPLATE_TEST,
+            _ => TEMPLATE_DEV, // dev / default / custom
         }
     }
 }
@@ -177,29 +177,39 @@ pub fn env_init(
             create_single_env(&env_dir, preset, preset == &"sandbox")?;
         }
         // Set dev as the default active env
-        Config::set_active_env_name(&env_dir, "dev")
-            .map_err(|e| RuntimeError::new(e))?;
-        println!("{}", "✅ Created all preset environments: dev, prod, test, sandbox".green().bold());
+        Config::set_active_env_name(&env_dir, "dev").map_err(RuntimeError::new)?;
+        println!(
+            "{}",
+            "✅ Created all preset environments: dev, prod, test, sandbox"
+                .green()
+                .bold()
+        );
         println!("   Active env set to: {}", "dev".cyan().bold());
     } else {
         let env_name = name.as_deref().unwrap_or(DEFAULT_ENV_NAME);
         create_single_env(&env_dir, env_name, sandbox)?;
-        Config::set_active_env_name(&env_dir, env_name)
-            .map_err(|e| RuntimeError::new(e))?;
-        println!("{} {}", "✅ Created environment:".green().bold(), env_name.cyan().bold());
+        Config::set_active_env_name(&env_dir, env_name).map_err(RuntimeError::new)?;
+        println!(
+            "{} {}",
+            "✅ Created environment:".green().bold(),
+            env_name.cyan().bold()
+        );
         println!("   Location: {}", env_dir.join(env_name).display());
     }
 
-    println!("\n   Run {} to install dependencies.", "txtcode env install".cyan());
+    println!(
+        "\n   Run {} to install dependencies.",
+        "txtcode env install".cyan()
+    );
     Ok(())
 }
 
 /// Create a single named env inside `env_dir`.
 fn create_single_env(env_dir: &Path, name: &str, sandbox: bool) -> Result<(), RuntimeError> {
-    let named_dir   = env_dir.join(name);
-    let pkg_dir     = named_dir.join("packages");
-    let cache_dir   = named_dir.join("cache");
-    let env_toml    = named_dir.join("env.toml");
+    let named_dir = env_dir.join(name);
+    let pkg_dir = named_dir.join("packages");
+    let cache_dir = named_dir.join("cache");
+    let env_toml = named_dir.join("env.toml");
 
     mkdir(&pkg_dir)?;
     mkdir(&cache_dir)?;
@@ -218,11 +228,12 @@ fn create_single_env(env_dir: &Path, name: &str, sandbox: bool) -> Result<(), Ru
 /// Reads `Txtcode.toml` in cwd, resolves dependencies, and installs them
 /// into `.txtcode-env/{active}/packages/`.
 pub fn env_install() -> Result<(), RuntimeError> {
-    let env_dir  = require_env_dir(true)?.unwrap();
-    let name     = Config::get_active_env_name(&env_dir);
-    let pkg_dir  = env_dir.join(&name).join("packages");
+    let env_dir = require_env_dir(true)?.unwrap();
+    let name = Config::get_active_env_name(&env_dir);
+    let pkg_dir = env_dir.join(&name).join("packages");
 
-    println!("{} {} {}",
+    println!(
+        "{} {} {}",
         "📦 Installing dependencies for env".bold(),
         name.cyan().bold(),
         format!("→ {}", pkg_dir.display()).dimmed(),
@@ -257,12 +268,18 @@ pub fn env_install() -> Result<(), RuntimeError> {
     for (dep_name, version_req) in &config.dependencies {
         print!("  {} {} @ {} ... ", "→".cyan(), dep_name, version_req);
         match registry.download_package(dep_name, version_req) {
-            Ok(_)  => { println!("{}", "ok".green()); installed += 1; }
-            Err(e) => { println!("{} ({})", "failed".red(), e); }
+            Ok(_) => {
+                println!("{}", "ok".green());
+                installed += 1;
+            }
+            Err(e) => {
+                println!("{} ({})", "failed".red(), e);
+            }
         }
     }
 
-    println!("\n  {}/{} packages installed into env {}.",
+    println!(
+        "\n  {}/{} packages installed into env {}.",
         installed,
         config.dependencies.len(),
         name.cyan().bold(),
@@ -290,8 +307,7 @@ pub fn env_use(name: &str) -> Result<(), RuntimeError> {
         )));
     }
 
-    Config::set_active_env_name(&env_dir, name)
-        .map_err(|e| RuntimeError::new(e))?;
+    Config::set_active_env_name(&env_dir, name).map_err(RuntimeError::new)?;
 
     println!("{} Active env set to: {}", "✅".green(), name.cyan().bold());
 
@@ -310,11 +326,17 @@ pub fn env_use(name: &str) -> Result<(), RuntimeError> {
 pub fn env_status() -> Result<(), RuntimeError> {
     match Config::load_active_env() {
         None => {
-            println!("{}", "No .txtcode-env/ found in this directory tree.".yellow());
+            println!(
+                "{}",
+                "No .txtcode-env/ found in this directory tree.".yellow()
+            );
             println!("Run {} to create one.", "txtcode env init".cyan());
         }
         Some((env_dir, name, config)) => {
-            println!("{}", "── Txt-code Environment Status ──────────────────".bold());
+            println!(
+                "{}",
+                "── Txt-code Environment Status ──────────────────".bold()
+            );
             println!("  Active env : {}", name.cyan().bold());
             println!("  Location   : {}", env_dir.display());
             println!("  Version    : {}", config.env.version);
@@ -329,7 +351,8 @@ pub fn env_status() -> Result<(), RuntimeError> {
             let pkg_dir = env_dir.join(&name).join("packages");
             let pkg_count = count_packages(&pkg_dir);
             println!();
-            println!("  Packages: {} installed in {}",
+            println!(
+                "  Packages: {} installed in {}",
                 pkg_count.to_string().cyan(),
                 pkg_dir.display(),
             );
@@ -351,10 +374,20 @@ pub fn env_status_json() -> Result<(), RuntimeError> {
         Some((env_dir, name, config)) => {
             let pkg_dir = env_dir.join(&name).join("packages");
             let pkg_count = count_packages(&pkg_dir);
-            let allow_json = config.permissions.allow.iter()
-                .map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(",");
-            let deny_json = config.permissions.deny.iter()
-                .map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(",");
+            let allow_json = config
+                .permissions
+                .allow
+                .iter()
+                .map(|s| format!("\"{}\"", s))
+                .collect::<Vec<_>>()
+                .join(",");
+            let deny_json = config
+                .permissions
+                .deny
+                .iter()
+                .map(|s| format!("\"{}\"", s))
+                .collect::<Vec<_>>()
+                .join(",");
             println!(
                 "{{\"active\":\"{}\",\"location\":\"{}\",\"version\":\"{}\",\
                  \"description\":\"{}\",\"safe_mode\":{},\"allow\":[{}],\
@@ -364,7 +397,8 @@ pub fn env_status_json() -> Result<(), RuntimeError> {
                 config.env.version,
                 config.env.description.replace('"', "\\\""),
                 config.permissions.safe_mode,
-                allow_json, deny_json,
+                allow_json,
+                deny_json,
                 pkg_count,
                 config.settings.timeout,
                 config.settings.max_memory,
@@ -389,7 +423,7 @@ pub fn env_list() -> Result<(), RuntimeError> {
     };
 
     let active = Config::get_active_env_name(&env_dir);
-    let names  = list_env_names(&env_dir);
+    let names = list_env_names(&env_dir);
 
     if names.is_empty() {
         println!("No environments found in {}.", env_dir.display());
@@ -397,14 +431,33 @@ pub fn env_list() -> Result<(), RuntimeError> {
         return Ok(());
     }
 
-    println!("{}", "── Environments ─────────────────────────────────────".bold());
+    println!(
+        "{}",
+        "── Environments ─────────────────────────────────────".bold()
+    );
     for name in &names {
-        let marker = if *name == active { " ◀ active".green().to_string() } else { String::new() };
+        let marker = if *name == active {
+            " ◀ active".green().to_string()
+        } else {
+            String::new()
+        };
         let safe_tag = if let Ok(cfg) = Config::load_env_config(&env_dir, name) {
-            if cfg.permissions.safe_mode { " [safe]".yellow().to_string() } else { String::new() }
-        } else { String::new() };
+            if cfg.permissions.safe_mode {
+                " [safe]".yellow().to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
         let pkg_count = count_packages(&env_dir.join(name).join("packages"));
-        println!("  {:12}  {} packages{}{}", name.cyan().bold(), pkg_count, safe_tag, marker);
+        println!(
+            "  {:12}  {} packages{}{}",
+            name.cyan().bold(),
+            pkg_count,
+            safe_tag,
+            marker
+        );
     }
     Ok(())
 }
@@ -415,9 +468,9 @@ pub fn env_list() -> Result<(), RuntimeError> {
 ///
 /// Remove installed packages from the env but keep env.toml.
 pub fn env_clean(name: Option<String>) -> Result<(), RuntimeError> {
-    let env_dir  = require_env_dir(true)?.unwrap();
+    let env_dir = require_env_dir(true)?.unwrap();
     let env_name = name.unwrap_or_else(|| Config::get_active_env_name(&env_dir));
-    let pkg_dir  = env_dir.join(&env_name).join("packages");
+    let pkg_dir = env_dir.join(&env_name).join("packages");
 
     if !pkg_dir.exists() {
         println!("Nothing to clean (packages dir does not exist).");
@@ -428,7 +481,11 @@ pub fn env_clean(name: Option<String>) -> Result<(), RuntimeError> {
         .map_err(|e| RuntimeError::new(format!("Failed to remove packages: {}", e)))?;
     mkdir(&pkg_dir)?;
 
-    println!("{} Cleaned packages for env {}.", "✅".green(), env_name.cyan().bold());
+    println!(
+        "{} Cleaned packages for env {}.",
+        "✅".green(),
+        env_name.cyan().bold()
+    );
     println!("   Run {} to reinstall.", "txtcode env install".cyan());
     Ok(())
 }
@@ -440,12 +497,15 @@ pub fn env_clean(name: Option<String>) -> Result<(), RuntimeError> {
 /// Completely remove a named env (env.toml + packages).
 /// If removing the active env, resets active to "dev".
 pub fn env_remove(name: Option<String>) -> Result<(), RuntimeError> {
-    let env_dir  = require_env_dir(true)?.unwrap();
+    let env_dir = require_env_dir(true)?.unwrap();
     let env_name = name.unwrap_or_else(|| Config::get_active_env_name(&env_dir));
     let named_dir = env_dir.join(&env_name);
 
     if !named_dir.exists() {
-        return Err(RuntimeError::new(format!("Environment '{}' does not exist.", env_name)));
+        return Err(RuntimeError::new(format!(
+            "Environment '{}' does not exist.",
+            env_name
+        )));
     }
 
     fs::remove_dir_all(&named_dir)
@@ -455,11 +515,15 @@ pub fn env_remove(name: Option<String>) -> Result<(), RuntimeError> {
     let active = Config::get_active_env_name(&env_dir);
     if active == env_name {
         let remaining = list_env_names(&env_dir);
-        let fallback  = remaining.first().map(|s| s.as_str()).unwrap_or("dev");
+        let fallback = remaining.first().map(|s| s.as_str()).unwrap_or("dev");
         let _ = Config::set_active_env_name(&env_dir, fallback);
     }
 
-    println!("{} Removed environment {}.", "✅".green(), env_name.cyan().bold());
+    println!(
+        "{} Removed environment {}.",
+        "✅".green(),
+        env_name.cyan().bold()
+    );
     Ok(())
 }
 
@@ -470,15 +534,23 @@ pub fn env_remove(name: Option<String>) -> Result<(), RuntimeError> {
 /// Validate the local environment: check env.toml, lockfile consistency,
 /// package integrity, and flag any security concerns in the permission profile.
 pub fn env_doctor() -> Result<(), RuntimeError> {
-    println!("{}", "── Txt-code Env Doctor ──────────────────────────────".bold());
+    println!(
+        "{}",
+        "── Txt-code Env Doctor ──────────────────────────────".bold()
+    );
 
-    let cwd = std::env::current_dir()
-        .map_err(|e| RuntimeError::new(e.to_string()))?;
+    let cwd = std::env::current_dir().map_err(|e| RuntimeError::new(e.to_string()))?;
 
     // 1. Local env directory
     let env_dir = match Config::detect_local_env(&cwd) {
-        Some(d) => { status_line(true,  ".txtcode-env/", &d.display().to_string()); d }
-        None    => { status_line(false, ".txtcode-env/", "not found — run `txtcode env init`"); return Ok(()); }
+        Some(d) => {
+            status_line(true, ".txtcode-env/", &d.display().to_string());
+            d
+        }
+        None => {
+            status_line(false, ".txtcode-env/", "not found — run `txtcode env init`");
+            return Ok(());
+        }
     };
 
     // 2. Active env file
@@ -486,14 +558,18 @@ pub fn env_doctor() -> Result<(), RuntimeError> {
     status_line(true, "Active env:", &active);
 
     let named_dir = env_dir.join(&active);
-    status_line(named_dir.is_dir(), &format!(".txtcode-env/{}/", active), "exists");
+    status_line(
+        named_dir.is_dir(),
+        &format!(".txtcode-env/{}/", active),
+        "exists",
+    );
 
     // 3. env.toml
     let env_toml = named_dir.join("env.toml");
     if env_toml.exists() {
         status_line(true, "env.toml", "found");
         match Config::load_env_config(&env_dir, &active) {
-            Ok(cfg)  => {
+            Ok(cfg) => {
                 // Security checks
                 if !cfg.permissions.safe_mode {
                     warn_line("safe_mode", "disabled — scripts can spawn processes");
@@ -502,34 +578,68 @@ pub fn env_doctor() -> Result<(), RuntimeError> {
                 if has_exec && active == "prod" {
                     warn_line("sys.exec", "allowed in prod env — consider denying it");
                 }
-                let has_wildcard_fs_write = cfg.permissions.allow.iter()
+                let has_wildcard_fs_write = cfg
+                    .permissions
+                    .allow
+                    .iter()
                     .any(|a| a == "fs.write" || a == "fs.*");
                 if has_wildcard_fs_write {
-                    warn_line("fs.write", "unrestricted write — consider scoping to a path");
+                    warn_line(
+                        "fs.write",
+                        "unrestricted write — consider scoping to a path",
+                    );
                 }
-                status_line(true, "Permissions", &format!(
-                    "{} allow / {} deny",
-                    cfg.permissions.allow.len(),
-                    cfg.permissions.deny.len()
-                ));
+                status_line(
+                    true,
+                    "Permissions",
+                    &format!(
+                        "{} allow / {} deny",
+                        cfg.permissions.allow.len(),
+                        cfg.permissions.deny.len()
+                    ),
+                );
             }
             Err(e) => status_line(false, "env.toml parse", &e),
         }
     } else {
-        status_line(false, "env.toml", "missing — run `txtcode env init --name {env}`");
+        status_line(
+            false,
+            "env.toml",
+            "missing — run `txtcode env init --name {env}`",
+        );
     }
 
     // 4. Packages directory
     let pkg_dir = named_dir.join("packages");
-    status_line(pkg_dir.exists(), "packages/", &format!("{} installed", count_packages(&pkg_dir)));
+    status_line(
+        pkg_dir.exists(),
+        "packages/",
+        &format!("{} installed", count_packages(&pkg_dir)),
+    );
 
     // 5. Txtcode.toml
     let manifest = cwd.join("Txtcode.toml");
-    status_line(manifest.exists(), "Txtcode.toml", if manifest.exists() { "found" } else { "missing" });
+    status_line(
+        manifest.exists(),
+        "Txtcode.toml",
+        if manifest.exists() {
+            "found"
+        } else {
+            "missing"
+        },
+    );
 
     // 6. Txtcode.lock
     let lock = cwd.join("Txtcode.lock");
-    status_line(lock.exists(), "Txtcode.lock", if lock.exists() { "found" } else { "not yet generated" });
+    status_line(
+        lock.exists(),
+        "Txtcode.lock",
+        if lock.exists() {
+            "found"
+        } else {
+            "not yet generated"
+        },
+    );
 
     println!("\n{}", "Doctor complete.".bold());
     Ok(())
@@ -543,39 +653,94 @@ pub fn env_doctor() -> Result<(), RuntimeError> {
 pub fn env_diff(name_a: &str, name_b: &str) -> Result<(), RuntimeError> {
     let env_dir = require_env_dir(true)?.unwrap();
 
-    let cfg_a = Config::load_env_config(&env_dir, name_a)
-        .map_err(|e| RuntimeError::new(e))?;
-    let cfg_b = Config::load_env_config(&env_dir, name_b)
-        .map_err(|e| RuntimeError::new(e))?;
+    let cfg_a = Config::load_env_config(&env_dir, name_a).map_err(RuntimeError::new)?;
+    let cfg_b = Config::load_env_config(&env_dir, name_b).map_err(RuntimeError::new)?;
 
-    println!("{}", format!("── Diff: {} vs {} ─────────────────────────────", name_a, name_b).bold());
+    println!(
+        "{}",
+        format!(
+            "── Diff: {} vs {} ─────────────────────────────",
+            name_a, name_b
+        )
+        .bold()
+    );
 
-    diff_vec("allow",     &cfg_a.permissions.allow,  &cfg_b.permissions.allow,  name_a, name_b);
-    diff_vec("deny",      &cfg_a.permissions.deny,   &cfg_b.permissions.deny,   name_a, name_b);
-    diff_bool("safe_mode", cfg_a.permissions.safe_mode, cfg_b.permissions.safe_mode, name_a, name_b);
+    diff_vec(
+        "allow",
+        &cfg_a.permissions.allow,
+        &cfg_b.permissions.allow,
+        name_a,
+        name_b,
+    );
+    diff_vec(
+        "deny",
+        &cfg_a.permissions.deny,
+        &cfg_b.permissions.deny,
+        name_a,
+        name_b,
+    );
+    diff_bool(
+        "safe_mode",
+        cfg_a.permissions.safe_mode,
+        cfg_b.permissions.safe_mode,
+        name_a,
+        name_b,
+    );
 
     println!();
-    diff_str("timeout",   &cfg_a.settings.timeout,   &cfg_b.settings.timeout,   name_a, name_b);
-    diff_str("max_memory",&cfg_a.settings.max_memory, &cfg_b.settings.max_memory,name_a, name_b);
+    diff_str(
+        "timeout",
+        &cfg_a.settings.timeout,
+        &cfg_b.settings.timeout,
+        name_a,
+        name_b,
+    );
+    diff_str(
+        "max_memory",
+        &cfg_a.settings.max_memory,
+        &cfg_b.settings.max_memory,
+        name_a,
+        name_b,
+    );
     Ok(())
 }
 
 fn diff_vec(key: &str, a: &[String], b: &[String], na: &str, nb: &str) {
     let only_a: Vec<_> = a.iter().filter(|x| !b.contains(x)).collect();
     let only_b: Vec<_> = b.iter().filter(|x| !a.contains(x)).collect();
-    for v in &only_a { println!("  {} {} = {} (only in {})", "-".red(),   key, v.red(),   na); }
-    for v in &only_b { println!("  {} {} = {} (only in {})", "+".green(), key, v.green(), nb); }
+    for v in &only_a {
+        println!("  {} {} = {} (only in {})", "-".red(), key, v.red(), na);
+    }
+    for v in &only_b {
+        println!("  {} {} = {} (only in {})", "+".green(), key, v.green(), nb);
+    }
 }
 
 fn diff_bool(key: &str, a: bool, b: bool, na: &str, nb: &str) {
     if a != b {
-        println!("  {} {} = {} ({}) vs {} ({})", "~".yellow(), key, a, na, b, nb);
+        println!(
+            "  {} {} = {} ({}) vs {} ({})",
+            "~".yellow(),
+            key,
+            a,
+            na,
+            b,
+            nb
+        );
     }
 }
 
 fn diff_str(key: &str, a: &str, b: &str, na: &str, nb: &str) {
     if a != b {
-        println!("  {} {} = {} ({}) vs {} ({})", "~".yellow(), key, a, na, b, nb);
+        println!(
+            "  {} {} = {} ({}) vs {} ({})",
+            "~".yellow(),
+            key,
+            a,
+            na,
+            b,
+            nb
+        );
     }
 }
 
@@ -586,14 +751,17 @@ fn diff_str(key: &str, a: &str, b: &str, na: &str, nb: &str) {
 /// Print the current env config to stdout (pipe to a file to save a snapshot).
 pub fn env_freeze() -> Result<(), RuntimeError> {
     let env_dir = require_env_dir(true)?.unwrap();
-    let name    = Config::get_active_env_name(&env_dir);
-    let cfg     = Config::load_env_config(&env_dir, &name)
-        .map_err(|e| RuntimeError::new(e))?;
+    let name = Config::get_active_env_name(&env_dir);
+    let cfg = Config::load_env_config(&env_dir, &name).map_err(RuntimeError::new)?;
 
     let out = toml::to_string_pretty(&cfg)
         .map_err(|e| RuntimeError::new(format!("Serialize error: {}", e)))?;
 
-    println!("# Snapshot of env '{}' — {}", name, chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ"));
+    println!(
+        "# Snapshot of env '{}' — {}",
+        name,
+        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+    );
     println!("{}", out);
     Ok(())
 }
@@ -610,7 +778,8 @@ pub fn env_shell_hook() -> Result<(), RuntimeError> {
     let is_fish = shell.contains("fish");
 
     if is_fish {
-        println!(r#"
+        println!(
+            r#"
 # Txt-code env shell hook (fish)
 function __txtcode_env_prompt
     set -l env_dir (txtcode env path 2>/dev/null)
@@ -621,10 +790,12 @@ function __txtcode_env_prompt
         end
     end
 end
-"#);
+"#
+        );
     } else {
         // bash / zsh
-        println!(r#"
+        println!(
+            r#"
 # Txt-code env shell hook (bash/zsh)
 # Add to ~/.bashrc or ~/.zshrc:
 #   eval "$(txtcode env shell-hook)"
@@ -638,7 +809,8 @@ __txtcode_env_ps1() {{
     fi
 }}
 export PS1='$(__txtcode_env_ps1)'"$PS1"
-"#);
+"#
+        );
     }
     Ok(())
 }
@@ -648,8 +820,11 @@ export PS1='$(__txtcode_env_ps1)'"$PS1"
 /// Print the path to the active .txtcode-env/ directory (used by shell hook).
 pub fn env_path() -> Result<(), RuntimeError> {
     match require_env_dir(false)? {
-        Some(p) => { println!("{}", p.display()); Ok(()) }
-        None    => Err(RuntimeError::new("No .txtcode-env/ found.".to_string())),
+        Some(p) => {
+            println!("{}", p.display());
+            Ok(())
+        }
+        None => Err(RuntimeError::new("No .txtcode-env/ found.".to_string())),
     }
 }
 
@@ -659,7 +834,9 @@ pub fn env_path() -> Result<(), RuntimeError> {
 
 /// List all named env directories inside `env_dir` (excludes the `active` file).
 fn list_env_names(env_dir: &Path) -> Vec<String> {
-    let Ok(entries) = fs::read_dir(env_dir) else { return Vec::new() };
+    let Ok(entries) = fs::read_dir(env_dir) else {
+        return Vec::new();
+    };
     let mut names: Vec<String> = entries
         .filter_map(|e| e.ok())
         .filter(|e| e.path().is_dir())
@@ -671,15 +848,26 @@ fn list_env_names(env_dir: &Path) -> Vec<String> {
 
 /// Count the number of package directories inside `pkg_dir`.
 fn count_packages(pkg_dir: &Path) -> usize {
-    if !pkg_dir.exists() { return 0; }
+    if !pkg_dir.exists() {
+        return 0;
+    }
     fs::read_dir(pkg_dir)
-        .map(|entries| entries.filter_map(|e| e.ok()).filter(|e| e.path().is_dir()).count())
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .count()
+        })
         .unwrap_or(0)
 }
 
 /// Print a compact permission summary to stdout.
 fn print_permission_summary(config: &EnvConfig) {
-    let safe = if config.permissions.safe_mode { " [safe-mode ON]".yellow().to_string() } else { String::new() };
+    let safe = if config.permissions.safe_mode {
+        " [safe-mode ON]".yellow().to_string()
+    } else {
+        String::new()
+    };
     println!("  Permissions:{}", safe);
     if config.permissions.allow.is_empty() {
         println!("    allow: {} (nothing allowed)", "∅".red());

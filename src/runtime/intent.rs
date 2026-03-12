@@ -50,7 +50,13 @@ pub enum IntentViolationError {
 impl std::fmt::Display for IntentViolationError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            IntentViolationError::Violation { function, intent, action, resource, reason } => {
+            IntentViolationError::Violation {
+                function,
+                intent,
+                action,
+                resource,
+                reason,
+            } => {
                 write!(f, "IntentViolationError: {} (function: {}, intent: '{}', action: '{}', resource: '{}')",
                     reason, function, intent, action, resource)
             }
@@ -77,7 +83,10 @@ impl IntentChecker {
     /// Register intent declaration for a function
     pub fn register_function_intent(&mut self, name: String, declaration: IntentDeclaration) {
         use crate::tools::logger::log_debug;
-        log_debug(&format!("Registering intent for function '{}': '{}'", name, declaration.intent));
+        log_debug(&format!(
+            "Registering intent for function '{}': '{}'",
+            name, declaration.intent
+        ));
         self.function_intents.insert(name, declaration);
     }
 
@@ -92,44 +101,54 @@ impl IntentChecker {
     pub fn check_action(
         &self,
         function_name: &str,
-        action: &str,  // e.g., "fs.write"
-        resource: &str,  // e.g., "/tmp/file.txt"
+        action: &str,   // e.g., "fs.write"
+        resource: &str, // e.g., "/tmp/file.txt"
     ) -> Result<(), IntentViolationError> {
         // 1. Get function intent (if exists), otherwise use module intent
-        let intent_decl = self.function_intents.get(function_name)
-            .or_else(|| self.module_intent.as_ref());
-        
+        let intent_decl = self
+            .function_intents
+            .get(function_name)
+            .or(self.module_intent.as_ref());
+
         if let Some(intent_decl) = intent_decl {
             // 2. Check forbidden actions first (most restrictive)
-            if intent_decl.forbidden_actions.iter().any(|a| {
-                action.starts_with(a) || a == "*"
-            }) {
+            if intent_decl
+                .forbidden_actions
+                .iter()
+                .any(|a| action.starts_with(a) || a == "*")
+            {
                 return Err(IntentViolationError::Violation {
                     function: function_name.to_string(),
                     intent: intent_decl.intent.clone(),
                     action: action.to_string(),
                     resource: resource.to_string(),
-                    reason: format!("Action '{}' violates declared intent '{}' (explicitly forbidden)", action, intent_decl.intent),
+                    reason: format!(
+                        "Action '{}' violates declared intent '{}' (explicitly forbidden)",
+                        action, intent_decl.intent
+                    ),
                 });
             }
-            
+
             // 3. Check allowed actions (if list is non-empty, only these are allowed)
-            if !intent_decl.allowed_actions.is_empty() {
-                if !intent_decl.allowed_actions.iter().any(|a| {
-                    action.starts_with(a) || a == "*"
-                }) {
-                    return Err(IntentViolationError::Violation {
-                        function: function_name.to_string(),
-                        intent: intent_decl.intent.clone(),
-                        action: action.to_string(),
-                        resource: resource.to_string(),
-                        reason: format!("Action '{}' not in allowed actions for intent '{}' (allowed: {:?})", 
-                            action, intent_decl.intent, intent_decl.allowed_actions),
-                    });
-                }
+            if !intent_decl.allowed_actions.is_empty()
+                && !intent_decl
+                    .allowed_actions
+                    .iter()
+                    .any(|a| action.starts_with(a) || a == "*")
+            {
+                return Err(IntentViolationError::Violation {
+                    function: function_name.to_string(),
+                    intent: intent_decl.intent.clone(),
+                    action: action.to_string(),
+                    resource: resource.to_string(),
+                    reason: format!(
+                        "Action '{}' not in allowed actions for intent '{}' (allowed: {:?})",
+                        action, intent_decl.intent, intent_decl.allowed_actions
+                    ),
+                });
             }
         }
-        
+
         // Intent check passed (or no intent declared)
         Ok(())
     }
@@ -155,4 +174,3 @@ impl Default for IntentChecker {
         Self::new()
     }
 }
-

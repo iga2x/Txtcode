@@ -6,40 +6,53 @@ use crate::parser::parser::Parser;
 pub fn parse_store(parser: &mut Parser) -> Result<Option<Statement>, String> {
     let start_token = parser.peek().clone();
     parser.expect_keyword("store")?;
-    
+
     // Optional arrow after 'store' (for compatibility with both syntaxes)
     // Standard: store name -> value
     // Alternative: store -> name -> value
     if parser.check(crate::lexer::token::TokenKind::Arrow) {
         parser.advance();
         // Skip whitespace after optional arrow
-        while !parser.is_at_end() && 
-              (parser.peek().kind == crate::lexer::token::TokenKind::Newline ||
-               parser.peek().kind == crate::lexer::token::TokenKind::Whitespace) {
+        while !parser.is_at_end()
+            && (parser.peek().kind == crate::lexer::token::TokenKind::Newline
+                || parser.peek().kind == crate::lexer::token::TokenKind::Whitespace)
+        {
             parser.advance();
         }
     }
-    
+
     // Check if this is an index assignment: store → target[key] → value
     // Peek ahead: identifier followed by '[' means index assignment
     let is_index_assign = {
         let pos = parser.position;
         let mut p = pos;
         // skip whitespace
-        while p < parser.tokens.len() && matches!(parser.tokens[p].kind,
-            crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+        while p < parser.tokens.len()
+            && matches!(
+                parser.tokens[p].kind,
+                crate::lexer::token::TokenKind::Whitespace
+                    | crate::lexer::token::TokenKind::Newline
+            )
+        {
             p += 1;
         }
         // check identifier
-        let is_ident = p < parser.tokens.len() && parser.tokens[p].kind == crate::lexer::token::TokenKind::Identifier;
+        let is_ident = p < parser.tokens.len()
+            && parser.tokens[p].kind == crate::lexer::token::TokenKind::Identifier;
         if is_ident {
             p += 1;
             // skip whitespace
-            while p < parser.tokens.len() && matches!(parser.tokens[p].kind,
-                crate::lexer::token::TokenKind::Whitespace | crate::lexer::token::TokenKind::Newline) {
+            while p < parser.tokens.len()
+                && matches!(
+                    parser.tokens[p].kind,
+                    crate::lexer::token::TokenKind::Whitespace
+                        | crate::lexer::token::TokenKind::Newline
+                )
+            {
                 p += 1;
             }
-            p < parser.tokens.len() && parser.tokens[p].kind == crate::lexer::token::TokenKind::LeftBracket
+            p < parser.tokens.len()
+                && parser.tokens[p].kind == crate::lexer::token::TokenKind::LeftBracket
         } else {
             false
         }
@@ -55,7 +68,12 @@ pub fn parse_store(parser: &mut Parser) -> Result<Option<Statement>, String> {
         parser.skip_optional_arrow();
         let value = parser.parse_expression()?;
         let span = token_span_to_ast_span(&start_token);
-        return Ok(Some(Statement::IndexAssignment { target, index, value, span }));
+        return Ok(Some(Statement::IndexAssignment {
+            target,
+            index,
+            value,
+            span,
+        }));
     }
 
     // Parse pattern (identifier, array, or struct)
@@ -80,11 +98,7 @@ pub fn parse_const(parser: &mut Parser) -> Result<Option<Statement>, String> {
     parser.skip_optional_arrow(); // Optional arrow before value
     let value = parser.parse_expression()?;
     let span = token_span_to_ast_span(&start_token);
-    Ok(Some(Statement::Const {
-        name,
-        value,
-        span,
-    }))
+    Ok(Some(Statement::Const { name, value, span }))
 }
 
 /// Parse print statement
@@ -111,4 +125,3 @@ fn token_span_to_ast_span(token: &Token) -> Span {
         column: token.span.1,
     }
 }
-

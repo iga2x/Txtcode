@@ -1,5 +1,5 @@
+use crate::lexer::keywords::{canonicalize_keyword, is_reserved, is_type_keyword};
 use crate::lexer::token::Token;
-use crate::lexer::keywords::{canonicalize_keyword, is_type_keyword, is_reserved};
 use crate::parser::ast::*;
 use crate::parser::utils::token_span_to_ast_span;
 
@@ -42,13 +42,13 @@ impl Parser {
 
     pub fn parse(&mut self) -> Result<Program, String> {
         let mut statements = Vec::new();
-        
+
         while !self.is_at_end() {
             if let Some(stmt) = self.parse_statement()? {
                 statements.push(stmt);
             }
         }
-        
+
         Ok(Program { statements })
     }
 
@@ -58,9 +58,10 @@ impl Parser {
         }
 
         // Skip newlines and whitespace
-        while !self.is_at_end() && 
-              (self.peek().kind == crate::lexer::token::TokenKind::Newline ||
-               self.peek().kind == crate::lexer::token::TokenKind::Whitespace) {
+        while !self.is_at_end()
+            && (self.peek().kind == crate::lexer::token::TokenKind::Newline
+                || self.peek().kind == crate::lexer::token::TokenKind::Whitespace)
+        {
             self.advance();
         }
 
@@ -68,7 +69,7 @@ impl Parser {
             return Ok(None);
         }
 
-        let token_kind = self.peek().kind.clone();
+        let token_kind = self.peek().kind;
         let token_value = self.peek().value.clone();
         match token_kind {
             crate::lexer::token::TokenKind::Keyword => {
@@ -78,7 +79,7 @@ impl Parser {
                     "end" | "else" | "elseif" | "catch" | "finally" => {
                         // These are block terminators, not statements
                         // Return None so the caller can handle them
-                        return Ok(None);
+                        Ok(None)
                     }
                     "store" => crate::parser::statements::assignment::parse_store(self),
                     "print" => crate::parser::statements::assignment::parse_print(self),
@@ -91,7 +92,7 @@ impl Parser {
                         // Consume the keyword (for or foreach, both canonicalize to "for")
                         self.advance();
                         crate::parser::statements::control::parse_for(self)
-                    },
+                    }
                     "repeat" => crate::parser::statements::control::parse_repeat(self),
                     "break" => {
                         let token = self.peek();
@@ -112,18 +113,23 @@ impl Parser {
                         // Consume the keyword (match or switch, both canonicalize to "match")
                         self.advance();
                         crate::parser::statements::control::parse_match(self)
-                    },
+                    }
                     "try" => crate::parser::statements::control::parse_try(self),
                     "import" => crate::parser::statements::modules::parse_import(self),
                     "export" => crate::parser::statements::modules::parse_export(self),
                     "permission" => crate::parser::statements::permissions::parse_permission(self),
-                    _ => self.error_with_context("Unexpected keyword", &format!("'{}'", token_value)),
+                    _ => {
+                        self.error_with_context("Unexpected keyword", &format!("'{}'", token_value))
+                    }
                 }
             }
             _ => {
                 // Try parsing as expression statement
                 // But first check if we're at a block terminator (shouldn't happen, but be safe)
-                if self.check_keyword("catch") || self.check_keyword("finally") || self.check_keyword("end") {
+                if self.check_keyword("catch")
+                    || self.check_keyword("finally")
+                    || self.check_keyword("end")
+                {
                     return Ok(None);
                 }
 
@@ -134,14 +140,30 @@ impl Parser {
                         let next_kind = &self.tokens[next_pos].kind;
                         let compound_op = match next_kind {
                             crate::lexer::token::TokenKind::PlusAssign => Some(BinaryOperator::Add),
-                            crate::lexer::token::TokenKind::MinusAssign => Some(BinaryOperator::Subtract),
-                            crate::lexer::token::TokenKind::StarAssign => Some(BinaryOperator::Multiply),
-                            crate::lexer::token::TokenKind::SlashAssign => Some(BinaryOperator::Divide),
-                            crate::lexer::token::TokenKind::PercentAssign => Some(BinaryOperator::Modulo),
-                            crate::lexer::token::TokenKind::PowerAssign => Some(BinaryOperator::Power),
-                            crate::lexer::token::TokenKind::BitAndAssign => Some(BinaryOperator::BitwiseAnd),
-                            crate::lexer::token::TokenKind::BitOrAssign => Some(BinaryOperator::BitwiseOr),
-                            crate::lexer::token::TokenKind::BitXorAssign => Some(BinaryOperator::BitwiseXor),
+                            crate::lexer::token::TokenKind::MinusAssign => {
+                                Some(BinaryOperator::Subtract)
+                            }
+                            crate::lexer::token::TokenKind::StarAssign => {
+                                Some(BinaryOperator::Multiply)
+                            }
+                            crate::lexer::token::TokenKind::SlashAssign => {
+                                Some(BinaryOperator::Divide)
+                            }
+                            crate::lexer::token::TokenKind::PercentAssign => {
+                                Some(BinaryOperator::Modulo)
+                            }
+                            crate::lexer::token::TokenKind::PowerAssign => {
+                                Some(BinaryOperator::Power)
+                            }
+                            crate::lexer::token::TokenKind::BitAndAssign => {
+                                Some(BinaryOperator::BitwiseAnd)
+                            }
+                            crate::lexer::token::TokenKind::BitOrAssign => {
+                                Some(BinaryOperator::BitwiseOr)
+                            }
+                            crate::lexer::token::TokenKind::BitXorAssign => {
+                                Some(BinaryOperator::BitwiseXor)
+                            }
                             _ => None,
                         };
                         if let Some(op) = compound_op {
@@ -150,18 +172,27 @@ impl Parser {
                             self.advance(); // consume compound-assign token
                             let value = self.parse_expression()?;
                             let span = token_span_to_ast_span(&start_token);
-                            return Ok(Some(Statement::CompoundAssignment { name, op, value, span }));
+                            return Ok(Some(Statement::CompoundAssignment {
+                                name,
+                                op,
+                                value,
+                                span,
+                            }));
                         }
 
                         // Check for type alias: type → name → target
-                        if token_value == "type" && *next_kind == crate::lexer::token::TokenKind::Arrow {
+                        if token_value == "type"
+                            && *next_kind == crate::lexer::token::TokenKind::Arrow
+                        {
                             let start_token = self.peek().clone();
                             self.advance(); // consume "type"
                             self.advance(); // consume →
                             let alias_name = self.expect_identifier()?;
                             self.skip_optional_arrow();
                             // Parse target as identifier or type keyword
-                            let target = if self.check(crate::lexer::token::TokenKind::Identifier) || self.check(crate::lexer::token::TokenKind::Keyword) {
+                            let target = if self.check(crate::lexer::token::TokenKind::Identifier)
+                                || self.check(crate::lexer::token::TokenKind::Keyword)
+                            {
                                 let t = self.peek().value.clone();
                                 self.advance();
                                 t
@@ -169,11 +200,17 @@ impl Parser {
                                 return self.error("Expected type name after type alias arrow");
                             };
                             let span = token_span_to_ast_span(&start_token);
-                            return Ok(Some(Statement::TypeAlias { name: alias_name, target, span }));
+                            return Ok(Some(Statement::TypeAlias {
+                                name: alias_name,
+                                target,
+                                span,
+                            }));
                         }
 
                         // Check for named error: error → name → message
-                        if token_value == "error" && *next_kind == crate::lexer::token::TokenKind::Arrow {
+                        if token_value == "error"
+                            && *next_kind == crate::lexer::token::TokenKind::Arrow
+                        {
                             let start_token = self.peek().clone();
                             self.advance(); // consume "error"
                             self.advance(); // consume →
@@ -181,7 +218,11 @@ impl Parser {
                             self.skip_optional_arrow();
                             let message = self.parse_expression()?;
                             let span = token_span_to_ast_span(&start_token);
-                            return Ok(Some(Statement::NamedError { name: error_name, message, span }));
+                            return Ok(Some(Statement::NamedError {
+                                name: error_name,
+                                message,
+                                span,
+                            }));
                         }
                     }
                 }
@@ -218,8 +259,8 @@ impl Parser {
     }
 
     pub(crate) fn is_at_end(&self) -> bool {
-        self.position >= self.tokens.len() ||
-        self.tokens[self.position].kind == crate::lexer::token::TokenKind::Eof
+        self.position >= self.tokens.len()
+            || self.tokens[self.position].kind == crate::lexer::token::TokenKind::Eof
     }
 
     pub(crate) fn check(&self, kind: crate::lexer::token::TokenKind) -> bool {
@@ -270,10 +311,13 @@ impl Parser {
     }
 
     /// Expect an identifier, optionally allowing reserved words (for type annotations)
-    pub(crate) fn expect_identifier_allow_reserved(&mut self, allow_reserved: bool) -> Result<String, String> {
+    pub(crate) fn expect_identifier_allow_reserved(
+        &mut self,
+        allow_reserved: bool,
+    ) -> Result<String, String> {
         if self.check(crate::lexer::token::TokenKind::Identifier) {
             let name = self.peek().value.clone();
-            
+
             // Check if it's a reserved word (keyword or type keyword)
             if !allow_reserved && is_reserved(&name) {
                 let token = self.peek();
@@ -282,7 +326,7 @@ impl Parser {
                     token.span.0, token.span.1, name
                 ));
             }
-            
+
             self.advance();
             Ok(name)
         } else if self.check(crate::lexer::token::TokenKind::Keyword) && allow_reserved {
@@ -337,26 +381,30 @@ impl Parser {
     /// - Map types: map[T]
     /// - Set types: set[T]
     /// - Generic types: T (when in type_params)
-    pub(crate) fn parse_type(&mut self, type_params: &[String]) -> Result<crate::typecheck::types::Type, String> {
+    pub(crate) fn parse_type(
+        &mut self,
+        type_params: &[String],
+    ) -> Result<crate::typecheck::types::Type, String> {
         // Skip whitespace
-        while !self.is_at_end() && 
-              (self.peek().kind == crate::lexer::token::TokenKind::Whitespace ||
-               self.peek().kind == crate::lexer::token::TokenKind::Newline) {
+        while !self.is_at_end()
+            && (self.peek().kind == crate::lexer::token::TokenKind::Whitespace
+                || self.peek().kind == crate::lexer::token::TokenKind::Newline)
+        {
             self.advance();
         }
-        
+
         // Check for array, map, or set types
         // These can be either Keyword or Identifier tokens, so check the value
-        let is_array = self.check_keyword("array") || 
-                        (self.check(crate::lexer::token::TokenKind::Identifier) && 
-                         self.peek().value == "array");
-        let is_map = self.check_keyword("map") || 
-                      (self.check(crate::lexer::token::TokenKind::Identifier) && 
-                       self.peek().value == "map");
-        let is_set = self.check_keyword("set") || 
-                      (self.check(crate::lexer::token::TokenKind::Identifier) && 
-                       self.peek().value == "set");
-        
+        let is_array = self.check_keyword("array")
+            || (self.check(crate::lexer::token::TokenKind::Identifier)
+                && self.peek().value == "array");
+        let is_map = self.check_keyword("map")
+            || (self.check(crate::lexer::token::TokenKind::Identifier)
+                && self.peek().value == "map");
+        let is_set = self.check_keyword("set")
+            || (self.check(crate::lexer::token::TokenKind::Identifier)
+                && self.peek().value == "set");
+
         if is_array {
             self.advance();
             // Inner type is optional: array or array[int]
@@ -366,7 +414,9 @@ impl Parser {
                 self.expect(crate::lexer::token::TokenKind::RightBracket)?;
                 return Ok(crate::typecheck::types::Type::Array(Box::new(inner_type)));
             }
-            return Ok(crate::typecheck::types::Type::Array(Box::new(crate::typecheck::types::Type::Identifier("any".to_string()))));
+            return Ok(crate::typecheck::types::Type::Array(Box::new(
+                crate::typecheck::types::Type::Identifier("any".to_string()),
+            )));
         }
 
         if is_map {
@@ -378,7 +428,9 @@ impl Parser {
                 self.expect(crate::lexer::token::TokenKind::RightBracket)?;
                 return Ok(crate::typecheck::types::Type::Map(Box::new(inner_type)));
             }
-            return Ok(crate::typecheck::types::Type::Map(Box::new(crate::typecheck::types::Type::Identifier("any".to_string()))));
+            return Ok(crate::typecheck::types::Type::Map(Box::new(
+                crate::typecheck::types::Type::Identifier("any".to_string()),
+            )));
         }
 
         if is_set {
@@ -390,19 +442,20 @@ impl Parser {
                 self.expect(crate::lexer::token::TokenKind::RightBracket)?;
                 return Ok(crate::typecheck::types::Type::Set(Box::new(inner_type)));
             }
-            return Ok(crate::typecheck::types::Type::Set(Box::new(crate::typecheck::types::Type::Identifier("any".to_string()))));
+            return Ok(crate::typecheck::types::Type::Set(Box::new(
+                crate::typecheck::types::Type::Identifier("any".to_string()),
+            )));
         }
-        
+
         // Parse simple type or generic type parameter
-        let type_name = self.expect_identifier_allow_reserved(true)
-            .map_err(|_| {
-                let token = self.peek();
-                format!(
-                    "Parse error at line {}, column {}: Expected type name (found {:?} '{}')",
-                    token.span.0, token.span.1, token.kind, token.value
-                )
-            })?;
-        
+        let type_name = self.expect_identifier_allow_reserved(true).map_err(|_| {
+            let token = self.peek();
+            format!(
+                "Parse error at line {}, column {}: Expected type name (found {:?} '{}')",
+                token.span.0, token.span.1, token.kind, token.value
+            )
+        })?;
+
         // Check if it's a generic type parameter
         if type_params.contains(&type_name) {
             Ok(crate::typecheck::types::Type::Generic(type_name))
@@ -421,9 +474,10 @@ impl Parser {
         if self.check(crate::lexer::token::TokenKind::Arrow) {
             self.advance();
             // Skip whitespace after arrow
-            while !self.is_at_end() && 
-                  (self.peek().kind == crate::lexer::token::TokenKind::Whitespace ||
-                   self.peek().kind == crate::lexer::token::TokenKind::Newline) {
+            while !self.is_at_end()
+                && (self.peek().kind == crate::lexer::token::TokenKind::Whitespace
+                    || self.peek().kind == crate::lexer::token::TokenKind::Newline)
+            {
                 self.advance();
             }
         }

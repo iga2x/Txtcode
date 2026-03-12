@@ -14,13 +14,17 @@ impl ArithmeticOps {
             BinaryOperator::Divide => Self::divide(left, right),
             BinaryOperator::Modulo => Self::modulo(left, right),
             BinaryOperator::Power => Self::power(left, right),
-            _ => Err(RuntimeError::new(format!("Not an arithmetic operator: {:?}", op))),
+            _ => Err(RuntimeError::new(format!(
+                "Not an arithmetic operator: {:?}",
+                op
+            ))),
         }
     }
 
     fn add(left: &Value, right: &Value) -> Result<Value, RuntimeError> {
         match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => a.checked_add(*b)
+            (Value::Integer(a), Value::Integer(b)) => a
+                .checked_add(*b)
                 .map(Value::Integer)
                 .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} + {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
@@ -31,34 +35,42 @@ impl ArithmeticOps {
             (Value::String(a), Value::Char(b)) => Ok(Value::String(format!("{}{}", a, b))),
             (Value::Char(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
             // String + any: auto-convert right to string (like JS/Python)
-            (Value::String(a), other) => Ok(Value::String(format!("{}{}", a, other.to_string()))),
+            (Value::String(a), other) => Ok(Value::String(format!("{}{}", a, other))),
             // any + String: auto-convert left to string
-            (other, Value::String(b)) => Ok(Value::String(format!("{}{}", other.to_string(), b))),
-            _ => Err(RuntimeError::new("Invalid operands for addition".to_string())),
+            (other, Value::String(b)) => Ok(Value::String(format!("{}{}", other, b))),
+            _ => Err(RuntimeError::new(
+                "Invalid operands for addition".to_string(),
+            )),
         }
     }
 
     fn subtract(left: &Value, right: &Value) -> Result<Value, RuntimeError> {
         match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => a.checked_sub(*b)
+            (Value::Integer(a), Value::Integer(b)) => a
+                .checked_sub(*b)
                 .map(Value::Integer)
                 .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} - {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - *b as f64)),
-            _ => Err(RuntimeError::new("Invalid operands for subtraction".to_string())),
+            _ => Err(RuntimeError::new(
+                "Invalid operands for subtraction".to_string(),
+            )),
         }
     }
 
     fn multiply(left: &Value, right: &Value) -> Result<Value, RuntimeError> {
         match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => a.checked_mul(*b)
+            (Value::Integer(a), Value::Integer(b)) => a
+                .checked_mul(*b)
                 .map(Value::Integer)
                 .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} * {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * *b as f64)),
-            _ => Err(RuntimeError::new("Invalid operands for multiplication".to_string())),
+            _ => Err(RuntimeError::new(
+                "Invalid operands for multiplication".to_string(),
+            )),
         }
     }
 
@@ -94,7 +106,9 @@ impl ArithmeticOps {
                     Ok(Value::Float(a / *b as f64))
                 }
             }
-            _ => Err(RuntimeError::new("Invalid operands for division".to_string())),
+            _ => Err(RuntimeError::new(
+                "Invalid operands for division".to_string(),
+            )),
         }
     }
 
@@ -115,14 +129,19 @@ impl ArithmeticOps {
         match (left, right) {
             (Value::Integer(a), Value::Integer(b)) => {
                 if *b < 0 {
-                    Err(RuntimeError::new("Negative exponent not supported for integers".to_string()))
+                    Err(RuntimeError::new(
+                        "Negative exponent not supported for integers".to_string(),
+                    ))
                 } else if *b > 62 {
                     // Exponents > 62 will almost certainly overflow i64
-                    Err(RuntimeError::new(format!("Integer overflow: {} ** {}", a, b)))
+                    Err(RuntimeError::new(format!(
+                        "Integer overflow: {} ** {}",
+                        a, b
+                    )))
                 } else {
-                    a.checked_pow(*b as u32)
-                        .map(Value::Integer)
-                        .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} ** {}", a, b)))
+                    a.checked_pow(*b as u32).map(Value::Integer).ok_or_else(|| {
+                        RuntimeError::new(format!("Integer overflow: {} ** {}", a, b))
+                    })
                 }
             }
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(*b))),
@@ -132,4 +151,3 @@ impl ArithmeticOps {
         }
     }
 }
-

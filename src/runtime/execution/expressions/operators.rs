@@ -1,23 +1,23 @@
 // Binary and unary operator evaluation
 
-use crate::parser::ast::{Expression, BinaryOperator, UnaryOperator};
+use super::ExpressionVM;
+use crate::parser::ast::{BinaryOperator, Expression, UnaryOperator};
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::operators::OperatorRegistry;
-use super::ExpressionVM;
 
 pub fn evaluate_binary_op<VM: ExpressionVM>(
     vm: &mut VM,
-    left: &Box<Expression>,
+    left: &Expression,
     op: &BinaryOperator,
-    right: &Box<Expression>,
+    right: &Expression,
 ) -> Result<Value, RuntimeError> {
     // Handle pipe operator specially: left |> right_func
     // right_func must evaluate to a callable (Function or String lambda name).
     if matches!(op, BinaryOperator::Pipe) {
         let left_val = super::ExpressionEvaluator::evaluate(vm, left)?;
         let right_val = super::ExpressionEvaluator::evaluate(vm, right)?;
-        return pipe_call(vm, left_val, right_val, right.as_ref());
+        return pipe_call(vm, left_val, right_val, right);
     }
     let left_val = super::ExpressionEvaluator::evaluate(vm, left)?;
     let right_val = super::ExpressionEvaluator::evaluate(vm, right)?;
@@ -51,7 +51,7 @@ fn pipe_call<VM: ExpressionVM>(
         }
         other => Err(RuntimeError::new(format!(
             "Pipe operator |> requires a callable on the right side, got: {}",
-            other.to_string()
+            other
         ))),
     }
 }
@@ -59,15 +59,14 @@ fn pipe_call<VM: ExpressionVM>(
 pub fn evaluate_unary_op<VM: ExpressionVM>(
     vm: &mut VM,
     op: &UnaryOperator,
-    operand: &Box<Expression>,
+    operand: &Expression,
 ) -> Result<Value, RuntimeError> {
     let val = super::ExpressionEvaluator::evaluate(vm, operand)?;
     let result = OperatorRegistry::apply_unary(op, &val)?;
     if matches!(op, UnaryOperator::Increment | UnaryOperator::Decrement) {
-        if let Expression::Identifier(name) = operand.as_ref() {
+        if let Expression::Identifier(name) = operand {
             vm.set_variable(name.clone(), result.clone())?;
         }
     }
     Ok(result)
 }
-

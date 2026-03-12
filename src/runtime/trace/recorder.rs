@@ -1,11 +1,11 @@
 // Trace recorder - records execution events
 
 use super::graph::{ExecutionTrace, TraceNode, TraceNodeType, VariableState};
-use crate::parser::ast::{Statement, Expression};
+use crate::parser::ast::{Expression, Statement};
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
-use std::time::SystemTime;
 use std::collections::HashMap;
+use std::time::SystemTime;
 
 /// Trace recorder - collects execution events
 pub struct TraceRecorder {
@@ -76,7 +76,12 @@ impl TraceRecorder {
     }
 
     /// Record variable assignment
-    pub fn record_variable_assignment(&mut self, name: String, value: Value, scope: Option<String>) {
+    pub fn record_variable_assignment(
+        &mut self,
+        name: String,
+        value: Value,
+        scope: Option<String>,
+    ) {
         if !self.enabled {
             return;
         }
@@ -109,7 +114,12 @@ impl TraceRecorder {
     }
 
     /// Record function call
-    pub fn record_function_call(&mut self, name: String, args: Vec<Value>, result: Result<Value, RuntimeError>) {
+    pub fn record_function_call(
+        &mut self,
+        name: String,
+        args: Vec<Value>,
+        result: Result<Value, RuntimeError>,
+    ) {
         if !self.enabled {
             return;
         }
@@ -200,4 +210,3 @@ impl Default for TraceRecorder {
         Self::new()
     }
 }
-

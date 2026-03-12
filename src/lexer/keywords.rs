@@ -56,28 +56,16 @@ pub fn canonicalize_keyword(word: &str) -> String {
 pub fn get_keywords() -> Vec<&'static str> {
     vec![
         // Variable & assignment
-        "store", "const",
-        // I/O
-        "print",
-        // Functions
-        "define", "return",
-        // Control flow
-        "if", "else", "elseif", "end",
-        "while", "do", "for", "repeat", "times",
-        "break", "continue",
-        "match", "case",
-        "try", "catch", "finally",
-        // Logical operators
-        "and", "or", "not",
-        // Literals
-        "true", "false", "null",
-        // Type system
-        "enum", "struct",
-        // Module system
-        "import", "export", "from", "as",
-        // Loop keywords
-        "in", "to", "step",
-        // Async/await
+        "store", "const", // I/O
+        "print", // Functions
+        "define", "return", // Control flow
+        "if", "else", "elseif", "end", "while", "do", "for", "repeat", "times", "break",
+        "continue", "match", "case", "try", "catch", "finally", // Logical operators
+        "and", "or", "not", // Literals
+        "true", "false", "null", // Type system
+        "enum", "struct", // Module system
+        "import", "export", "from", "as", // Loop keywords
+        "in", "to", "step", // Async/await
         "async", "await",
     ]
 }
@@ -85,13 +73,13 @@ pub fn get_keywords() -> Vec<&'static str> {
 /// Get all keyword aliases
 pub fn get_keyword_aliases() -> Vec<&'static str> {
     vec![
-        "let",    // alias for "store"
-        "out",    // alias for "print"
-        "def",    // alias for "define"
-        "ret",    // alias for "return"
-        "use",    // alias for "import"
-        "elif",   // alias for "elseif"
-        "switch", // alias for "match"
+        "let",     // alias for "store"
+        "out",     // alias for "print"
+        "def",     // alias for "define"
+        "ret",     // alias for "return"
+        "use",     // alias for "import"
+        "elif",    // alias for "elseif"
+        "switch",  // alias for "match"
         "foreach", // alias for "for"
     ]
 }
@@ -108,4 +96,3 @@ pub fn is_type_keyword(word: &str) -> bool {
 pub fn is_reserved(word: &str) -> bool {
     is_keyword(word) || is_type_keyword(word)
 }
-

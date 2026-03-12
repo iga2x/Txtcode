@@ -24,9 +24,11 @@ impl Type {
     /// Check if this type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         match (self, other) {
-            (Type::Int, Type::Int) | (Type::Float, Type::Float) | 
-            (Type::String, Type::String) | (Type::Char, Type::Char) | 
-            (Type::Bool, Type::Bool) => true,
+            (Type::Int, Type::Int)
+            | (Type::Float, Type::Float)
+            | (Type::String, Type::String)
+            | (Type::Char, Type::Char)
+            | (Type::Bool, Type::Bool) => true,
             (Type::Int, Type::Float) | (Type::Float, Type::Int) => true,
             (Type::Char, Type::String) | (Type::String, Type::Char) => true, // Char can convert to String
             (Type::Array(a), Type::Array(b)) => a.is_compatible_with(b),
@@ -116,26 +118,21 @@ impl TypeSubstitution {
     /// Substitute generic types in a type with concrete types
     pub fn substitute(&self, ty: &Type) -> Type {
         match ty {
-            Type::Generic(name) => {
-                self.mappings.get(name)
-                    .cloned()
-                    .unwrap_or_else(|| Type::Generic(name.clone()))
-            }
-            Type::Array(inner) => {
-                Type::Array(Box::new(self.substitute(inner)))
-            }
-            Type::Map(inner) => {
-                Type::Map(Box::new(self.substitute(inner)))
-            }
-            Type::Set(inner) => {
-                Type::Set(Box::new(self.substitute(inner)))
-            }
-            Type::Function { params, return_type } => {
-                Type::Function {
-                    params: params.iter().map(|p| self.substitute(p)).collect(),
-                    return_type: Box::new(self.substitute(return_type)),
-                }
-            }
+            Type::Generic(name) => self
+                .mappings
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| Type::Generic(name.clone())),
+            Type::Array(inner) => Type::Array(Box::new(self.substitute(inner))),
+            Type::Map(inner) => Type::Map(Box::new(self.substitute(inner))),
+            Type::Set(inner) => Type::Set(Box::new(self.substitute(inner))),
+            Type::Function {
+                params,
+                return_type,
+            } => Type::Function {
+                params: params.iter().map(|p| self.substitute(p)).collect(),
+                return_type: Box::new(self.substitute(return_type)),
+            },
             _ => ty.clone(),
         }
     }
@@ -146,4 +143,3 @@ impl Default for TypeSubstitution {
         Self::new()
     }
 }
-

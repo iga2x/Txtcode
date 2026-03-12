@@ -1,4 +1,4 @@
-use crate::runtime::{Value, RuntimeError};
+use crate::runtime::{RuntimeError, Value};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -6,7 +6,11 @@ use std::time::Duration;
 pub struct NetLib;
 
 impl NetLib {
-    pub fn call_function(name: &str, args: &[Value], permission_checker: Option<&dyn crate::stdlib::permission_checker::PermissionChecker>) -> Result<Value, RuntimeError> {
+    pub fn call_function(
+        name: &str,
+        args: &[Value],
+        permission_checker: Option<&dyn crate::stdlib::permission_checker::PermissionChecker>,
+    ) -> Result<Value, RuntimeError> {
         match name {
             "http_get" => {
                 if args.len() != 1 {
@@ -212,7 +216,7 @@ impl NetLib {
                             checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
                         }
                         let port_int = *port as i64;
-                        if port_int < 1 || port_int > 65535 {
+                        if !(1..=65535).contains(&port_int) {
                             return Err(RuntimeError::new("Port must be between 1 and 65535".to_string()));
                         }
                         Self::tcp_connect_sync(host, port_int as u16)
@@ -248,7 +252,9 @@ impl NetLib {
     }
 
     fn extract_hostname(url: &str) -> Option<String> {
-        let url = url.trim_start_matches("http://").trim_start_matches("https://");
+        let url = url
+            .trim_start_matches("http://")
+            .trim_start_matches("https://");
         let hostname = url.split(&['/', '?', '#'][..]).next()?;
         let hostname = hostname.split(':').next()?;
         Some(hostname.to_string())
@@ -258,20 +264,30 @@ impl NetLib {
         let mut map = HashMap::new();
         for (name, value) in response_headers {
             if let Ok(val_str) = value.to_str() {
-                map.insert(name.as_str().to_string(), Value::String(val_str.to_string()));
+                map.insert(
+                    name.as_str().to_string(),
+                    Value::String(val_str.to_string()),
+                );
             }
         }
         map
     }
 
     pub async fn http_get_async(url: &str) -> Result<Value, RuntimeError> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
-        let response = client.get(url).send().await
+        let response = client
+            .get(url)
+            .send()
+            .await
             .map_err(|e| RuntimeError::new(format!("HTTP GET failed: {}", e)))?;
         let status = response.status().as_u16();
         let headers_map = Self::collect_headers(response.headers());
-        let body = response.text().await
+        let body = response
+            .text()
+            .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = HashMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
@@ -286,20 +302,32 @@ impl NetLib {
         rt.block_on(Self::http_get_async(url))
     }
 
-    pub async fn http_post_async(url: &str, body: &str, headers: Option<&HashMap<String, Value>>) -> Result<Value, RuntimeError> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()
+    pub async fn http_post_async(
+        url: &str,
+        body: &str,
+        headers: Option<&HashMap<String, Value>>,
+    ) -> Result<Value, RuntimeError> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
         let mut request = client.post(url).body(body.to_string());
         if let Some(headers_map) = headers {
             for (key, value) in headers_map {
-                if let Value::String(val_str) = value { request = request.header(key, val_str); }
+                if let Value::String(val_str) = value {
+                    request = request.header(key, val_str);
+                }
             }
         }
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| RuntimeError::new(format!("HTTP POST failed: {}", e)))?;
         let status = response.status().as_u16();
         let headers_map = Self::collect_headers(response.headers());
-        let response_body = response.text().await
+        let response_body = response
+            .text()
+            .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = HashMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
@@ -308,26 +336,42 @@ impl NetLib {
         Ok(Value::Map(result))
     }
 
-    fn http_post_sync(url: &str, body: &str, headers: Option<&HashMap<String, Value>>) -> Result<Value, RuntimeError> {
+    fn http_post_sync(
+        url: &str,
+        body: &str,
+        headers: Option<&HashMap<String, Value>>,
+    ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
         rt.block_on(Self::http_post_async(url, body, headers))
     }
 
-    async fn http_put_async(url: &str, body: &str, headers: Option<&HashMap<String, Value>>) -> Result<Value, RuntimeError> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()
+    async fn http_put_async(
+        url: &str,
+        body: &str,
+        headers: Option<&HashMap<String, Value>>,
+    ) -> Result<Value, RuntimeError> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
         let mut request = client.put(url).body(body.to_string());
         if let Some(headers_map) = headers {
             for (key, value) in headers_map {
-                if let Value::String(val_str) = value { request = request.header(key, val_str); }
+                if let Value::String(val_str) = value {
+                    request = request.header(key, val_str);
+                }
             }
         }
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| RuntimeError::new(format!("HTTP PUT failed: {}", e)))?;
         let status = response.status().as_u16();
         let headers_map = Self::collect_headers(response.headers());
-        let response_body = response.text().await
+        let response_body = response
+            .text()
+            .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = HashMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
@@ -336,26 +380,41 @@ impl NetLib {
         Ok(Value::Map(result))
     }
 
-    fn http_put_sync(url: &str, body: &str, headers: Option<&HashMap<String, Value>>) -> Result<Value, RuntimeError> {
+    fn http_put_sync(
+        url: &str,
+        body: &str,
+        headers: Option<&HashMap<String, Value>>,
+    ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
         rt.block_on(Self::http_put_async(url, body, headers))
     }
 
-    async fn http_delete_async(url: &str, headers: Option<&HashMap<String, Value>>) -> Result<Value, RuntimeError> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()
+    async fn http_delete_async(
+        url: &str,
+        headers: Option<&HashMap<String, Value>>,
+    ) -> Result<Value, RuntimeError> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
         let mut request = client.delete(url);
         if let Some(headers_map) = headers {
             for (key, value) in headers_map {
-                if let Value::String(val_str) = value { request = request.header(key, val_str); }
+                if let Value::String(val_str) = value {
+                    request = request.header(key, val_str);
+                }
             }
         }
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| RuntimeError::new(format!("HTTP DELETE failed: {}", e)))?;
         let status = response.status().as_u16();
         let headers_map = Self::collect_headers(response.headers());
-        let response_body = response.text().await
+        let response_body = response
+            .text()
+            .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = HashMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
@@ -364,26 +423,41 @@ impl NetLib {
         Ok(Value::Map(result))
     }
 
-    fn http_delete_sync(url: &str, headers: Option<&HashMap<String, Value>>) -> Result<Value, RuntimeError> {
+    fn http_delete_sync(
+        url: &str,
+        headers: Option<&HashMap<String, Value>>,
+    ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
         rt.block_on(Self::http_delete_async(url, headers))
     }
 
-    async fn http_patch_async(url: &str, body: &str, headers: Option<&HashMap<String, Value>>) -> Result<Value, RuntimeError> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()
+    async fn http_patch_async(
+        url: &str,
+        body: &str,
+        headers: Option<&HashMap<String, Value>>,
+    ) -> Result<Value, RuntimeError> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
         let mut request = client.patch(url).body(body.to_string());
         if let Some(headers_map) = headers {
             for (key, value) in headers_map {
-                if let Value::String(val_str) = value { request = request.header(key, val_str); }
+                if let Value::String(val_str) = value {
+                    request = request.header(key, val_str);
+                }
             }
         }
-        let response = request.send().await
+        let response = request
+            .send()
+            .await
             .map_err(|e| RuntimeError::new(format!("HTTP PATCH failed: {}", e)))?;
         let status = response.status().as_u16();
         let headers_map = Self::collect_headers(response.headers());
-        let response_body = response.text().await
+        let response_body = response
+            .text()
+            .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = HashMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
@@ -392,16 +466,25 @@ impl NetLib {
         Ok(Value::Map(result))
     }
 
-    fn http_patch_sync(url: &str, body: &str, headers: Option<&HashMap<String, Value>>) -> Result<Value, RuntimeError> {
+    fn http_patch_sync(
+        url: &str,
+        body: &str,
+        headers: Option<&HashMap<String, Value>>,
+    ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
         rt.block_on(Self::http_patch_async(url, body, headers))
     }
 
     async fn http_headers_async(url: &str) -> Result<Value, RuntimeError> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
-        let response = client.head(url).send().await
+        let response = client
+            .head(url)
+            .send()
+            .await
             .map_err(|e| RuntimeError::new(format!("HTTP HEAD failed: {}", e)))?;
         Ok(Value::Map(Self::collect_headers(response.headers())))
     }
@@ -413,9 +496,14 @@ impl NetLib {
     }
 
     async fn http_status_async(url: &str) -> Result<Value, RuntimeError> {
-        let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
-        let response = client.head(url).send().await
+        let response = client
+            .head(url)
+            .send()
+            .await
             .map_err(|e| RuntimeError::new(format!("HTTP HEAD failed: {}", e)))?;
         Ok(Value::Integer(response.status().as_u16() as i64))
     }
@@ -426,30 +514,57 @@ impl NetLib {
         rt.block_on(Self::http_status_async(url))
     }
 
-    async fn http_timeout_async(url: &str, method: &str, body: Option<&str>, timeout_ms: u64) -> Result<Value, RuntimeError> {
-        let client = reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms)).build()
+    async fn http_timeout_async(
+        url: &str,
+        method: &str,
+        body: Option<&str>,
+        timeout_ms: u64,
+    ) -> Result<Value, RuntimeError> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_millis(timeout_ms))
+            .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
         let response = match method.to_uppercase().as_str() {
             "GET" => client.get(url).send().await,
             "POST" => {
                 let rb = client.post(url);
-                if let Some(b) = body { rb.body(b.to_string()).send().await } else { rb.send().await }
+                if let Some(b) = body {
+                    rb.body(b.to_string()).send().await
+                } else {
+                    rb.send().await
+                }
             }
             "PUT" => {
                 let rb = client.put(url);
-                if let Some(b) = body { rb.body(b.to_string()).send().await } else { rb.send().await }
+                if let Some(b) = body {
+                    rb.body(b.to_string()).send().await
+                } else {
+                    rb.send().await
+                }
             }
             "DELETE" => client.delete(url).send().await,
             "PATCH" => {
                 let rb = client.patch(url);
-                if let Some(b) = body { rb.body(b.to_string()).send().await } else { rb.send().await }
+                if let Some(b) = body {
+                    rb.body(b.to_string()).send().await
+                } else {
+                    rb.send().await
+                }
             }
             "HEAD" => client.head(url).send().await,
-            other => return Err(RuntimeError::new(format!("http_timeout: unsupported method '{}'", other))),
-        }.map_err(|e| RuntimeError::new(format!("HTTP {} failed: {}", method, e)))?;
+            other => {
+                return Err(RuntimeError::new(format!(
+                    "http_timeout: unsupported method '{}'",
+                    other
+                )))
+            }
+        }
+        .map_err(|e| RuntimeError::new(format!("HTTP {} failed: {}", method, e)))?;
         let status = response.status().as_u16();
         let headers_map = Self::collect_headers(response.headers());
-        let response_body = response.text().await
+        let response_body = response
+            .text()
+            .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = HashMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
@@ -458,7 +573,12 @@ impl NetLib {
         Ok(Value::Map(result))
     }
 
-    fn http_timeout_sync(url: &str, method: &str, body: Option<&str>, timeout_ms: u64) -> Result<Value, RuntimeError> {
+    fn http_timeout_sync(
+        url: &str,
+        method: &str,
+        body: Option<&str>,
+        timeout_ms: u64,
+    ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
         rt.block_on(Self::http_timeout_async(url, method, body, timeout_ms))
@@ -467,7 +587,8 @@ impl NetLib {
     pub async fn tcp_connect_async(host: &str, port: u16) -> Result<Value, RuntimeError> {
         use tokio::net::TcpStream;
         let address = format!("{}:{}", host, port);
-        let _stream = TcpStream::connect(&address).await
+        let _stream = TcpStream::connect(&address)
+            .await
             .map_err(|e| RuntimeError::new(format!("TCP connection failed: {}", e)))?;
         let mut result = HashMap::new();
         result.insert("host".to_string(), Value::String(host.to_string()));
@@ -484,10 +605,13 @@ impl NetLib {
 
     pub async fn udp_send_async(host: &str, port: u16, data: &str) -> Result<Value, RuntimeError> {
         use tokio::net::UdpSocket;
-        let socket = UdpSocket::bind("0.0.0.0:0").await
+        let socket = UdpSocket::bind("0.0.0.0:0")
+            .await
             .map_err(|e| RuntimeError::new(format!("Failed to create UDP socket: {}", e)))?;
         let address = format!("{}:{}", host, port);
-        socket.send_to(data.as_bytes(), &address).await
+        socket
+            .send_to(data.as_bytes(), &address)
+            .await
             .map_err(|e| RuntimeError::new(format!("UDP send failed: {}", e)))?;
         Ok(Value::Integer(data.len() as i64))
     }
@@ -500,7 +624,8 @@ impl NetLib {
 
     pub async fn resolve_dns_async(domain: &str) -> Result<Value, RuntimeError> {
         use tokio::net::lookup_host;
-        let addresses: Vec<_> = lookup_host((domain, 0)).await
+        let addresses: Vec<_> = lookup_host((domain, 0))
+            .await
             .map_err(|e| RuntimeError::new(format!("DNS resolution failed: {}", e)))?
             .map(|addr| Value::String(addr.ip().to_string()))
             .collect();

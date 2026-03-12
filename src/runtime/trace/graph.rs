@@ -115,4 +115,3 @@ pub struct VariableState {
     pub scope: String, // "global", "local", function name, etc.
     pub timestamp: SystemTime,
 }
-
