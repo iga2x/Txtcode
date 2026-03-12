@@ -78,7 +78,7 @@ store → bounds → minmax([3, 1, 4, 1, 5])
 ### Async Functions (synchronous mode)
 ```txtcode
 # async/await runs synchronously in v0.4 — no blocking or parallelism yet.
-# True async I/O is planned for v0.4.
+# True async I/O is planned for v0.5.
 async → define → fetch → (url: string)
   store → body → await → http_get(url)
   return → body

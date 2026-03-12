@@ -107,7 +107,7 @@ txtcode inspect program.tcc --format json
 ```
 
 > **Note:** Only `bytecode` target is supported. Passing `--target native` or `--target wasm`
-> will print an error. Native and WASM compilation are planned for v0.4.
+> will print an error. Native and WASM compilation are planned for v0.5.
 
 ## Package Management
 

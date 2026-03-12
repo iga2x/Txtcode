@@ -28,7 +28,7 @@
 > **Still not fully implemented:**
 > - Generic type enforcement at runtime (type params are parsed but erased)
 > - `++arr[0]` / `--arr[0]` — use `store → arr[0] → arr[0] + 1` instead
-> - Integer overflow guards — `i64` overflow panics in release builds; guards planned for v0.4
+> - Integer overflow guards — ✅ implemented in v0.4 (`checked_*` arithmetic in both VMs; overflow returns `RuntimeError`)
 
 ---
 
@@ -952,9 +952,9 @@ The call stack depth limit is enforced at 50 in all VMs as of v0.4. Deep recursi
 
 ### 6.4 Memory
 
-Memory is managed by Rust's ownership system combined with reference counting for shared values. There is **no explicit memory limit** in v0.1. The process is bounded by the host OS.
+Memory is managed by Rust's ownership system combined with reference counting for shared values. There is **no explicit memory limit** in v0.4. The process is bounded by the host OS.
 
-`MemoryManager` (stub in v0.1) is a placeholder for future GC integration.
+`MemoryManager` (stub in v0.4) is a placeholder for future GC integration.
 
 ### 6.5 Integer Overflow
 
@@ -1058,7 +1058,7 @@ end
 | Capability violation | `"Capability [cap] is forbidden"` |
 | Timeout exceeded | `"Maximum execution time exceeded"` |
 | File too large | `"File 'path' is too large"` |
-| Stack overflow (OS) | Process abort — not catchable in v0.1 |
+| Stack overflow (OS) | Process abort — not catchable in v0.4 |
 
 ### 7.6 Assert
 
@@ -1074,11 +1074,11 @@ if → not (x > 0)
 end
 ```
 
-Assert is always evaluated — there is no release-mode stripping in v0.1.
+Assert is always evaluated — there is no release-mode stripping in v0.4.
 
 ### 7.7 Result Pattern (Idiomatic)
 
-While there is no built-in `Result` type in v0.1, the convention is:
+While there is no language-level `Result<T, E>` syntax type in v0.4, the convention is:
 
 ```txtcode
 define → safe_divide → (a: int, b: int)
