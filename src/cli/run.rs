@@ -17,6 +17,7 @@ use crate::tools::logger;
 use crate::validator::Validator;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 // ── Bytecode execution ────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ fn run_compiled_file(
     allow_exec: bool,
     allow_fs: &[String],
     allow_net: &[String],
+    cancel_flag: Option<Arc<AtomicBool>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::compiler::bytecode::Bytecode;
 
@@ -49,6 +51,11 @@ fn run_compiled_file(
 
     let mut vm = BytecodeVM::new();
     vm.set_safe_mode(effective_safe_mode);
+
+    // Attach cancellation flag so timeout can stop execution mid-run.
+    if let Some(flag) = cancel_flag {
+        vm.set_cancel_flag(flag);
+    }
 
     // Activate bytecode integrity hashing — hash the raw bytecode bytes so the
     // runtime security layer can detect in-memory tampering (mirrors the source
@@ -153,9 +160,10 @@ pub fn run_file(
     debug: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[])
+    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], None)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_file_inner(
     file: &PathBuf,
     safe_mode: bool,
@@ -164,6 +172,7 @@ fn run_file_inner(
     verbose: bool,
     allow_fs: &[String],
     allow_net: &[String],
+    cancel_flag: Option<Arc<AtomicBool>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     logger::log_info(&format!("Running file: {}", file.display()));
 
@@ -186,7 +195,7 @@ fn run_file_inner(
             "txtc" => {
                 // Pre-compiled bytecode — route to Bytecode VM and return early.
                 logger::log_info(&format!("Running compiled bytecode: {}", file.display()));
-                return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net);
+                return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net, cancel_flag);
             }
             "txt" => {
                 return Err(format!(
@@ -239,6 +248,11 @@ fn run_file_inner(
     let mut vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
     vm.set_exec_allowed(exec_allowed);
 
+    // Attach cancellation flag so timeout can stop execution mid-run.
+    if let Some(flag) = cancel_flag {
+        vm.set_cancel_flag(flag);
+    }
+
     // Activate source integrity checking: hash the source bytes so the security
     // layer can detect in-memory tampering and upgrades level to Full on Linux.
     vm.runtime_security.hash_and_set_source(source.as_bytes());
@@ -266,7 +280,7 @@ pub fn run_file_with_allowlists(
         return run_file(file, safe_mode, allow_exec, debug, verbose);
     }
     run_file_inner(
-        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net,
+        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, None,
     )
 }
 
@@ -305,12 +319,22 @@ pub fn run_file_with_timeout(
         )
     })?;
 
+    // Shared cancellation flag: main thread sets it to `true` when the timeout
+    // expires; the worker VM checks it at every statement/instruction boundary
+    // and terminates its own execution loop.  This guarantees the thread exits
+    // cleanly rather than running forever in the background.
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    let cancel_flag_worker = Arc::clone(&cancel_flag);
+
     let file = file.to_path_buf();
     let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
     std::thread::spawn(move || {
-        let result =
-            run_file(&file, safe_mode, allow_exec, debug, verbose).map_err(|e| e.to_string());
+        let result = run_file_inner(
+            &file, safe_mode, allow_exec, debug, verbose, &[], &[],
+            Some(cancel_flag_worker),
+        )
+        .map_err(|e| e.to_string());
         let _ = tx.send(result);
     });
 
@@ -318,6 +342,11 @@ pub fn run_file_with_timeout(
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(e.into()),
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            // Signal the worker to stop.  It will check the flag at the next
+            // statement/instruction boundary and exit its execution loop.
+            cancel_flag.store(true, Ordering::Relaxed);
+            // Give the thread a brief window to exit cleanly before we return.
+            let _ = rx.recv_timeout(std::time::Duration::from_millis(500));
             Err(format!("Execution timed out after {}", timeout_str).into())
         }
         Err(e) => Err(format!("Thread error: {}", e).into()),

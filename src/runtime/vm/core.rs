@@ -3,6 +3,7 @@ use crate::runtime::core::{ScopeManager, Value};
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::permissions::PermissionResource;
 use std::path::PathBuf;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 /// Core VirtualMachine functionality (constructors, variables, scopes)
 impl VirtualMachine {
@@ -31,6 +32,7 @@ impl VirtualMachine {
             capability_manager: crate::capability::CapabilityManager::new(),
             active_capability: None,
             runtime_security: crate::runtime::security::RuntimeSecurity::new(),
+            cancel_flag: None,
         }
     }
 
@@ -64,6 +66,7 @@ impl VirtualMachine {
             capability_manager: crate::capability::CapabilityManager::new(),
             active_capability: None,
             runtime_security: crate::runtime::security::RuntimeSecurity::new(),
+            cancel_flag: None,
         };
 
         // If safe_mode is enabled, deny exec by default
@@ -109,6 +112,20 @@ impl VirtualMachine {
     /// Pop the current scope
     pub(super) fn pop_scope(&mut self) {
         self.scope_manager.pop_scope();
+    }
+
+    /// Attach a cancellation flag.  When the flag is set to `true` the execution
+    /// loop will terminate at the next statement boundary with a timeout error.
+    /// Used by `run_file_with_timeout` to stop the worker thread after deadline.
+    pub fn set_cancel_flag(&mut self, flag: Arc<AtomicBool>) {
+        self.cancel_flag = Some(flag);
+    }
+
+    /// Returns true if the external cancel flag has been raised.
+    pub(super) fn is_cancelled(&self) -> bool {
+        self.cancel_flag
+            .as_ref()
+            .is_some_and(|f| f.load(Ordering::Relaxed))
     }
 
     pub fn set_exec_allowed(&mut self, allowed: bool) {

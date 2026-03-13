@@ -13,7 +13,8 @@
 // SECURITY LEVELS (auto-selected from available capabilities):
 //   None     — unknown platform, no probes succeeded
 //   Basic    — timing-based detection only (step-through debuggers slow execution)
-//   Standard — timing + OS-level debugger detection (Linux: /proc/self/status TracerPid)
+//   Standard — timing + OS-level debugger detection
+//              (Linux: /proc TracerPid+wchan+parent; macOS: sysctl P_TRACED; Windows: IsDebuggerPresent)
 //   Full     — timing + OS detection + source file integrity hash verification
 //
 // FAIL-SECURE SEMANTICS:
@@ -72,8 +73,8 @@ impl std::fmt::Display for Platform {
 pub struct SecurityCapabilities {
     pub platform: Platform,
     /// OS-level debugger detection.
-    /// Currently real on Linux (/proc/self/status TracerPid).
-    /// Set to true for Windows/macOS when protector.rs adds those implementations.
+    /// Real on Linux (/proc TracerPid + wchan + parent), macOS (sysctl P_TRACED),
+    /// and Windows (IsDebuggerPresent).  False only on unrecognised platforms.
     pub os_debugger_detection: bool,
     /// Timing-based slowdown detection — always true (SystemTime always available).
     pub timing_detection: bool,
@@ -93,12 +94,16 @@ impl SecurityCapabilities {
     pub fn probe() -> Self {
         let platform = Platform::detect();
 
-        // OS-level debugger detection: now uses 3 techniques on Linux
-        // (TracerPid + wchan + parent-process-name).
-        // Update Windows/macOS arms when protector.rs adds those implementations.
+        // OS-level debugger detection:
+        //   Linux  — TracerPid + wchan + parent-process-name (/proc filesystem)
+        //   macOS  — sysctl(KERN_PROC_PID) → P_TRACED flag (kinfo_proc)
+        //   Windows — IsDebuggerPresent() kernel32 API
+        //   Other  — timing check only
         let os_debugger_detection = match &platform {
             Platform::Linux => std::fs::read_to_string("/proc/self/status").is_ok(),
-            Platform::Windows | Platform::MacOs | Platform::Other => false,
+            Platform::MacOs => true,   // sysctl implemented in protector.rs
+            Platform::Windows => true, // IsDebuggerPresent() implemented in protector.rs
+            Platform::Other => false,
         };
 
         SecurityCapabilities {
@@ -340,10 +345,15 @@ impl RuntimeSecurity {
         }
 
         // ── Level advisory ────────────────────────────────────────────────
-        if self.level() < SecurityLevel::Standard {
+        // Warn only when the platform genuinely has no OS-level detection.
+        // Linux, macOS, and Windows all have real implementations now.
+        if self.level() < SecurityLevel::Standard
+            && self.capabilities.platform == Platform::Other
+        {
             warnings.push(format!(
                 "Security level is {} (platform={}). \
-                 OS-level debugger detection not available on this platform.",
+                 OS-level debugger detection is not available on this platform; \
+                 only timing-based detection is active.",
                 self.level(),
                 self.capabilities.platform
             ));
@@ -357,6 +367,35 @@ impl RuntimeSecurity {
             platform: self.capabilities.platform.clone(),
             warnings,
         }
+    }
+
+    /// Enforce the findings of a startup check report.
+    ///
+    /// Returns `Err` (blocking execution) when a *hard* threat is detected:
+    ///   - Debugger/instrumentation tool is actively attached (`anti_debug == Some(false)`)
+    ///   - Source integrity hash mismatch (`integrity == Some(false)`)
+    ///
+    /// Environment findings are informational — a high-risk variable such as
+    /// `LD_PRELOAD` may be set by a legitimate toolchain. These are logged via
+    /// the audit trail (handled in the VM) and do not block execution.
+    ///
+    /// Called by `interpret()` and `execute()` immediately after `run_startup_checks()`.
+    pub fn enforce_security_report(report: &SecurityCheckReport) -> Result<(), String> {
+        if report.anti_debug == Some(false) {
+            return Err(
+                "Execution blocked: debugger or instrumentation tool detected. \
+                 Run without an attached debugger or disable anti-debug checks."
+                    .to_string(),
+            );
+        }
+        if report.integrity == Some(false) {
+            return Err(
+                "Execution blocked: source integrity hash mismatch. \
+                 The program binary may have been tampered with."
+                    .to_string(),
+            );
+        }
+        Ok(())
     }
 
     /// On-demand anti-debugging check.

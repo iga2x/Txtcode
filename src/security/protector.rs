@@ -21,8 +21,8 @@
 //     Detects LD_PRELOAD, LD_AUDIT, DYLD_INSERT_LIBRARIES, and other
 //     environment variables used by hooking frameworks (Frida, etc.).
 //
-//   macOS kinfo_proc sysctl        — STUB (documented approach below)
-//   Windows IsDebuggerPresent      — STUB (documented approach below)
+//   macOS kinfo_proc sysctl        — REAL (sysctl KERN_PROC_PID → P_TRACED flag)
+//   Windows IsDebuggerPresent      — REAL (kernel32 IsDebuggerPresent() API)
 //
 // RETURNS: true = secure / no threat; false = threat detected
 // (fail-secure: when a check cannot run, it returns true, not false)
@@ -341,40 +341,60 @@ impl RuntimeProtector {
         false
     }
 
-    // ── macOS (stub — documented approach) ───────────────────────────────
+    // ── macOS (real implementation) ───────────────────────────────────────
 
-    /// macOS: check P_TRACED flag via sysctl(KERN_PROC, KERN_PROC_PID, ...).
+    /// macOS: check P_TRACED flag via `sysctl(KERN_PROC, KERN_PROC_PID, ...)`.
     ///
-    /// NOT YET IMPLEMENTED — requires unsafe libc::sysctl with kinfo_proc layout.
-    /// Planned approach:
-    /// ```text
-    /// let mut info: libc::kinfo_proc = std::mem::zeroed();
-    /// let mut size = std::mem::size_of::<libc::kinfo_proc>();
-    /// let mib = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()];
-    /// sysctl(mib, 4, &info, &mut size, null, 0);
-    /// return info.kp_proc.p_flag & P_TRACED != 0;  // P_TRACED = 0x00000800
-    /// ```
-    /// Enable by changing `false` to the sysctl call above once validated.
+    /// Reads `kinfo_proc.kp_proc.p_flag` for the current PID.
+    /// `P_TRACED = 0x00000800` is set by the kernel when a debugger attaches.
+    /// This is the canonical approach used by Apple's own developer tools.
     #[cfg(target_os = "macos")]
     fn is_debugger_present_macos(&self) -> bool {
-        false
+        // SAFETY: sysctl with KERN_PROC/KERN_PROC_PID is a stable, well-documented
+        // kernel interface.  The zeroed kinfo_proc is valid as a destination buffer.
+        unsafe {
+            // sysctl MIB: [CTL_KERN=1, KERN_PROC=14, KERN_PROC_PID=1, getpid()]
+            let mut mib: [libc::c_int; 4] = [
+                libc::CTL_KERN,
+                libc::KERN_PROC,
+                libc::KERN_PROC_PID,
+                libc::getpid(),
+            ];
+            let mut info: libc::kinfo_proc = std::mem::zeroed();
+            let mut size = std::mem::size_of::<libc::kinfo_proc>();
+            let ret = libc::sysctl(
+                mib.as_mut_ptr(),
+                4,
+                &mut info as *mut _ as *mut libc::c_void,
+                &mut size,
+                std::ptr::null_mut(),
+                0,
+            );
+            if ret == 0 {
+                // P_TRACED = 0x00000800 (kp_proc.p_flag)
+                const P_TRACED: libc::c_int = 0x0000_0800;
+                (info.kp_proc.p_flag & P_TRACED) != 0
+            } else {
+                false // sysctl failed — assume safe
+            }
+        }
     }
 
-    // ── Windows (stub — documented approach) ─────────────────────────────
+    // ── Windows (real implementation) ────────────────────────────────────
 
-    /// Windows: use IsDebuggerPresent / CheckRemoteDebuggerPresent.
+    /// Windows: use `IsDebuggerPresent()` (kernel32 / base API).
     ///
-    /// NOT YET IMPLEMENTED — requires winapi crate or raw extern linkage.
-    /// Planned approach:
-    /// ```text
-    /// extern "system" { fn IsDebuggerPresent() -> i32; }
-    /// unsafe { IsDebuggerPresent() != 0 }
-    /// ```
-    /// Or via NtQueryInformationProcess (ProcessDebugPort) for remote detection.
-    /// Enable by adding the extern block and changing `false` to the call above.
+    /// Detects user-mode debuggers (WinDbg, x64dbg, Visual Studio debugger, etc.).
+    /// For kernel-mode or remote debugger detection, `NtQueryInformationProcess`
+    /// with `ProcessDebugPort` would be needed, but that requires `ntdll` linkage.
     #[cfg(target_os = "windows")]
     fn is_debugger_present_windows(&self) -> bool {
-        false
+        extern "system" {
+            fn IsDebuggerPresent() -> i32;
+        }
+        // SAFETY: IsDebuggerPresent() is a trivially safe Win32 API with no
+        // preconditions; it simply reads a field from the PEB.
+        unsafe { IsDebuggerPresent() != 0 }
     }
 
     // ── Fallback stubs for unrecognised platforms ─────────────────────────

@@ -30,6 +30,7 @@ use crate::tools::logger::{log_debug, log_warn};
 use crate::typecheck::types::Type;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::{Arc, atomic::AtomicBool};
 
 /// Virtual Machine for executing Txt-code programs
 #[allow(dead_code)]
@@ -57,6 +58,9 @@ pub struct VirtualMachine {
     capability_manager: CapabilityManager, // NEW: Capability token system
     active_capability: Option<String>, // NEW: Active capability token in current scope
     pub runtime_security: RuntimeSecurity, // Capability-adaptive security (anti-debug + integrity)
+    /// Cancellation flag: when set to `true` by an external caller (e.g. timeout handler),
+    /// the VM terminates its execution loop at the next statement boundary.
+    cancel_flag: Option<Arc<AtomicBool>>,
 }
 
 impl VirtualMachine {
@@ -96,12 +100,8 @@ impl VirtualMachine {
         {
             let report = self.runtime_security.run_startup_checks();
             let summary = report.summary();
-            if report.warnings.is_empty() {
-                log_debug(&format!("Security: {}", summary));
-            } else {
-                for w in &report.warnings {
-                    log_warn(&format!("Security warning: {}", w));
-                }
+            for w in &report.warnings {
+                log_warn(&format!("Security warning: {}", w));
             }
             let _ = self.audit_trail.log_action(
                 "security.startup".to_string(),
@@ -112,9 +112,18 @@ impl VirtualMachine {
                     report.platform,
                     report.is_secure()
                 )),
-                crate::runtime::audit::AuditResult::Allowed,
+                if report.is_secure() {
+                    crate::runtime::audit::AuditResult::Allowed
+                } else {
+                    crate::runtime::audit::AuditResult::Error(
+                        report.warnings.first().cloned().unwrap_or_default(),
+                    )
+                },
                 None,
             );
+            // Hard enforcement: block on debugger presence or integrity mismatch.
+            RuntimeSecurity::enforce_security_report(&report)
+                .map_err(RuntimeError::new)?;
         }
 
         // Start execution timer for max execution time checking
@@ -126,8 +135,11 @@ impl VirtualMachine {
         }
 
         for statement in &program.statements {
-            // Check max execution time periodically
+            // Check max execution time and external cancellation flag periodically.
             self.check_max_execution_time()?;
+            if self.is_cancelled() {
+                return Err(RuntimeError::new("Execution cancelled: timeout exceeded".to_string()));
+            }
 
             self.execute_statement(statement)?;
             // Periodic garbage collection
@@ -149,6 +161,9 @@ impl VirtualMachine {
         let mut last = Value::Null;
         for statement in &program.statements {
             self.check_max_execution_time()?;
+            if self.is_cancelled() {
+                return Err(RuntimeError::new("Execution cancelled: timeout exceeded".to_string()));
+            }
             let val = self.execute_statement(statement)?;
             if !matches!(val, Value::Null) {
                 last = val;

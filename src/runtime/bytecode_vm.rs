@@ -69,6 +69,9 @@ pub struct BytecodeVM {
     /// Function name stack — top is the currently executing user function
     /// (used by the intent checker to enforce per-function constraints)
     function_name_stack: Vec<String>,
+    /// Cancellation flag: set to `true` by an external caller (e.g. timeout handler)
+    /// to stop execution at the next instruction boundary.
+    cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl BytecodeVM {
@@ -97,7 +100,14 @@ impl BytecodeVM {
             policy_engine: PolicyEngine::new(),
             runtime_security: RuntimeSecurity::new(),
             function_name_stack: Vec::new(),
+            cancel_flag: None,
         }
+    }
+
+    /// Attach a cancellation flag.  When set to `true` the execution loop
+    /// terminates at the next instruction boundary with a timeout error.
+    pub fn set_cancel_flag(&mut self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        self.cancel_flag = Some(flag);
     }
 
     /// Enable safe mode (disables exec/spawn/signal_send).
@@ -435,24 +445,50 @@ impl BytecodeVM {
         self.ip = 0;
 
         // ── Startup security checks (parity with AST VM) ──────────────────────
-        // Run anti-debug, integrity, and platform checks. Detections are logged
-        // to the audit trail as warnings; execution is not blocked.
+        // Run anti-debug, integrity, and platform checks. Critical findings
+        // (debugger present, integrity mismatch) block execution; all findings
+        // are logged to the audit trail.
         let report = self.runtime_security.run_startup_checks();
-        if !report.warnings.is_empty() {
-            for w in &report.warnings {
-                let _ = self.audit_trail.log_action(
-                    "security.startup.warning".to_string(),
-                    w.clone(),
-                    None,
-                    AuditResult::Error(w.clone()),
-                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
-                );
-            }
+        for w in &report.warnings {
+            let _ = self.audit_trail.log_action(
+                "security.startup.warning".to_string(),
+                w.clone(),
+                None,
+                AuditResult::Error(w.clone()),
+                if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            );
         }
+        // Log overall startup result.
+        let _ = self.audit_trail.log_action(
+            "security.startup".to_string(),
+            report.summary(),
+            Some(format!(
+                "level={} platform={} secure={}",
+                report.level, report.platform, report.is_secure()
+            )),
+            if report.is_secure() {
+                AuditResult::Allowed
+            } else {
+                AuditResult::Error(report.warnings.first().cloned().unwrap_or_default())
+            },
+            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+        );
+        // Hard enforcement: block execution on active debugger or integrity failure.
+        RuntimeSecurity::enforce_security_report(&report)
+            .map_err(RuntimeError::new)?;
         // Start execution timer for max-execution-time policy checks
         self.policy_engine.start_execution();
 
         while self.ip < bytecode.instructions.len() {
+            // Check external cancellation flag at each instruction boundary.
+            if self.cancel_flag.as_ref().is_some_and(|f| {
+                f.load(std::sync::atomic::Ordering::Relaxed)
+            }) {
+                return Err(RuntimeError::new(
+                    "Execution cancelled: timeout exceeded".to_string(),
+                ));
+            }
+
             let ip = self.ip;
             self.ip += 1;
             let instruction = bytecode.instructions[ip].clone();

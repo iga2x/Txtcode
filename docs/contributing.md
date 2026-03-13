@@ -126,15 +126,23 @@ cargo test -- --nocapture
 - ✅ `get_denied()` added to `PermissionManager` for sub-VM inheritance
 - ✅ Removed "bytecode VM lacks security" warning from `run.rs`
 
+### v0.4.3 (released) — Timeout correctness, blocking security enforcement, cross-platform anti-debug
+- ✅ Timeout termination fixed: `Arc<AtomicBool>` cancel flag passed through VM; worker thread stops at next statement/instruction boundary instead of running forever in background
+- ✅ Security startup is now **block-and-fail** for hard threats: debugger detected or integrity hash mismatch → `Err`, execution never starts
+- ✅ macOS debugger detection: real `sysctl(KERN_PROC_PID)` → `P_TRACED` flag check (was stub)
+- ✅ Windows debugger detection: real `IsDebuggerPresent()` kernel32 API (was stub)
+- ✅ `SecurityLevel::Standard`/`Full` now auto-activated on Linux, macOS, and Windows
+- ✅ Level advisory warning suppressed on macOS/Windows (they now have real OS-level detection)
+- ✅ Validator wired into `txtcode repl` (`:load` and inline input), `txtcode debug`, `txtcode test`
+- ✅ Validator upgraded: all AST expression/statement variants covered; break/continue-outside-loop detection; expanded `required_capability` map; injection check covers all exec/spawn/pipe_exec args
+
 ### v0.5+ (planned)
 - True async/await with Tokio runtime integration
 - Native binary compilation (`-t native`) via LLVM
 - WebAssembly compilation target
 - WebSocket stdlib (`websocket_connect`)
-- Bytecode VM: audit trail, policy engine, intent checking parity with AST VM
 - Generic type enforcement at runtime
 - AST identifier obfuscation (Obfuscator currently a no-op stub)
-- macOS / Windows OS-level anti-debug checks
 
 ## Questions?
 
