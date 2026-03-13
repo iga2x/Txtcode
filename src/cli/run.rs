@@ -1,13 +1,99 @@
 //! `txtcode run` — file execution, watch mode, timeout, env loading, permission helpers.
+//!
+//! Execution routing:
+//!   `.tc` source files  → AST VM (VirtualMachine) — full security layers
+//!   `.txtc` compiled files → Bytecode VM (BytecodeVM) — basic permissions only
+//!
+//! NOTE: The Bytecode VM currently lacks audit trail, policy engine, intent checking,
+//! and capability token support vs the AST VM (see PARITY NOTE in bytecode_vm.rs).
+//! A warning is printed when executing compiled bytecode.
 
 use crate::config::Config;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use crate::runtime::bytecode_vm::BytecodeVM;
 use crate::runtime::permissions::PermissionResource;
 use crate::runtime::vm::VirtualMachine;
 use crate::tools::logger;
+use crate::validator::Validator;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+// ── Bytecode execution ────────────────────────────────────────────────────────
+
+/// Execute a pre-compiled `.txtc` bytecode file.
+///
+/// Permission flags mirror `run_file_inner` but apply to the Bytecode VM.
+/// The Bytecode VM currently runs with basic PermissionManager only — it does
+/// not have audit trail, policy engine, intent checking, or capability tokens.
+fn run_compiled_file(
+    file: &PathBuf,
+    safe_mode: bool,
+    allow_exec: bool,
+    allow_fs: &[String],
+    allow_net: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::compiler::bytecode::Bytecode;
+
+    eprintln!(
+        "Warning: running pre-compiled bytecode. \
+         Audit trail, policy engine, and intent checking are not active \
+         in the bytecode VM. Use `txtcode run <source.tc>` for full security enforcement."
+    );
+
+    let data = fs::read(file)?;
+    // Try binary (bincode) first, fall back to JSON.
+    let bytecode: Bytecode = bincode::deserialize(&data)
+        .or_else(|_| {
+            let s = std::str::from_utf8(&data)
+                .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
+            serde_json::from_str(s).map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))
+        })?;
+
+    let env_safe_mode = Config::load_active_env()
+        .map(|(_, _, cfg)| cfg.permissions.safe_mode)
+        .unwrap_or(false);
+    let effective_safe_mode = safe_mode || env_safe_mode;
+
+    let mut vm = BytecodeVM::new();
+    vm.set_safe_mode(effective_safe_mode);
+
+    // Honour exec_allowed: if neither --allow-exec nor default on, deny exec.
+    if !allow_exec && effective_safe_mode {
+        vm.deny_permission(PermissionResource::System("exec".to_string()), None);
+    }
+
+    // Apply active env permission grants/denials.
+    if let Some((_env_dir, _name, cfg)) = Config::load_active_env() {
+        for perm_str in &cfg.permissions.allow {
+            if let Some(resource) = parse_permission_string(perm_str) {
+                vm.grant_permission(resource, None);
+            }
+        }
+        for perm_str in &cfg.permissions.deny {
+            if let Some(resource) = parse_permission_string(perm_str) {
+                vm.deny_permission(resource, None);
+            }
+        }
+    }
+
+    // Apply CLI --allow-fs / --allow-net allowlists.
+    for path in allow_fs {
+        let scope = if path.ends_with('/') || path.ends_with('*') {
+            format!("{}*", path.trim_end_matches(['/', '*']))
+        } else {
+            format!("{}/*", path)
+        };
+        vm.grant_permission(PermissionResource::FileSystem("read".to_string()), Some(scope.clone()));
+        vm.grant_permission(PermissionResource::FileSystem("write".to_string()), Some(scope));
+    }
+    for host in allow_net {
+        vm.grant_permission(PermissionResource::Network("connect".to_string()), Some(host.clone()));
+    }
+
+    vm.execute(&bytecode).map_err(|e| format!("Bytecode runtime error: {}", e))?;
+    Ok(())
+}
 
 // ── Permission helpers ────────────────────────────────────────────────────────
 
@@ -99,7 +185,12 @@ fn run_file_inner(
 
     if let Some(ext) = file.extension().and_then(|e| e.to_str()) {
         match ext {
-            "tc" => {}
+            "tc" => {} // source file — continue to AST VM path below
+            "txtc" => {
+                // Pre-compiled bytecode — route to Bytecode VM and return early.
+                logger::log_info(&format!("Running compiled bytecode: {}", file.display()));
+                return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net);
+            }
             "txt" => {
                 return Err(format!(
                     "'{}' has a .txt extension which is a plain text file.\n  Txt-code source files use the .tc extension.",
@@ -132,11 +223,15 @@ fn run_file_inner(
 
     let source = fs::read_to_string(file)?;
 
-    let mut lexer = Lexer::new(source);
+    let mut lexer = Lexer::new(source.clone());
     let tokens = lexer.tokenize().map_err(|e| format!("Lex error: {}", e))?;
 
     let mut parser = Parser::new(tokens);
     let program = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
+
+    // Validate before execution: syntax rules, semantic checks, security restrictions.
+    Validator::validate_program(&program)
+        .map_err(|e| format!("Validation error: {}", e))?;
 
     let env_safe_mode = Config::load_active_env()
         .map(|(_, _, cfg)| cfg.permissions.safe_mode)
@@ -146,6 +241,10 @@ fn run_file_inner(
 
     let mut vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
     vm.set_exec_allowed(exec_allowed);
+
+    // Activate source integrity checking: hash the source bytes so the security
+    // layer can detect in-memory tampering and upgrades level to Full on Linux.
+    vm.runtime_security.hash_and_set_source(source.as_bytes());
 
     apply_env_permissions(&mut vm);
     apply_cli_allowlists(&mut vm, allow_fs, allow_net);

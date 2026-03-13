@@ -30,6 +30,7 @@ impl VirtualMachine {
             intent_checker: crate::runtime::intent::IntentChecker::new(),
             capability_manager: crate::capability::CapabilityManager::new(),
             active_capability: None,
+            runtime_security: crate::runtime::security::RuntimeSecurity::new(),
         }
     }
 
@@ -62,6 +63,7 @@ impl VirtualMachine {
             intent_checker: crate::runtime::intent::IntentChecker::new(),
             capability_manager: crate::capability::CapabilityManager::new(),
             active_capability: None,
+            runtime_security: crate::runtime::security::RuntimeSecurity::new(),
         };
 
         // If safe_mode is enabled, deny exec by default

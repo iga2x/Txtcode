@@ -6,6 +6,7 @@ use crate::config::Config;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::tools::logger;
+use crate::validator::Validator;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -45,6 +46,10 @@ pub fn compile_file(
     let mut parser = Parser::new(tokens);
     let mut program = parser.parse()?;
 
+    // Validate before compiling to bytecode — catches security issues and
+    // semantic errors that would only surface at runtime otherwise.
+    Validator::validate_program(&program)?;
+
     let opt_level = match optimize {
         "none" => OptimizationLevel::None,
         "aggressive" => {
@@ -82,7 +87,7 @@ pub fn inspect_bytecode(file: &Path, format: &str) -> Result<(), Box<dyn std::er
     let bytes = std::fs::read(file)?;
     let bytecode: Bytecode = bincode::deserialize(&bytes).map_err(|e| {
         format!(
-            "Failed to deserialize bytecode: {}. Is this a compiled .tcc file?",
+            "Failed to deserialize bytecode: {}. Is this a compiled .txtc file?",
             e
         )
     })?;

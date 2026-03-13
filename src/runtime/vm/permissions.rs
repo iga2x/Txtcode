@@ -53,6 +53,8 @@ impl VirtualMachine {
                 PermissionResource::Network(action) => format!("net.{}", action),
                 PermissionResource::System(action) => format!("sys.{}", action),
                 PermissionResource::Process(_) => "process.exec".to_string(),
+                PermissionResource::WiFi(action) => format!("wifi.{}", action),
+                PermissionResource::Bluetooth(action) => format!("ble.{}", action),
             };
             let resource_str = scope.unwrap_or("");
 
@@ -166,6 +168,8 @@ impl VirtualMachine {
             PermissionResource::Network(action) => action.clone(),
             PermissionResource::System(action) => action.clone(),
             PermissionResource::Process(_) => "exec".to_string(),
+            PermissionResource::WiFi(action) => action.clone(),
+            PermissionResource::Bluetooth(action) => action.clone(),
         }
     }
 }

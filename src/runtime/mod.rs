@@ -18,8 +18,11 @@ pub mod policy {
     pub use crate::policy::*;
 }
 pub mod intent; // NEW: Intent enforcement system
-                // Capabilities moved to top-level: src/capability/
-                // This is a compatibility shim - use crate::capability instead
+
+// CANONICAL IMPLEMENTATION: src/capability/manager.rs (re-exported via src/capability/mod.rs)
+// This inline shim keeps old `crate::runtime::capabilities::*` import paths working.
+// DO NOT add a `capabilities.rs` file here — it would be shadowed by this inline block
+// and become dead code, which was the root cause of a previous duplicate divergence bug.
 pub mod capabilities {
     pub use crate::capability::*;
 }

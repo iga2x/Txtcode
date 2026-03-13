@@ -1,30 +1,27 @@
-// WiFi capabilities - string constants for a future PermissionResource::WiFi variant.
+// WiFi capabilities — string constants for PermissionResource::WiFi.
 //
-// STATUS: UNENFORCED STUB — no runtime enforcement in any current code path.
+// STATUS: ENFORCED — PermissionResource::WiFi(String) is a real variant in
+// permissions.rs. Calling any `wifi_*` function without `wifi.<action>` granted
+// will be rejected by `check_permission_with_audit` and logged to the audit trail.
 //
-// These constants are NOT parsed by `PermissionResource::from_string`.
-// Adding them to env.toml or calling `grant_permission` with these strings
-// has NO EFFECT. Permission checks for WiFi operations always fail because
-// `PermissionResource::WiFi` does not exist yet.
+// Capability strings accepted in env.toml and `grant_permission`:
+//   wifi.scan, wifi.capture, wifi.deauth, wifi.inject
 //
-// Do not expose these to users as security controls. Before graduation:
-//   1. Add `PermissionResource::WiFi(String)` to permissions.rs
-//   2. Add WiFi parsing to `PermissionResource::from_string`
-//   3. Wire enforcement through `check_permission_with_audit`
+// Required by stdlib functions: wifi_scan, wifi_capture, wifi_deauth, wifi_inject.
 
-/// WiFi capability string constants (UNENFORCED — see module doc above)
+/// WiFi capability string constants.
 pub struct WiFiCapability;
 
 impl WiFiCapability {
-    /// WiFi scan capability
+    /// WiFi scan capability (passive interface enumeration / probe response capture)
     pub const SCAN: &'static str = "wifi.scan";
 
-    /// WiFi capture capability
+    /// WiFi capture capability (raw frame capture via monitor mode)
     pub const CAPTURE: &'static str = "wifi.capture";
 
-    /// WiFi deauth capability
+    /// WiFi deauthentication capability (send deauth frames — requires authorisation)
     pub const DEAUTH: &'static str = "wifi.deauth";
 
-    /// WiFi inject capability
+    /// WiFi packet injection capability (raw frame injection — requires authorisation)
     pub const INJECT: &'static str = "wifi.inject";
 }

@@ -246,7 +246,82 @@ end
 ## Modules
 ```txtcode
 import → "utils"
-import → "math"
+import → math
+import → sqrt, pow from math
+import → math as m
+```
+
+## Structs and Type Aliases
+
+```txtcode
+# Struct definition — parens form (canonical)
+struct Point(x: int, y: int)
+
+# Block form (also accepted)
+struct → Rectangle
+  width: float
+  height: float
+end
+
+# Type alias
+type → UserId → int
+type → Hostname → string
+
+# Named error constant
+error → NotFound → "Resource not found"
+error → Unauthorized → "Access denied"
+```
+
+## Permissions and Capabilities
+
+### Granting permissions
+```txtcode
+grant_permission("fs.read",    "/tmp/*")
+grant_permission("net.connect", "*.example.com")
+grant_permission("wifi.scan",  null)
+grant_permission("ble.scan",   null)
+```
+
+### Capability tokens (short-lived, revocable)
+```txtcode
+store → tok → grant_capability("wifi.capture", null)
+use_capability(tok)
+store → frames → wifi_capture("wlan0")
+revoke_capability(tok)
+```
+
+### Function-level declarations
+```txtcode
+define → probe → (host: string)
+  intent   → "network probe only"
+  allowed  → ["net.connect", "wifi.scan"]
+  forbidden → ["sys.exec", "fs.write"]
+
+  store → result → tcp_connect(f"{host}:80")
+  return → is_ok(result)
+end
+```
+
+`forbidden` is enforced at validation time (before execution).
+`allowed` and `intent` are logged to the audit trail.
+
+## WiFi / Bluetooth Functions
+
+All `wifi_*` and `ble_*` functions require the corresponding permission grant.
+
+```txtcode
+# WiFi — requires wifi.<action>
+wifi_scan()                     # passive scan
+wifi_capture("wlan0")           # raw frame capture (monitor mode)
+wifi_deauth("wlan0", "AA:BB:CC:DD:EE:FF")  # deauth (auth required)
+wifi_inject("wlan0", frame_bytes)           # inject (auth required)
+
+# Bluetooth LE — requires ble.<action>
+ble_scan()                               # device discovery
+store → h → ble_connect("AA:BB:CC:DD:EE:FF")  # GATT connect
+store → v → ble_read(h, "0x2A37")             # read characteristic
+ble_write(h, "0x2A06", 0x01)                  # write characteristic
+ble_fuzz(h, "0x2A06", 32)                     # fuzz (auth required)
 ```
 
 ## Examples

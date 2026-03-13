@@ -2,6 +2,7 @@
 
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use crate::validator::Validator;
 use std::fs;
 use std::path::PathBuf;
 
@@ -70,6 +71,21 @@ pub fn check_files(files: &[PathBuf], json_out: bool) -> Result<(), Box<dyn std:
         if let Ok(tokens) = lexer.tokenize() {
             let mut parser = Parser::new(tokens);
             if let Ok(program) = parser.parse() {
+                // Run the validator pipeline (syntax → semantics → restrictions).
+                if let Err(validation_err) = Validator::validate_program(&program) {
+                    total_errors += 1;
+                    let msg = validation_err.to_string();
+                    if json_out {
+                        json_issues.push(format!(
+                            "{{\"file\":\"{}\",\"line\":0,\"col\":0,\"severity\":\"error\",\"message\":\"{}\"}}",
+                            file.display(),
+                            msg.replace('"', "\\\"")
+                        ));
+                    } else {
+                        println!("  [validation-error] {} — {}", file.display(), msg);
+                    }
+                }
+
                 let mut infer = TypeInference::new();
                 if let Err(type_errs) = infer.infer_program(&program) {
                     for msg in &type_errs {

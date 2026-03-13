@@ -2,7 +2,10 @@ use aes_gcm::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Key, Nonce,
 };
+use ring::pbkdf2;
+use ring::rand::SecureRandom;
 use sha2::{Digest, Sha256};
+use std::num::NonZeroU32;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Bytecode encryptor
@@ -27,38 +30,60 @@ impl BytecodeEncryptor {
         Ok(Self { key })
     }
 
-    /// Derive key from runtime environment
+    /// Derive a key from a passphrase using PBKDF2-HMAC-SHA256.
+    ///
+    /// `passphrase`: Secret passphrase known to the user.
+    /// `salt`: Random bytes (at least 16); use `generate_salt()` and store alongside ciphertext.
+    ///
+    /// 100,000 PBKDF2 iterations — balances protection against brute-force with
+    /// acceptable performance (~100ms on modern hardware).
+    pub fn from_passphrase(passphrase: &str, salt: &[u8]) -> Self {
+        let mut key_bytes = [0u8; 32];
+        pbkdf2::derive(
+            pbkdf2::PBKDF2_HMAC_SHA256,
+            NonZeroU32::new(100_000).expect("iterations > 0"),
+            salt,
+            passphrase.as_bytes(),
+            &mut key_bytes,
+        );
+        let key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
+        Self { key }
+    }
+
+    /// Generate a cryptographically random 32-byte salt for use with `from_passphrase()`.
+    /// Store the salt alongside the encrypted data; it does not need to be secret.
+    pub fn generate_salt() -> Vec<u8> {
+        let rng = ring::rand::SystemRandom::new();
+        let mut salt = vec![0u8; 32];
+        rng.fill(&mut salt).expect("CSPRNG fill failed");
+        salt
+    }
+
+    /// Derive key from runtime environment.
+    ///
+    /// WARNING: This method is intentionally weak — it uses PID, hostname, and
+    /// timestamp which are all low-entropy and potentially guessable. It exists
+    /// only for scenarios where no passphrase is available and weak protection is
+    /// still better than none (e.g., casual obfuscation of bytecode caches).
+    ///
+    /// For any security-sensitive use case, use `from_passphrase()` instead.
     pub fn from_runtime() -> Self {
-        // Derive key from system properties
         let mut hasher = Sha256::new();
 
-        // Use system time as part of key derivation
-        let timestamp = match SystemTime::now().duration_since(UNIX_EPOCH) {
-            Ok(duration) => duration.as_secs(),
-            Err(e) => {
-                // Fallback: use a default timestamp if system time fails
-                // This is a rare error (system clock set backwards), but we need to handle it
-                eprintln!(
-                    "Warning: System time error in key derivation: {}. Using fallback timestamp.",
-                    e
-                );
-                // Use a fixed timestamp as fallback (Jan 1, 2020)
-                1577836800
-            }
-        };
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1_577_836_800); // fallback: 2020-01-01
         hasher.update(timestamp.to_le_bytes());
 
-        // Use environment variables if available
         if let Ok(hostname) = std::env::var("HOSTNAME") {
             hasher.update(hostname.as_bytes());
         }
 
-        // Use process ID
         hasher.update(std::process::id().to_le_bytes());
 
         let key_bytes = hasher.finalize();
         let key = *Key::<Aes256Gcm>::from_slice(&key_bytes);
-
         Self { key }
     }
 

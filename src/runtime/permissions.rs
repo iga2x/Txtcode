@@ -5,6 +5,8 @@ pub enum PermissionResource {
     Network(String),      // "connect", "listen"
     Process(Vec<String>), // Whitelist of allowed commands
     System(String),       // "exec", "env"
+    WiFi(String),         // "scan", "capture", "deauth", "inject"
+    Bluetooth(String),    // "scan", "connect", "fuzz", "read", "write"
 }
 
 impl PermissionResource {
@@ -25,6 +27,8 @@ impl PermissionResource {
             "net" | "network" => Ok(PermissionResource::Network(action.to_string())),
             "sys" | "system" => Ok(PermissionResource::System(action.to_string())),
             "process" | "proc" => Ok(PermissionResource::Process(vec![action.to_string()])),
+            "wifi" => Ok(PermissionResource::WiFi(action.to_string())),
+            "ble" | "bluetooth" => Ok(PermissionResource::Bluetooth(action.to_string())),
             _ => Err(format!("Unknown resource type: '{}'", prefix)),
         }
     }
@@ -37,6 +41,8 @@ impl std::fmt::Display for PermissionResource {
             PermissionResource::Network(action) => write!(f, "net.{}", action),
             PermissionResource::System(action) => write!(f, "sys.{}", action),
             PermissionResource::Process(cmds) => write!(f, "process:[{}]", cmds.join(",")),
+            PermissionResource::WiFi(action) => write!(f, "wifi.{}", action),
+            PermissionResource::Bluetooth(action) => write!(f, "ble.{}", action),
         }
     }
 }
@@ -121,6 +127,8 @@ impl PermissionManager {
                 // Check if all commands in cmd are in allowed list
                 cmd.iter().all(|c| allowed.contains(c))
             }
+            (PermissionResource::WiFi(a), PermissionResource::WiFi(b)) => a == b,
+            (PermissionResource::Bluetooth(a), PermissionResource::Bluetooth(b)) => a == b,
             _ => false,
         }
     }

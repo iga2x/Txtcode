@@ -96,18 +96,20 @@ store → upper → "hello" |> (s) -> to_upper(s)
 ## Compilation
 
 ```bash
-# Compile to bytecode (.tcc file)
-txtcode compile program.tc -o program.tcc
+# Compile to bytecode (.txtc file)
+txtcode compile program.tc -o program.txtc
 
 # Inspect compiled bytecode
-txtcode inspect program.tcc
+txtcode inspect program.txtc
 
 # Inspect as JSON
-txtcode inspect program.tcc --format json
+txtcode inspect program.txtc --format json
 ```
 
-> **Note:** Only `bytecode` target is supported. Passing `--target native` or `--target wasm`
-> will print an error. Native and WASM compilation are planned for v0.5.
+> **Note:** The compiled file extension is `.txtc`.
+> The bytecode VM runs with basic permission checking but no audit trail, policy engine,
+> or intent checking. Use `txtcode run` on source files for full security enforcement.
+> Native and WASM compilation targets are planned for v0.5.
 
 ## Package Management
 
@@ -122,11 +124,70 @@ txtcode package add some_lib 1.0.0
 txtcode package install
 ```
 
+## Permissions and Security
+
+Privileged operations require explicit grants. Without a grant the runtime
+raises a permission error and records it in the audit trail.
+
+```bash
+# Allow filesystem reads under /var/log only
+txtcode run scan.tc --allow-fs=/var/log
+
+# Allow outbound connections to one host
+txtcode run probe.tc --allow-net=192.168.1.1
+
+# Deny all privileged access (sandbox mode)
+txtcode run sandbox.tc --sandbox
+
+# Timeout after 30 seconds
+txtcode run long.tc --timeout 30s
+```
+
+### Declaring permissions in a function
+
+```txtcode
+define → recon → (target: string)
+  allowed → ["net.connect", "wifi.scan"]
+  forbidden → ["sys.exec", "fs.write"]
+
+  store → nets → wifi_scan()
+  store → resp → http_get(f"https://{target}/info")
+  return → {"wifi": nets, "http": resp}
+end
+```
+
+`forbidden` violations are caught at **validation time** (before execution).
+`allowed` declarations are advisory and logged to the audit trail.
+
+### WiFi and Bluetooth operations
+
+```txtcode
+# Requires wifi.scan permission (enforced)
+grant_permission("wifi.scan", null)
+store → networks → wifi_scan()
+
+# Requires ble.scan permission (enforced)
+grant_permission("ble.scan", null)
+store → devices → ble_scan()
+
+# BLE connect + read (requires both permissions)
+grant_permission("ble.connect", null)
+grant_permission("ble.read", null)
+store → handle → ble_connect("AA:BB:CC:DD:EE:FF")
+store → data → ble_read(handle, "0x2A37")
+```
+
 ## Development Tools
 
 ```bash
-# Format code
+# Format code (print result)
+txtcode format program.tc
+
+# Format in-place
 txtcode format program.tc --write
+
+# CI check: exit non-zero if formatting needed
+txtcode format src/ --check
 
 # Lint code
 txtcode lint program.tc
@@ -150,5 +211,6 @@ See the `examples/` directory for complete example programs:
 - Read the [Language Specification](language-spec.md)
 - Check the [Syntax Reference](syntax-reference.md)
 - Learn about [Security Features](security-features.md)
+- Understand the [Permission and Capability System](permissions.md)
 - See [Contributing Guide](contributing.md)
 

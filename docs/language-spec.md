@@ -26,9 +26,11 @@
 > - `async`/`await` runs synchronously (passthrough; true async planned for v0.5)
 >
 > **Still not fully implemented:**
-> - Generic type enforcement at runtime (type params are parsed but erased)
-> - `++arr[0]` / `--arr[0]` — use `store → arr[0] → arr[0] + 1` instead
-> - Integer overflow guards — ✅ implemented in v0.4 (`checked_*` arithmetic in both VMs; overflow returns `RuntimeError`)
+> - Generic type enforcement at runtime (type params are parsed but erased at execution)
+> - `++arr[0]` / `--arr[0]` on non-identifier targets — use `store → arr[0] → arr[0] + 1` instead
+> - AST identifier obfuscation (`Obfuscator::obfuscate` is a no-op placeholder)
+> - WebSocket support — planned for v0.5
+> - macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only
 
 ---
 
@@ -794,14 +796,17 @@ end
 
 **Capability format:** `"resource.action"` or `"resource.action:scope"`
 
-| Resource | Actions |
-|----------|---------|
-| `fs` | `read`, `write`, `delete`, `*` |
-| `net` | `connect`, `listen`, `*` |
-| `sys` | `exec`, `env`, `*` |
-| `tool` | `tool:name` or `tool:*` |
+| Resource | Actions | Notes |
+|----------|---------|-------|
+| `fs` | `read`, `write`, `delete`, `*` | Filesystem I/O |
+| `net` | `connect`, `listen`, `*` | HTTP, TCP, UDP, DNS |
+| `sys` | `exec`, `env`, `*` | Process execution, environment |
+| `wifi` | `scan`, `capture`, `deauth`, `inject` | WiFi operations (enforced, v0.4.1+) |
+| `ble` | `scan`, `connect`, `fuzz`, `read`, `write` | Bluetooth LE (enforced, v0.4.1+) |
 
-Wildcard forms: `"fs.*"` (any fs action), `"*.read"` (read on any resource), `"*.*"` (unrestricted).
+Alias: `"bluetooth"` is accepted as a synonym for `"ble"`.
+
+Wildcard forms: `"fs.*"` (any fs action), `"*.*"` (unrestricted).
 
 Scoped form: `"fs.read:/tmp/*"` restricts the action to a specific path/host pattern.
 
@@ -946,9 +951,13 @@ RuntimeError: Maximum execution time exceeded: N seconds (max: M seconds)
 
 ### 6.3 Call Stack
 
-The call stack depth limit is enforced at 50 in all VMs as of v0.4. Deep recursion beyond this limit returns a `RuntimeError` instead of exhausting the host process stack.
+The call stack depth limit is enforced at **50** across all VMs as of v0.4. Recursion or mutual calls that exceed this depth return a `RuntimeError`:
 
-**Recommended limit for well-behaved programs:** ≤ 10 000 nested calls.
+```
+RuntimeError: Maximum call depth exceeded (50)
+```
+
+Design functions to stay within this budget. Deeply recursive algorithms should be rewritten iteratively.
 
 ### 6.4 Memory
 
@@ -1055,8 +1064,12 @@ end
 | Module not found | `"Module 'name' not found in search paths"` |
 | Circular import | `"Circular import detected: a -> b -> a"` |
 | Assert failure | `"Assertion failed"` or custom message |
-| Capability violation | `"Capability [cap] is forbidden"` |
+| Capability / forbidden violation | `"Capability [cap] is forbidden in function [fn]"` |
+| Permission not granted | `"Permission not granted: wifi.scan"` |
+| Permission explicitly denied | `"Permission denied: fs.write"` |
+| Intent violation | `"intent.violation.net.connect logged in audit trail"` |
 | Timeout exceeded | `"Maximum execution time exceeded"` |
+| Call depth exceeded | `"Maximum call depth exceeded (50)"` |
 | File too large | `"File 'path' is too large"` |
 | Stack overflow (OS) | Process abort — not catchable in v0.4 |
 

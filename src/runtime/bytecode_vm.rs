@@ -652,12 +652,12 @@ impl BytecodeVM {
                     ) -> Result<(), RuntimeError> {
                         // Safe mode: exec functions are already blocked in the pre-flight above.
                         // Guard here catches any exec call that bypasses the pre-flight.
-                        if self.safe_mode {
-                            if matches!(resource, PermissionResource::System(a) if a == "exec") {
-                                return Err(RuntimeError::new(
-                                    "exec() is disabled in safe mode (--safe-mode)".to_string(),
-                                ));
-                            }
+                        if self.safe_mode
+                            && matches!(resource, PermissionResource::System(a) if a == "exec")
+                        {
+                            return Err(RuntimeError::new(
+                                "exec() is disabled in safe mode (--safe-mode)".to_string(),
+                            ));
                         }
                         self.pm
                             .check(resource, scope)

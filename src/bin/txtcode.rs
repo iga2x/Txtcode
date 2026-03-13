@@ -18,6 +18,7 @@ use txtcode::cli::test_cmd;
 use txtcode::config::Config;
 use txtcode::lexer::Lexer;
 use txtcode::parser::Parser;
+use txtcode::validator::Validator;
 use txtcode::runtime::vm::VirtualMachine;
 use txtcode::runtime::Value;
 
@@ -95,7 +96,7 @@ pub enum Commands {
     },
     /// Inspect / disassemble a compiled bytecode file
     Inspect {
-        /// Compiled bytecode file (.tcc or .bin)
+        /// Compiled bytecode file (.txtc)
         file: PathBuf,
         /// Output format: text (default) or json
         #[arg(long, default_value = "text")]
@@ -715,6 +716,8 @@ fn eval_snippet(
     let tokens = lexer.tokenize()?;
     let mut parser = Parser::new(tokens);
     let program = parser.parse()?;
+    Validator::validate_program(&program)
+        .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))?;
     let result = vm.interpret(&program)?;
     if !matches!(result, Value::Null) {
         println!("{}", Value::to_string(&result));

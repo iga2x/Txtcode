@@ -121,6 +121,26 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         vm.check_permission_with_audit(&PermissionResource::System("env".to_string()), None)?;
     }
 
+    // WiFi operations
+    if name.starts_with("wifi_") {
+        let action = name.trim_start_matches("wifi_");
+        vm.check_rate_limit(name)?;
+        vm.check_permission_with_audit(
+            &PermissionResource::WiFi(action.to_string()),
+            None,
+        )?;
+    }
+
+    // Bluetooth/BLE operations
+    if name.starts_with("ble_") {
+        let action = name.trim_start_matches("ble_");
+        vm.check_rate_limit(name)?;
+        vm.check_permission_with_audit(
+            &PermissionResource::Bluetooth(action.to_string()),
+            None,
+        )?;
+    }
+
     // Handle capability functions directly (before stdlib)
     if name == "grant_capability"
         || name == "use_capability"

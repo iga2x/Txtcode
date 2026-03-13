@@ -24,6 +24,7 @@ use crate::runtime::gc::GarbageCollector;
 use crate::runtime::intent::IntentChecker;
 use crate::runtime::module::ModuleResolver;
 use crate::runtime::permissions::{PermissionManager, PermissionResource};
+use crate::runtime::security::RuntimeSecurity;
 use crate::stdlib::FunctionExecutor;
 use crate::tools::logger::{log_debug, log_warn};
 use crate::typecheck::types::Type;
@@ -55,6 +56,7 @@ pub struct VirtualMachine {
     intent_checker: IntentChecker, // NEW: Intent enforcement system
     capability_manager: CapabilityManager, // NEW: Capability token system
     active_capability: Option<String>, // NEW: Active capability token in current scope
+    pub runtime_security: RuntimeSecurity, // Capability-adaptive security (anti-debug + integrity)
 }
 
 impl VirtualMachine {
@@ -87,6 +89,34 @@ impl VirtualMachine {
     // vm/intent.rs, vm/capabilities.rs, vm/audit.rs, vm/policy.rs, vm/modules.rs
 
     pub fn interpret(&mut self, program: &Program) -> Result<Value, RuntimeError> {
+        // ── Security startup checks ────────────────────────────────────────
+        // Run anti-debug + integrity at the highest level available on this platform.
+        // Results are logged to the audit trail; execution is NOT blocked.
+        // Warnings surface in the audit trail for operator review.
+        {
+            let report = self.runtime_security.run_startup_checks();
+            let summary = report.summary();
+            if report.warnings.is_empty() {
+                log_debug(&format!("Security: {}", summary));
+            } else {
+                for w in &report.warnings {
+                    log_warn(&format!("Security warning: {}", w));
+                }
+            }
+            let _ = self.audit_trail.log_action(
+                "security.startup".to_string(),
+                summary,
+                Some(format!(
+                    "level={} platform={} secure={}",
+                    report.level,
+                    report.platform,
+                    report.is_secure()
+                )),
+                crate::runtime::audit::AuditResult::Allowed,
+                None,
+            );
+        }
+
         // Start execution timer for max execution time checking
         self.policy_engine.start_execution();
 

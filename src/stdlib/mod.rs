@@ -145,6 +145,12 @@ impl StdLib {
                 Some(PermissionResource::System("exec".to_string()))
             } else if name == "getenv" || name == "setenv" {
                 Some(PermissionResource::System("env".to_string()))
+            } else if name.starts_with("wifi_") {
+                let action = name.trim_start_matches("wifi_");
+                Some(PermissionResource::WiFi(action.to_string()))
+            } else if name.starts_with("ble_") {
+                let action = name.trim_start_matches("ble_");
+                Some(PermissionResource::Bluetooth(action.to_string()))
             } else {
                 None
             };

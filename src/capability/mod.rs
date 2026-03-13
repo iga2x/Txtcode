@@ -1,12 +1,11 @@
 // Capability module - capability token management and capability string constants.
 //
 // ENFORCED (used by VirtualMachine):
-//   manager  — CapabilityManager, Capability, CapabilityError, CapabilityEvent
-//   filesystem, net — FilesystemCapability / NetworkCapability string constants
-//
-// UNENFORCED STUBS (no PermissionResource variant, no runtime check):
-//   wifi — WiFiCapability string constants only; see wifi.rs for graduation checklist
-//   ble  — BLECapability  string constants only; see ble.rs  for graduation checklist
+//   manager    — CapabilityManager, Capability, CapabilityError, CapabilityEvent
+//   filesystem — FilesystemCapability string constants (PermissionResource::FileSystem)
+//   net        — NetworkCapability string constants (PermissionResource::Network)
+//   wifi       — WiFiCapability string constants (PermissionResource::WiFi)
+//   ble        — BLECapability string constants (PermissionResource::Bluetooth)
 
 pub mod ble;
 pub mod filesystem;

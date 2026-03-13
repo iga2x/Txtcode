@@ -1,12 +1,12 @@
-// Restriction checking - pentest-specific rules and constraints
+// Restriction checking - pentest-specific rules and security constraints
 
 use super::ValidationError;
-use crate::parser::ast::{Program, Statement};
+use crate::parser::ast::{CapabilityExpr, Expression, Program, Statement};
 
 pub struct RestrictionChecker;
 
 impl RestrictionChecker {
-    /// Check program against pentest-specific restrictions
+    /// Check program against security restrictions.
     pub fn check_program(program: &Program) -> Result<(), ValidationError> {
         for statement in &program.statements {
             Self::check_statement(statement)?;
@@ -16,106 +16,219 @@ impl RestrictionChecker {
 
     fn check_statement(stmt: &Statement) -> Result<(), ValidationError> {
         match stmt {
-            Statement::FunctionDef {
-                name: _name,
-                allowed_actions,
-                forbidden_actions,
-                body,
-                ..
-            } => {
-                // Check capability declarations are not empty
-                if allowed_actions.is_empty() && forbidden_actions.is_empty() {
-                    // Note: Empty capabilities are allowed - they just mean no explicit restrictions
-                    // We could warn about this in the future, but it's not an error
+            Statement::FunctionDef { name, allowed_actions, forbidden_actions, body, .. } => {
+                // If the function body calls privileged operations, it should declare
+                // the corresponding capabilities in `allowed_actions`.
+                //
+                // This is a WARNING-grade check: we emit an error only when a
+                // *forbidden* action is actually called, not when an `allowed`
+                // declaration is simply absent (that would break all existing scripts
+                // that predate capability declarations).
+                let called = Self::collect_privileged_calls(body);
+
+                for call in &called {
+                    let cap_needed = Self::required_capability(call);
+
+                    // Hard error: function explicitly forbids a capability it is using.
+                    if let Some(cap) = cap_needed {
+                        for forbidden in forbidden_actions {
+                            if Self::capability_matches(forbidden, cap) {
+                                return Err(ValidationError::Restriction(format!(
+                                    "Function '{}' forbids '{}' but its body calls '{}'. \
+                                     Remove the `forbidden {}` declaration or remove the call.",
+                                    name, cap, call, cap
+                                )));
+                            }
+                        }
+                    }
                 }
 
-                // Validate capability expressions (already validated during parsing, but double-check)
-                for cap in allowed_actions {
-                    // Validate capability format - all valid formats are handled in CapabilityExpr::from_string
-                    // Additional validation could go here (e.g., check resource exists, action is valid)
-                    let _ = cap; // Use variable to avoid unused warning
-                }
-                for cap in forbidden_actions {
-                    let _ = cap; // Use variable to avoid unused warning
+                // Validate that allowed_actions strings are well-formed.
+                for cap in allowed_actions.iter().chain(forbidden_actions.iter()) {
+                    if let CapabilityExpr::Simple { resource, action, .. } = cap {
+                        let known_resources = ["fs", "net", "sys", "process", "filesystem", "network", "system", "proc", "wifi", "ble", "bluetooth"];
+                        if !known_resources.contains(&resource.as_str()) {
+                            return Err(ValidationError::Restriction(format!(
+                                "Function '{}': unknown capability resource '{}'. \
+                                 Valid resources: fs, net, sys, process.",
+                                name, resource
+                            )));
+                        }
+                        if action.is_empty() {
+                            return Err(ValidationError::Restriction(format!(
+                                "Function '{}': capability '{}' has an empty action.",
+                                name, resource
+                            )));
+                        }
+                    }
                 }
 
-                // Check nested functions
+                // Recurse into nested function definitions.
                 for body_stmt in body {
                     Self::check_statement(body_stmt)?;
                 }
+            }
 
-                // Future restrictions:
-                // - Reject functions without intent declarations in AI-generated code
-                // - Require timeout declarations for network operations
-                // - Validate capability scope matches usage
-            }
-            Statement::If { .. }
-            | Statement::While { .. }
-            | Statement::DoWhile { .. }
-            | Statement::For { .. }
-            | Statement::Repeat { .. }
-            | Statement::Match { .. }
-            | Statement::Try { .. } => {
-                // Recursively check nested statements
-                for stmt in Self::extract_nested_statements(stmt) {
-                    Self::check_statement(&stmt)?;
-                }
-            }
-            _ => {
-                // Other statements don't need restriction checking
-            }
-        }
-        Ok(())
-    }
-
-    fn extract_nested_statements(stmt: &Statement) -> Vec<Statement> {
-        match stmt {
-            Statement::If {
-                then_branch,
-                else_if_branches,
-                else_branch,
-                ..
-            } => {
-                let mut result = then_branch.clone();
-                for (_, branch) in else_if_branches {
-                    result.extend(branch.clone());
-                }
-                if let Some(branch) = else_branch {
-                    result.extend(branch.clone());
-                }
-                result
+            // Recurse into control-flow bodies.
+            Statement::If { then_branch, else_if_branches, else_branch, .. } => {
+                for s in then_branch { Self::check_statement(s)?; }
+                for (_, b) in else_if_branches { for s in b { Self::check_statement(s)?; } }
+                if let Some(b) = else_branch { for s in b { Self::check_statement(s)?; } }
             }
             Statement::While { body, .. }
             | Statement::DoWhile { body, .. }
             | Statement::For { body, .. }
-            | Statement::Repeat { body, .. } => body.clone(),
+            | Statement::Repeat { body, .. } => {
+                for s in body { Self::check_statement(s)?; }
+            }
+            Statement::Try { body, catch, finally, .. } => {
+                for s in body { Self::check_statement(s)?; }
+                if let Some((_, b)) = catch { for s in b { Self::check_statement(s)?; } }
+                if let Some(b) = finally { for s in b { Self::check_statement(s)?; } }
+            }
             Statement::Match { cases, default, .. } => {
-                let mut result = Vec::new();
-                for (_, _, body) in cases {
-                    result.extend(body.clone());
-                }
-                if let Some(body) = default {
-                    result.extend(body.clone());
-                }
-                result
+                for (_, _, b) in cases { for s in b { Self::check_statement(s)?; } }
+                if let Some(b) = default { for s in b { Self::check_statement(s)?; } }
             }
-            Statement::Try {
-                body,
-                catch,
-                finally,
-                ..
-            } => {
-                let mut result = body.clone();
-                if let Some((_, body)) = catch {
-                    result.extend(body.clone());
-                }
-                if let Some(body) = finally {
-                    result.extend(body.clone());
-                }
-                result
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Collect names of all privileged stdlib functions called anywhere in `stmts`.
+    fn collect_privileged_calls(stmts: &[Statement]) -> Vec<String> {
+        let mut calls = Vec::new();
+        for stmt in stmts {
+            Self::collect_from_statement(stmt, &mut calls);
+        }
+        calls
+    }
+
+    fn collect_from_statement(stmt: &Statement, out: &mut Vec<String>) {
+        match stmt {
+            Statement::Expression(expr) | Statement::Return { value: Some(expr), .. } => {
+                Self::collect_from_expression(expr, out);
             }
-            Statement::FunctionDef { body, .. } => body.clone(),
-            _ => Vec::new(),
+            Statement::Assignment { value, .. } => {
+                Self::collect_from_expression(value, out);
+            }
+            Statement::FunctionDef { body, .. } => {
+                for s in body { Self::collect_from_statement(s, out); }
+            }
+            Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
+                Self::collect_from_expression(condition, out);
+                for s in then_branch { Self::collect_from_statement(s, out); }
+                for (c, b) in else_if_branches {
+                    Self::collect_from_expression(c, out);
+                    for s in b { Self::collect_from_statement(s, out); }
+                }
+                if let Some(b) = else_branch { for s in b { Self::collect_from_statement(s, out); } }
+            }
+            Statement::While { condition, body, .. }
+            | Statement::DoWhile { condition, body, .. } => {
+                Self::collect_from_expression(condition, out);
+                for s in body { Self::collect_from_statement(s, out); }
+            }
+            Statement::For { iterable, body, .. } => {
+                Self::collect_from_expression(iterable, out);
+                for s in body { Self::collect_from_statement(s, out); }
+            }
+            Statement::Repeat { body, .. } => {
+                for s in body { Self::collect_from_statement(s, out); }
+            }
+            Statement::Try { body, catch, finally, .. } => {
+                for s in body { Self::collect_from_statement(s, out); }
+                if let Some((_, b)) = catch { for s in b { Self::collect_from_statement(s, out); } }
+                if let Some(b) = finally { for s in b { Self::collect_from_statement(s, out); } }
+            }
+            Statement::Match { cases, default, .. } => {
+                for (_, _, b) in cases { for s in b { Self::collect_from_statement(s, out); } }
+                if let Some(b) = default { for s in b { Self::collect_from_statement(s, out); } }
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_from_expression(expr: &Expression, out: &mut Vec<String>) {
+        match expr {
+            Expression::FunctionCall { name, arguments, .. } => {
+                if Self::required_capability(name).is_some() {
+                    out.push(name.clone());
+                }
+                for arg in arguments {
+                    Self::collect_from_expression(arg, out);
+                }
+            }
+            Expression::BinaryOp { left, right, .. } => {
+                Self::collect_from_expression(left, out);
+                Self::collect_from_expression(right, out);
+            }
+            Expression::UnaryOp { operand, .. } => {
+                Self::collect_from_expression(operand, out);
+            }
+            Expression::Array { elements, .. } | Expression::Set { elements, .. } => {
+                for e in elements { Self::collect_from_expression(e, out); }
+            }
+            Expression::Map { entries, .. } => {
+                for (k, v) in entries {
+                    Self::collect_from_expression(k, out);
+                    Self::collect_from_expression(v, out);
+                }
+            }
+            Expression::Ternary { condition, true_expr, false_expr, .. } => {
+                Self::collect_from_expression(condition, out);
+                Self::collect_from_expression(true_expr, out);
+                Self::collect_from_expression(false_expr, out);
+            }
+            Expression::Lambda { body, .. } => {
+                Self::collect_from_expression(body, out);
+            }
+            Expression::MethodCall { object, arguments, .. } => {
+                Self::collect_from_expression(object, out);
+                for a in arguments { Self::collect_from_expression(a, out); }
+            }
+            _ => {}
+        }
+    }
+
+    /// Maps a stdlib function name to the capability string it requires,
+    /// or `None` if the function is unprivileged.
+    fn required_capability(fn_name: &str) -> Option<&'static str> {
+        match fn_name {
+            "exec" | "spawn" | "pipe_exec" | "kill" | "signal_send" => Some("sys.exec"),
+            "http_get" | "http_post" | "tcp_connect" | "udp_send" | "resolve" => Some("net.connect"),
+            "write_file" | "append_file" | "delete" | "mkdir" | "rmdir"
+            | "copy_file" | "move_file" | "symlink_create" => Some("fs.write"),
+            "read_file" | "file_exists" | "is_file" | "is_dir" | "list_dir" => Some("fs.read"),
+            "setenv" | "getenv" => Some("sys.env"),
+            "wifi_scan" => Some("wifi.scan"),
+            "wifi_capture" => Some("wifi.capture"),
+            "wifi_deauth" => Some("wifi.deauth"),
+            "wifi_inject" => Some("wifi.inject"),
+            "ble_scan" => Some("ble.scan"),
+            "ble_connect" => Some("ble.connect"),
+            "ble_fuzz" => Some("ble.fuzz"),
+            "ble_read" => Some("ble.read"),
+            "ble_write" => Some("ble.write"),
+            _ => None,
+        }
+    }
+
+    /// Returns true if a CapabilityExpr covers the required capability string
+    /// (e.g., `CapabilityExpr::Simple { resource: "sys", action: "exec" }` matches "sys.exec").
+    fn capability_matches(cap: &CapabilityExpr, required: &str) -> bool {
+        if let CapabilityExpr::Simple { resource, action, .. } = cap {
+            let formed = format!("{}.{}", resource, action);
+            // Normalize aliases
+            let required_norm = required
+                .replace("filesystem.", "fs.")
+                .replace("network.", "net.")
+                .replace("system.", "sys.")
+                .replace("bluetooth.", "ble.");
+            formed == required_norm
+                || formed == required
+        } else {
+            false
         }
     }
 }
