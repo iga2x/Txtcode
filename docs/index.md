@@ -129,9 +129,9 @@ txtcode doctor                 Check environment setup
 txtcode init [name]            Initialize a new project
 ```
 
-> **Engine note:** `txtcode run` and the REPL use the high-level AST VM with full policy enforcement,
-> permission checks, and audit logging. The bytecode VM (used by `compile`) is
-> **experimental** in v0.4 and does not yet have full permission/audit parity.
+> **Engine note:** Both `txtcode run` (AST VM) and compiled `.txtc` files (Bytecode VM) enforce
+> the same full 6-layer security pipeline: intent checking, capability tokens, rate limiting,
+> permission grants/denials, audit trail logging, and runtime integrity verification.
 
 ---
 

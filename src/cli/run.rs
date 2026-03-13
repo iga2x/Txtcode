@@ -1,12 +1,11 @@
 //! `txtcode run` — file execution, watch mode, timeout, env loading, permission helpers.
 //!
 //! Execution routing:
-//!   `.tc` source files  → AST VM (VirtualMachine) — full security layers
-//!   `.txtc` compiled files → Bytecode VM (BytecodeVM) — basic permissions only
+//!   `.tc` source files    → AST VM (VirtualMachine) — full security layers
+//!   `.txtc` bytecode files → Bytecode VM (BytecodeVM) — full security layers
 //!
-//! NOTE: The Bytecode VM currently lacks audit trail, policy engine, intent checking,
-//! and capability token support vs the AST VM (see PARITY NOTE in bytecode_vm.rs).
-//! A warning is printed when executing compiled bytecode.
+//! Both VMs enforce the same 6-layer security pipeline:
+//!   intent → capability token → rate limit → permission → audit trail → runtime security
 
 use crate::config::Config;
 use crate::lexer::Lexer;
@@ -23,9 +22,8 @@ use std::path::{Path, PathBuf};
 
 /// Execute a pre-compiled `.txtc` bytecode file.
 ///
-/// Permission flags mirror `run_file_inner` but apply to the Bytecode VM.
-/// The Bytecode VM currently runs with basic PermissionManager only — it does
-/// not have audit trail, policy engine, intent checking, or capability tokens.
+/// The Bytecode VM runs the full 6-layer security pipeline (intent, capability,
+/// rate limit, permission, audit trail, runtime security) identical to the AST VM.
 fn run_compiled_file(
     file: &PathBuf,
     safe_mode: bool,
@@ -34,12 +32,6 @@ fn run_compiled_file(
     allow_net: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::compiler::bytecode::Bytecode;
-
-    eprintln!(
-        "Warning: running pre-compiled bytecode. \
-         Audit trail, policy engine, and intent checking are not active \
-         in the bytecode VM. Use `txtcode run <source.tc>` for full security enforcement."
-    );
 
     let data = fs::read(file)?;
     // Try binary (bincode) first, fall back to JSON.
@@ -57,6 +49,11 @@ fn run_compiled_file(
 
     let mut vm = BytecodeVM::new();
     vm.set_safe_mode(effective_safe_mode);
+
+    // Activate bytecode integrity hashing — hash the raw bytecode bytes so the
+    // runtime security layer can detect in-memory tampering (mirrors the source
+    // hash computed for .tc files in run_file_inner).
+    vm.runtime_security.hash_and_set_source(&data);
 
     // Honour exec_allowed: if neither --allow-exec nor default on, deny exec.
     if !allow_exec && effective_safe_mode {

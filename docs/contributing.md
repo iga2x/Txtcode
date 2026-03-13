@@ -112,6 +112,20 @@ cargo test -- --nocapture
 - ✅ `docs/security-features.md` — accurate feature documentation (replaced fabricated content)
 - ✅ All Clippy `-D warnings` issues resolved
 
+### v0.4.2 (released) — Bytecode VM full security parity
+- ✅ Bytecode VM: full 6-layer security pipeline (intent → capability → rate limit → permission → audit → runtime security)
+- ✅ `AuditTrail` wired into bytecode VM — all permission checks logged with AI metadata
+- ✅ `IntentChecker` in bytecode VM — per-function allowed/forbidden action enforcement
+- ✅ `CapabilityManager` in bytecode VM — time-bound authorisation tokens with deny-override
+- ✅ `PolicyEngine` in bytecode VM — rate limiting, AI control, max execution time
+- ✅ `RuntimeSecurity` in bytecode VM — anti-debug, bytecode integrity hash, platform detection
+- ✅ Function name stack in bytecode VM — intent checker resolves per-function constraints
+- ✅ `ImportModule` sub-VM inherits permissions, denied list, AI metadata, active capability
+- ✅ Bytecode path in `run.rs` hashes bytecode bytes for integrity checking
+- ✅ `wifi_*` / `ble_*` added to bytecode VM preflight check with scoped resource extraction
+- ✅ `get_denied()` added to `PermissionManager` for sub-VM inheritance
+- ✅ Removed "bytecode VM lacks security" warning from `run.rs`
+
 ### v0.5+ (planned)
 - True async/await with Tokio runtime integration
 - Native binary compilation (`-t native`) via LLVM

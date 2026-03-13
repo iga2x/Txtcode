@@ -163,9 +163,9 @@ txtcode migrate [...]          Migrate code between Txt-code versions (dry-run b
   - `txtcode compile` currently emits bytecode (`.txtc`) only.
   - Native (LLVM) and WASM backends are **planned** and not enabled in v0.4 builds.
 
-> **Engine note:** `txtcode run` and the REPL use the high-level AST VM with full policy enforcement,
-> permission checks, and audit logging. The bytecode VM (used internally by `compile`) is
-> **experimental** in v0.4 and does not yet have full permission/audit parity. See
+> **Engine note:** Both `txtcode run` (AST VM) and compiled `.txtc` files (Bytecode VM) enforce
+> the full 6-layer security pipeline: intent checking, capability tokens, rate limiting, permission
+> grants/denials, audit trail logging, and runtime integrity checks. See
 > [docs/language-spec.md](docs/language-spec.md) for details.
 
 ## Example Program

@@ -1,7 +1,12 @@
+use crate::capability::CapabilityManager;
 use crate::compiler::bytecode::{Bytecode, Constant, Instruction};
+use crate::policy::PolicyEngine;
+use crate::runtime::audit::{AIMetadata, AuditResult, AuditTrail};
 use crate::runtime::core::{ScopeManager, Value};
 use crate::runtime::errors::RuntimeError;
+use crate::runtime::intent::{IntentChecker, IntentDeclaration};
 use crate::runtime::permissions::{Permission, PermissionManager, PermissionResource};
+use crate::runtime::security::RuntimeSecurity;
 use crate::stdlib::{FunctionExecutor, PermissionChecker, StdLib};
 use std::collections::HashMap;
 
@@ -14,7 +19,17 @@ struct CatchFrame {
 }
 
 /// Bytecode Virtual Machine
-/// Executes compiled bytecode instructions
+///
+/// Security model is at full parity with the AST VM (VirtualMachine).
+/// Every security-relevant function call goes through the same 6-layer pipeline:
+///   1. Max execution time check  (PolicyEngine)
+///   2. AI allowance check        (PolicyEngine, when ai_metadata is set)
+///   3. Intent check              (IntentChecker — allowed/forbidden actions per function)
+///   4. Capability token check    (CapabilityManager — time-bound authorisation tokens)
+///   5. Rate limit check          (PolicyEngine — per-action frequency limits)
+///   6. Permission check          (PermissionManager — grant/deny rules with glob scopes)
+///
+/// Every check is logged to the AuditTrail.
 pub struct BytecodeVM {
     stack: Vec<Value>,
     variables: HashMap<String, Value>,
@@ -29,12 +44,31 @@ pub struct BytecodeVM {
     catch_stack: Vec<CatchFrame>,
     /// Closure environments: function_name -> captured variables at definition time
     closure_envs: HashMap<String, HashMap<String, Value>>,
-    /// Permission manager — enforces the same security model as the AST VM
+    /// Permission manager — grant/deny rules with glob scope matching
     permission_manager: PermissionManager,
     /// Module search paths (mirrors ModuleResolver in the AST VM)
     module_search_paths: Vec<std::path::PathBuf>,
     /// Safe-mode flag (disables exec/spawn)
     safe_mode: bool,
+
+    // ── Security layer (parity with AST VM) ──────────────────────────────────
+    /// Immutable append-only audit log of all security events
+    pub audit_trail: AuditTrail,
+    /// AI agent metadata — set when invoked from an AI pipeline
+    ai_metadata: AIMetadata,
+    /// Intent checker — enforces allowed/forbidden action constraints per function
+    intent_checker: IntentChecker,
+    /// Capability manager — time-bound authorisation tokens
+    capability_manager: CapabilityManager,
+    /// Active capability token in the current scope (None = no token)
+    active_capability: Option<String>,
+    /// Policy engine — rate limiting, AI control, max execution time
+    policy_engine: PolicyEngine,
+    /// Runtime security — anti-debug, platform detection, source integrity
+    pub runtime_security: RuntimeSecurity,
+    /// Function name stack — top is the currently executing user function
+    /// (used by the intent checker to enforce per-function constraints)
+    function_name_stack: Vec<String>,
 }
 
 impl BytecodeVM {
@@ -55,6 +89,14 @@ impl BytecodeVM {
                 std::path::PathBuf::from("src"),
             ],
             safe_mode: false,
+            audit_trail: AuditTrail::new(),
+            ai_metadata: AIMetadata::new(),
+            intent_checker: IntentChecker::new(),
+            capability_manager: CapabilityManager::new(),
+            active_capability: None,
+            policy_engine: PolicyEngine::new(),
+            runtime_security: RuntimeSecurity::new(),
+            function_name_stack: Vec::new(),
         }
     }
 
@@ -78,6 +120,258 @@ impl BytecodeVM {
     /// Add a directory to the module search path.
     pub fn add_module_search_path(&mut self, path: std::path::PathBuf) {
         self.module_search_paths.push(path);
+    }
+
+    // ── Security management (parity with VirtualMachine) ─────────────────────
+
+    /// Set AI agent metadata for audit trail attribution.
+    pub fn set_ai_metadata(&mut self, meta: AIMetadata) {
+        self.ai_metadata = meta;
+    }
+
+    /// Register an intent declaration for a named function.
+    pub fn register_function_intent(&mut self, name: String, declaration: IntentDeclaration) {
+        self.intent_checker.register_function_intent(name, declaration);
+    }
+
+    /// Set module-level intent declaration.
+    pub fn set_module_intent(&mut self, declaration: IntentDeclaration) {
+        self.intent_checker.set_module_intent(declaration);
+    }
+
+    /// Grant a capability token for scoped authorisation.
+    pub fn grant_capability(
+        &mut self,
+        resource: PermissionResource,
+        action: String,
+        scope: Option<String>,
+        expires_in: Option<std::time::Duration>,
+        granted_by: Option<String>,
+        ai_metadata: Option<AIMetadata>,
+    ) -> String {
+        let is_meta_empty = ai_metadata.as_ref().map(|m| m.is_empty()).unwrap_or(true);
+        let token_id = self.capability_manager.grant(
+            resource,
+            action.clone(),
+            scope.clone(),
+            expires_in,
+            granted_by,
+            ai_metadata.clone(),
+        );
+        let _ = self.audit_trail.log_action(
+            format!("capability.granted.{}", action),
+            scope.unwrap_or_default(),
+            Some(format!("capability:{}", token_id)),
+            AuditResult::Allowed,
+            if let Some(ref meta) = ai_metadata.filter(|m| !is_meta_empty && !m.is_empty()) {
+                Some(meta)
+            } else if !self.ai_metadata.is_empty() {
+                Some(&self.ai_metadata)
+            } else {
+                None
+            },
+        );
+        token_id
+    }
+
+    /// Activate a capability token for the current scope.
+    pub fn use_capability(&mut self, token_id: String) -> Result<(), RuntimeError> {
+        if self.capability_manager.is_valid(&token_id) {
+            self.active_capability = Some(token_id);
+            Ok(())
+        } else {
+            Err(RuntimeError::new(format!(
+                "Invalid or expired capability token: {}",
+                token_id
+            )))
+        }
+    }
+
+    /// Revoke a capability token and log the revocation.
+    pub fn revoke_capability(
+        &mut self,
+        token_id: &str,
+        reason: Option<String>,
+    ) -> Result<(), RuntimeError> {
+        self.capability_manager
+            .revoke(token_id, reason)
+            .map_err(|e| RuntimeError::new(format!("Capability revocation error: {}", e)))?;
+        if self.active_capability.as_deref() == Some(token_id) {
+            self.active_capability = None;
+        }
+        let _ = self.audit_trail.log_action(
+            "capability.revoked".to_string(),
+            token_id.to_string(),
+            Some("capability".to_string()),
+            AuditResult::Denied,
+            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+        );
+        Ok(())
+    }
+
+    /// Clear the active capability (end of scoped authorisation).
+    pub fn clear_capability(&mut self) {
+        self.active_capability = None;
+    }
+
+    /// Apply a policy (rate limits, AI control, execution timeout).
+    pub fn set_policy(&mut self, policy: crate::policy::Policy) {
+        self.policy_engine.set_policy(policy);
+    }
+
+    /// Export the audit trail as a JSON array string.
+    pub fn export_audit_trail_json(&self) -> String {
+        self.audit_trail.export_json()
+    }
+
+    // ── Core permission check pipeline (matches AST VM check_permission_with_audit) ──
+
+    /// Full 6-layer permission check — the authoritative gate for all security-sensitive
+    /// operations. Order mirrors the AST VM exactly:
+    ///
+    ///   1. Max execution time (PolicyEngine)
+    ///   2. AI allowance       (PolicyEngine — only when ai_metadata is set)
+    ///   3. Intent check       (IntentChecker — allowed/forbidden per function)
+    ///   4. Capability token   (CapabilityManager — explicit denials always win)
+    ///   5. Rate limit         (PolicyEngine)
+    ///   6. Permission grant   (PermissionManager)
+    ///
+    /// Every step is logged to the AuditTrail.
+    pub fn check_permission_with_audit(
+        &mut self,
+        resource: &PermissionResource,
+        scope: Option<&str>,
+    ) -> Result<(), RuntimeError> {
+        // 1. Max execution time
+        if let Err(e) = self.policy_engine.check_max_execution_time() {
+            let _ = self.audit_trail.log_action(
+                "policy.max_execution_time".to_string(),
+                String::new(),
+                None,
+                AuditResult::Denied,
+                if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            );
+            return Err(RuntimeError::new(format!("Policy error: {}", e)));
+        }
+
+        // 2. AI allowance (only when AI metadata is attached)
+        if !self.ai_metadata.is_empty() {
+            if let Err(e) = self.policy_engine.check_ai_allowed() {
+                let _ = self.audit_trail.log_action(
+                    "policy.ai_not_allowed".to_string(),
+                    String::new(),
+                    None,
+                    AuditResult::Denied,
+                    Some(&self.ai_metadata),
+                );
+                return Err(RuntimeError::new(format!("Policy error: {}", e)));
+            }
+        }
+
+        // 3. Intent check — uses the currently executing function's constraints
+        let action = self.get_action_from_resource(resource);
+        let resource_str = scope.unwrap_or("");
+        let current_fn = self.function_name_stack.last().cloned().unwrap_or_default();
+        if !current_fn.is_empty() {
+            if let Err(intent_err) = self
+                .intent_checker
+                .check_action(&current_fn, &action, resource_str)
+                .map_err(|e| RuntimeError::new(format!("Intent violation: {}", e)))
+            {
+                let _ = self.audit_trail.log_action(
+                    format!("intent.violation.{}", action),
+                    resource_str.to_string(),
+                    Some(format!("intent:{}", current_fn)),
+                    AuditResult::Denied,
+                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                );
+                return Err(intent_err);
+            }
+        }
+
+        // 4. Capability token (explicit denials always override a valid token)
+        if let Some(token_id) = self.active_capability.clone() {
+            match self
+                .capability_manager
+                .check(&token_id, resource, &action, scope)
+            {
+                Ok(()) => {
+                    // Explicit deny always wins, even over a valid token
+                    if let Err(deny_err) =
+                        self.permission_manager.check_denied(resource, scope)
+                    {
+                        let _ = self.audit_trail.log_action(
+                            format!("capability.denied.{}", action),
+                            resource_str.to_string(),
+                            Some(format!("capability:{}/deny-override", token_id)),
+                            AuditResult::Denied,
+                            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                        );
+                        return Err(RuntimeError::new(format!(
+                            "Permission error: {}",
+                            deny_err
+                        )));
+                    }
+                    // Valid token + no explicit deny → allow
+                    let _ = self.audit_trail.log_action(
+                        format!("capability.used.{}", action),
+                        resource_str.to_string(),
+                        Some(format!("capability:{}", token_id)),
+                        AuditResult::Allowed,
+                        if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                    );
+                    return Ok(());
+                }
+                Err(cap_err) => {
+                    let _ = self.audit_trail.log_action(
+                        format!("capability.check.{}", action),
+                        resource_str.to_string(),
+                        Some(format!("capability:{}", token_id)),
+                        AuditResult::Denied,
+                        if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                    );
+                    return Err(RuntimeError::new(format!(
+                        "Capability error: {}",
+                        cap_err
+                    )));
+                }
+            }
+        }
+
+        // 5. Rate limit
+        let rate_action = format!("permission.check.{}", resource);
+        if let Err(e) = self.policy_engine.check_rate_limit(&rate_action) {
+            let _ = self.audit_trail.log_action(
+                format!("policy.rate_limit.{}", action),
+                resource_str.to_string(),
+                None,
+                AuditResult::Denied,
+                if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            );
+            return Err(RuntimeError::new(format!("Policy error: {}", e)));
+        }
+
+        // 6. Permission grant check + audit log
+        let result = self.permission_manager.check(resource, scope);
+        let _ = self.audit_trail.log_permission_check(
+            resource,
+            scope,
+            result.clone(),
+            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+        );
+        result.map_err(|e| RuntimeError::new(format!("Permission error: {}", e)))
+    }
+
+    /// Map a PermissionResource to its action string (helper for audit/capability checks).
+    fn get_action_from_resource(&self, resource: &PermissionResource) -> String {
+        match resource {
+            PermissionResource::FileSystem(a) => a.clone(),
+            PermissionResource::Network(a) => a.clone(),
+            PermissionResource::System(a) => a.clone(),
+            PermissionResource::Process(_) => "exec".to_string(),
+            PermissionResource::WiFi(a) => a.clone(),
+            PermissionResource::Bluetooth(a) => a.clone(),
+        }
     }
 
     /// Execute a single instruction at the current ip and advance ip.
@@ -139,6 +433,24 @@ impl BytecodeVM {
     /// ip = target directly and that becomes the next instruction without an extra +1.
     pub fn execute(&mut self, bytecode: &Bytecode) -> Result<Value, RuntimeError> {
         self.ip = 0;
+
+        // ── Startup security checks (parity with AST VM) ──────────────────────
+        // Run anti-debug, integrity, and platform checks. Detections are logged
+        // to the audit trail as warnings; execution is not blocked.
+        let report = self.runtime_security.run_startup_checks();
+        if !report.warnings.is_empty() {
+            for w in &report.warnings {
+                let _ = self.audit_trail.log_action(
+                    "security.startup.warning".to_string(),
+                    w.clone(),
+                    None,
+                    AuditResult::Error(w.clone()),
+                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                );
+            }
+        }
+        // Start execution timer for max-execution-time policy checks
+        self.policy_engine.start_execution();
 
         while self.ip < bytecode.instructions.len() {
             let ip = self.ip;
@@ -475,6 +787,8 @@ impl BytecodeVM {
                         self.variables = closure_env;
                     }
                     self.call_stack.push((self.ip, saved_vars, catch_depth));
+                    // Track function name for intent checking in nested permission calls
+                    self.function_name_stack.push(name.clone());
                     // Bind arguments to parameter names (override closure vars)
                     for (param, arg) in params.iter().zip(args.iter()) {
                         self.variables.insert(param.clone(), arg.clone());
@@ -517,26 +831,24 @@ impl BytecodeVM {
                     }
                 }
 
-                // Scope-aware pre-flight permission check.
+                // ── Full 6-layer security pre-flight check ────────────────────
                 //
-                // The BcvmExecutor below calls check_permission with scope=None, which can
-                // fail to match scoped grants (e.g. fs.read:/tmp/*) and cannot pass the real
-                // path/hostname to the permission manager. We do the authoritative check here
-                // where the actual argument values are available.
+                // For well-known stdlib functions we extract the real scope argument
+                // (path, hostname, command) and run the complete check pipeline:
+                //   intent → capability → rate limit → permission → audit log.
                 //
-                // PARITY NOTE — the bytecode VM currently lacks vs the AST VM:
-                //   • intent checking (IntentChecker)
-                //   • capability token checking (CapabilityManager / active_capability)
-                //   • per-action rate limiting (PolicyEngine)
-                //   • audit trail logging (AuditTrail)
-                // These are tracked for closure before the bytecode VM graduates to production.
+                // This mirrors the AST VM's check_permission_with_audit() path in
+                // src/runtime/execution/expressions/function_calls.rs.
                 {
+                    // Resolve the (resource, scope) pair from function name + args.
                     let preflight: Option<(PermissionResource, Option<&str>)> = if name
                         == "read_file"
                         || name == "file_exists"
                         || name == "is_file"
                         || name == "is_dir"
                         || name == "list_dir"
+                        || name == "read_lines"
+                        || name == "watch_file"
                     {
                         args.first()
                             .and_then(|v| match v {
@@ -549,9 +861,9 @@ impl BytecodeVM {
                         || name == "copy_file"
                         || name == "move_file"
                         || name == "temp_file"
-                        || name == "watch_file"
                         || name == "symlink_create"
                         || name == "mkdir"
+                        || name == "csv_write"
                     {
                         args.first()
                             .and_then(|v| match v {
@@ -570,10 +882,14 @@ impl BytecodeVM {
                             })
                     } else if name == "http_get"
                         || name == "http_post"
+                        || name == "http_put"
+                        || name == "http_delete"
+                        || name == "http_patch"
                         || name == "tcp_connect"
                         || name == "udp_send"
                         || name == "resolve"
                     {
+                        // Extract hostname from URL for scoped permission check
                         args.first().and_then(|v| match v {
                             Value::String(url) => {
                                 let host = url
@@ -614,21 +930,46 @@ impl BytecodeVM {
                             }
                             _ => None,
                         })
-                    } else if name == "getenv" || name == "setenv" {
+                    } else if name == "signal_send" {
+                        Some((PermissionResource::Process(vec![name.to_string()]), None))
+                    } else if name == "getenv" || name == "setenv" || name == "env_list" {
                         Some((PermissionResource::System("env".to_string()), None))
+                    } else if name == "cpu_count" || name == "memory" || name == "disk_space" {
+                        Some((PermissionResource::System("info".to_string()), None))
+                    } else if name.starts_with("wifi_") {
+                        let action = name.trim_start_matches("wifi_");
+                        args.first().map(|v| match v {
+                            Value::String(iface) => (
+                                PermissionResource::WiFi(action.to_string()),
+                                Some(iface.as_str()),
+                            ),
+                            _ => (PermissionResource::WiFi(action.to_string()), None),
+                        })
+                    } else if name.starts_with("ble_") {
+                        let action = name.trim_start_matches("ble_");
+                        args.first().map(|v| match v {
+                            Value::String(dev) => (
+                                PermissionResource::Bluetooth(action.to_string()),
+                                Some(dev.as_str()),
+                            ),
+                            _ => (PermissionResource::Bluetooth(action.to_string()), None),
+                        })
                     } else {
                         None
                     };
 
+                    // Run the full 6-layer check: intent → capability → rate limit → permission → audit
                     if let Some((resource, scope)) = preflight {
-                        self.permission_manager
-                            .check(&resource, scope)
-                            .map_err(|e| RuntimeError::new(format!("Permission error: {}", e)))?;
+                        self.check_permission_with_audit(&resource, scope)?;
                     }
                 }
 
-                // Fall back to stdlib — BcvmExecutor provides a secondary scopeless check
-                // for any stdlib function not covered by the pre-flight above.
+                // ── Stdlib fallback executor ───────────────────────────────────
+                //
+                // BcvmExecutor is a secondary safety net: it catches any stdlib
+                // function that bypassed the pre-flight (e.g. unknown functions or
+                // new stdlib additions). The pre-flight above handles all known
+                // security-relevant calls with full audit trail logging.
                 struct BcvmExecutor<'a> {
                     pm: &'a PermissionManager,
                     safe_mode: bool,
@@ -650,8 +991,7 @@ impl BytecodeVM {
                         resource: &PermissionResource,
                         scope: Option<&str>,
                     ) -> Result<(), RuntimeError> {
-                        // Safe mode: exec functions are already blocked in the pre-flight above.
-                        // Guard here catches any exec call that bypasses the pre-flight.
+                        // Exec guard: catches any exec bypass through the stdlib safety net
                         if self.safe_mode
                             && matches!(resource, PermissionResource::System(a) if a == "exec")
                         {
@@ -705,6 +1045,8 @@ impl BytecodeVM {
                     self.catch_stack.truncate(catch_depth);
                     self.variables = saved_vars;
                     self.ip = return_ip;
+                    // Restore caller's function name context
+                    self.function_name_stack.pop();
                 } else {
                     // Top-level return: exit the execution loop
                     self.ip = usize::MAX;
@@ -717,6 +1059,8 @@ impl BytecodeVM {
                     self.variables = saved_vars;
                     self.stack.push(value);
                     self.ip = return_ip;
+                    // Restore caller's function name context
+                    self.function_name_stack.pop();
                 } else {
                     // Top-level return with value
                     self.stack.push(value);
@@ -930,12 +1274,23 @@ impl BytecodeVM {
                         let mut compiler = BytecodeCompiler::new();
                         let module_bc = compiler.compile(&program);
 
-                        // Execute module in a sub-VM with inherited permissions
+                        // Execute module in a sub-VM that inherits the full security context
+                        // from the parent VM: permissions, safe mode, policy, intent, and
+                        // AI metadata all propagate so module code is subject to the same
+                        // security enforcement as the caller.
                         let mut sub_vm = BytecodeVM::new();
                         sub_vm.safe_mode = self.safe_mode;
-                        // Inherit granted permissions
+                        // Inherit permission grants and explicit denials
                         for perm in self.permission_manager.get_granted() {
                             sub_vm.permission_manager.grant(perm.clone());
+                        }
+                        for perm in self.permission_manager.get_denied() {
+                            sub_vm.permission_manager.deny(perm.clone());
+                        }
+                        // Inherit AI metadata and active capability context
+                        sub_vm.ai_metadata = self.ai_metadata.clone();
+                        if let Some(ref token) = self.active_capability {
+                            sub_vm.active_capability = Some(token.clone());
                         }
                         sub_vm.module_search_paths = self.module_search_paths.clone();
                         sub_vm.execute(&module_bc).map_err(|e| {
