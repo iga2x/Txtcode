@@ -2,7 +2,7 @@
 
 > **Status:** v0.4.0 release. Behaviour described here matches the current implementation
 > except where explicitly marked as “planned / not yet implemented”.
-> Breaking changes between minor versions are documented in [CHANGELOG.md](../CHANGELOG.md).
+> Breaking changes between minor versions are documented in the [CHANGELOG](https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md) on GitHub.
 >
 > **New in v0.4:**
 > - Virtual environment system (`txtcode env`) with 12 subcommands
@@ -36,13 +36,13 @@
 
 ## Table of Contents
 
-1. [Syntax](#syntax)
-2. [Values and Types](#values-and-types)
-3. [Operator Behaviour](#operator-behaviour)
-4. [Function Rules](#function-rules)
-5. [Module Resolution](#module-resolution)
-6. [Runtime Limits](#runtime-limits)
-7. [Error Semantics](#error-semantics)
+1. [Syntax](#1-syntax)
+2. [Values and Types](#2-values-and-types)
+3. [Operator Behaviour](#3-operator-behaviour)
+4. [Function Rules](#4-function-rules)
+5. [Module Resolution](#5-module-resolution)
+6. [Runtime Limits](#6-runtime-limits)
+7. [Error Semantics](#7-error-semantics)
 
 ---
 

@@ -2,22 +2,28 @@ pub mod async_executor;
 pub mod audit;
 pub mod bytecode_runner;
 pub mod bytecode_vm;
+pub mod compatibility;
 pub mod core;
 pub mod errors;
 pub mod execution;
 pub mod gc;
+pub mod intent;
 pub mod memory;
+pub mod migration;
 pub mod module;
+pub mod module_metadata;
 pub mod operators;
 pub mod permissions;
 pub mod security;
-pub mod vm; // NEW: Audit trail system
-            // Policy moved to top-level: src/policy/
-            // This is a compatibility shim - use crate::policy instead
+pub mod tools;
+pub mod trace;
+pub mod vm;
+
+// Policy lives at crate::policy (src/policy/); this shim keeps
+// `crate::runtime::policy::*` import paths working.
 pub mod policy {
     pub use crate::policy::*;
 }
-pub mod intent; // NEW: Intent enforcement system
 
 // CANONICAL IMPLEMENTATION: src/capability/manager.rs (re-exported via src/capability/mod.rs)
 // This inline shim keeps old `crate::runtime::capabilities::*` import paths working.
@@ -26,11 +32,6 @@ pub mod intent; // NEW: Intent enforcement system
 pub mod capabilities {
     pub use crate::capability::*;
 }
-pub mod compatibility; // NEW: AST-level compatibility and migration system
-pub mod migration; // NEW: Migration framework with dry-run and reporting
-pub mod module_metadata;
-pub mod tools; // NEW: Tool orchestration interface for pentest tools
-pub mod trace; // NEW: Execution trace system for replayable execution graphs // NEW: Module-scoped feature flags and metadata
 
 #[allow(unused_imports)]
 pub use bytecode_runner::*;

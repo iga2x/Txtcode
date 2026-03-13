@@ -26,7 +26,7 @@ Txt-code is built in Rust and follows a modular architecture:
 - **Lexer**: Tokenizes source code
 - **Parser**: Builds Abstract Syntax Tree (AST)
 - **Type Checker**: Performs type checking and inference
-- **Compiler**: Generates bytecode, native code, or WebAssembly
+- **Compiler**: Compiles AST to bytecode (`.txtc`); native and WASM targets planned for v0.5
 - **Runtime**: Executes programs
 - **Standard Library**: Core functions and modules
 
@@ -85,7 +85,7 @@ cargo test -- --nocapture
 - ✅ `++`/`--` prefix increment/decrement (identifier targets only)
 - ✅ AST-to-source printer (migration file writing)
 - ✅ Feature-gated stdlib: `zip`, `quick-xml`, `serde_yaml` (`--features full-stdlib`)
-- ✅ `txtcode inspect file.tcc` — disassemble compiled bytecode
+- ✅ `txtcode inspect file.txtc` — disassemble compiled bytecode
 - ✅ `--target` validation (errors on unsupported native/wasm targets)
 - ✅ Call depth aligned to 50 in all VMs
 - ✅ async/await runs synchronously (non-blocking passthrough)
@@ -98,13 +98,29 @@ cargo test -- --nocapture
 - ✅ User-defined functions with scope isolation in bytecode VM
 - ✅ Module imports (`ImportModule`) in bytecode VM
 
+### v0.4.1 (released) — Security hardening & WiFi/BLE enforcement
+- ✅ `PermissionResource::WiFi` and `PermissionResource::Bluetooth` — fully enforced in all check paths
+- ✅ `wifi_*` / `ble_*` stdlib functions gated by permission system, audit trail, and validator
+- ✅ Capability-adaptive `RuntimeSecurity`: Platform detection, SecurityLevel (None/Basic/Standard/Full)
+- ✅ Anti-debug: 5-technique Linux stack (TracerPid + wchan + parent-process-name + timing + env scan)
+- ✅ `security/auth.rs` — Ed25519 script signing/verification (ScriptAuth, ScriptSignature, KeyStore)
+- ✅ `security/encryptor.rs` — PBKDF2-HMAC-SHA256 passphrase key derivation
+- ✅ Source integrity SHA-256 hash verified at startup via `RuntimeSecurity`
+- ✅ `.txtc` bytecode files now executable via `txtcode run` (routes to bytecode VM)
+- ✅ Validator wired into `txtcode run`, `txtcode compile`, `txtcode check`
+- ✅ `docs/permissions.md` — full permission and capability reference
+- ✅ `docs/security-features.md` — accurate feature documentation (replaced fabricated content)
+- ✅ All Clippy `-D warnings` issues resolved
+
 ### v0.5+ (planned)
 - True async/await with Tokio runtime integration
 - Native binary compilation (`-t native`) via LLVM
 - WebAssembly compilation target
 - WebSocket stdlib (`websocket_connect`)
-- BytecodeVM permission and audit parity with AST VM
+- Bytecode VM: audit trail, policy engine, intent checking parity with AST VM
 - Generic type enforcement at runtime
+- AST identifier obfuscation (Obfuscator currently a no-op stub)
+- macOS / Windows OS-level anti-debug checks
 
 ## Questions?
 

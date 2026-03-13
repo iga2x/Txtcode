@@ -445,20 +445,20 @@ impl TypeInference {
                 // For struct destructuring, we'd need to know the struct type
                 // For now, just bind identifiers
                 if let Type::Identifier(_struct_name) = value_type {
-                    // We'd need struct definition to properly type-check
-                    // For now, bind each field pattern
+                    // Struct field types require a struct definition lookup.
+                    // Until a struct type registry is wired in, bind each field as `any`.
+                    let any = Type::Identifier("any".to_string());
                     for (field_name, pattern) in fields {
-                        // In a full implementation, we'd look up the struct definition
-                        // and get the field type
-                        types.insert(field_name.clone(), Type::Int); // Placeholder
-                        self.bind_pattern_type(pattern, &Type::Int, types)?; // Placeholder
+                        types.insert(field_name.clone(), any.clone());
+                        self.bind_pattern_type(pattern, &any, types)?;
                     }
                 } else if let Type::Map(_) = value_type {
-                    // Map destructuring - all values are the same type
+                    // Map destructuring — field type equals the map's value type.
+                    // Until value-type propagation is implemented, bind each field as `any`.
+                    let any = Type::Identifier("any".to_string());
                     for (field_name, pattern) in fields {
-                        // In a full implementation, we'd get the map value type
-                        types.insert(field_name.clone(), Type::Int); // Placeholder
-                        self.bind_pattern_type(pattern, &Type::Int, types)?; // Placeholder
+                        types.insert(field_name.clone(), any.clone());
+                        self.bind_pattern_type(pattern, &any, types)?;
                     }
                 } else {
                     return Err(format!(
@@ -478,11 +478,11 @@ impl TypeInference {
                         ));
                     }
 
-                    // For now, type-check each argument pattern
-                    // In a full implementation, we'd look up the struct definition
-                    // and get each field's type
+                    // Constructor field types require a struct definition lookup.
+                    // Until a struct registry is wired in, bind each arg as `any`.
+                    let any = Type::Identifier("any".to_string());
                     for pattern in args {
-                        self.bind_pattern_type(pattern, &Type::Int, types)?; // Placeholder
+                        self.bind_pattern_type(pattern, &any, types)?;
                     }
                 } else {
                     return Err(format!(

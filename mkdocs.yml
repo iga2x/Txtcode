@@ -27,13 +27,16 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
 
+docs_dir: docs
+
 nav:
-  - Home: README.md
-  - Quick Start: docs/quick-start.md
-  - Language Spec: docs/language-spec.md
-  - Syntax Reference: docs/syntax-reference.md
-  - Security Features: docs/security-features.md
-  - Contributing: docs/contributing.md
+  - Home: index.md
+  - Quick Start: quick-start.md
+  - Language Spec: language-spec.md
+  - Syntax Reference: syntax-reference.md
+  - Permissions: permissions.md
+  - Security Features: security-features.md
+  - Contributing: contributing.md
 
 markdown_extensions:
   - pymdownx.highlight:

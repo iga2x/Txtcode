@@ -141,15 +141,12 @@ pub enum Instruction {
     /// Right-hand side is always evaluated (no short-circuit at bytecode level).
     NullCoalesce,
 
-    // Optional chaining (not yet implemented; emitted as Nop placeholder)
-    /// Optional member access: pop object, push field or null if object is null.
-    /// Not yet implemented — emitted as Nop; use explicit null checks.
+    // Optional chaining — fully implemented in both compiler and bytecode VM.
+    /// Optional member access: pop object, push `obj.field` or `null` if object is null.
     OptionalGetField(String),
-    /// Optional index: pop index and object, push value or null if object is null.
-    /// Not yet implemented — emitted as Nop; use explicit null checks.
+    /// Optional index: pop index and object, push `obj[idx]` or `null` if object is null.
     OptionalIndex,
-    /// Optional call: call function or return null if target is null.
-    /// Not yet implemented — emitted as Nop; use explicit null checks.
+    /// Optional call: call function or return `null` if target is null.
     OptionalCall(String, usize),
 
     // Control flow helpers

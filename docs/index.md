@@ -1,0 +1,153 @@
+# Txt-code Programming Language
+
+**Txt-code** © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.
+
+Txtcode is a **deterministic cyber orchestration DSL** — a policy-enforced execution engine designed for security-sensitive automation and experimentation. It provides a safe bridge between AI planning and real-world actions, with built-in audit trails and permission systems.
+
+---
+
+## Features
+
+- **Security-First Runtime** — Built-in audit trails, permission systems, and policy engines
+- **Cyber Orchestration** — Safe, permission-controlled execution of external tools
+- **Execution Transparency** — Full trace logging and replayable execution graphs
+- **Policy Enforcement** — Intent declarations, capability scoping, and rate limiting
+- **AI-Safe Design** — Structured error output and deterministic execution for AI agents
+- **Developer Tooling** — REPL, formatter, linter, debugger, and execution tracer
+- **Package Manager** — Built-in dependency management via `Txtcode.toml`
+
+---
+
+## Goals
+
+- Safe, auditable automation of security-sensitive tasks
+- Deterministic execution with predictable, reproducible results
+- AI-compatible scripting with structured, machine-readable output
+- Transparent policy enforcement with zero silent privilege escalation
+- Bridging AI planning with real-world system actions safely
+
+---
+
+## Installation
+
+### One-Line Install (Recommended — no sudo required)
+
+```bash
+curl -sSf https://raw.githubusercontent.com/iga2x/txtcode/main/install.sh | sh
+```
+
+After install, restart your terminal or run `source ~/.bashrc`, then verify:
+
+```bash
+txtcode --version
+txtcode repl
+```
+
+### Install from Source (Developers)
+
+Requires [Rust](https://rustup.rs) stable.
+
+```bash
+git clone https://github.com/iga2x/txtcode.git
+cd txtcode
+
+# Install to ~/.local/bin  (no sudo)
+make install-user
+
+# Or install system-wide to /usr/local/bin  (needs sudo)
+make install
+```
+
+---
+
+## Quick Start
+
+```bash
+# Run a Txt-code program
+txtcode examples/hello.tc
+
+# Start interactive REPL
+txtcode repl
+
+# Compile to bytecode
+txtcode compile examples/hello.tc -o hello.txtc
+```
+
+See the [Quick Start](quick-start.md) guide for a full walkthrough.
+
+---
+
+## Example Program
+
+```txtcode
+# Hello World
+print → "Hello, World!"
+
+# Variables
+store → name → "Alice"
+store → age → 25
+print → "Hello, " + name
+
+# Functions
+define → greet → (name)
+  return → "Hello, " + name
+end
+
+print → greet("World")
+
+# Control flow
+if → age > 18
+  print → "Adult"
+else
+  print → "Minor"
+end
+
+# Loops
+store → count → 0
+while → count < 5
+  store → count → count + 1
+  print → "Count: " + count
+end
+```
+
+---
+
+## CLI Commands
+
+```text
+txtcode                        Start REPL (no args)
+txtcode <file>                 Run a file
+txtcode run <file>             Run with AST VM (full policy/audit)
+txtcode repl                   Start interactive shell
+txtcode compile <file> [opts]  Compile to bytecode (.txtc)
+txtcode format <paths>         Format source files
+txtcode lint <paths>           Run static analysis
+txtcode debug <file>           Launch interactive debugger
+txtcode test [path]            Run tests
+txtcode bench <file>           Benchmark a program
+txtcode doctor                 Check environment setup
+txtcode init [name]            Initialize a new project
+```
+
+> **Engine note:** `txtcode run` and the REPL use the high-level AST VM with full policy enforcement,
+> permission checks, and audit logging. The bytecode VM (used by `compile`) is
+> **experimental** in v0.4 and does not yet have full permission/audit parity.
+
+---
+
+## Documentation
+
+- [Quick Start Guide](quick-start.md)
+- [Language Specification](language-spec.md)
+- [Syntax Reference](syntax-reference.md)
+- [Permissions Reference](permissions.md)
+- [Security Features](security-features.md)
+- [Contributing Guide](contributing.md)
+
+---
+
+## License
+
+MIT License — see [LICENSE](https://github.com/iga2x/txtcode/blob/main/LICENSE) on GitHub.
+
+**"Txt-code"** is the official name of this programming language. © 2026 MD POOR.
