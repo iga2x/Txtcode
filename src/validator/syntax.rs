@@ -66,9 +66,37 @@ impl SyntaxValidator {
                     Self::check_statement(stmt)?;
                 }
             }
-            Statement::Repeat { body, .. } => {
+            Statement::Repeat { count, body, .. } => {
+                Self::check_expression(count)?;
                 for stmt in body {
                     Self::check_statement(stmt)?;
+                }
+            }
+            Statement::IndexAssignment { target, index, value, .. } => {
+                Self::check_expression(target)?;
+                Self::check_expression(index)?;
+                Self::check_expression(value)?;
+            }
+            Statement::CompoundAssignment { value, .. } => {
+                Self::check_expression(value)?;
+            }
+            Statement::Assert { condition, message, .. } => {
+                Self::check_expression(condition)?;
+                if let Some(msg) = message {
+                    Self::check_expression(msg)?;
+                }
+            }
+            Statement::Const { value, .. } => {
+                Self::check_expression(value)?;
+            }
+            Statement::NamedError { message, .. } => {
+                Self::check_expression(message)?;
+            }
+            Statement::Enum { variants, .. } => {
+                for (_, val) in variants {
+                    if let Some(v) = val {
+                        Self::check_expression(v)?;
+                    }
                 }
             }
             Statement::Match { value, cases, default, .. } => {
@@ -118,18 +146,19 @@ impl SyntaxValidator {
                 }
 
                 // Detect command-injection pattern: exec/spawn/pipe_exec where
-                // the first argument is or contains a string concatenation with
-                // a variable.
+                // any argument is or contains a string concatenation with a
+                // variable, or an interpolated string.
                 //
                 //   Flagged:  exec("nmap " + target)
+                //   Flagged:  exec(cmd, user_arg)      ← any arg with identifier
                 //   Allowed:  exec("nmap -sV -p 80")
                 //
                 // Concatenating a variable into a command string is the canonical
-                // injection vector. Callers should validate/sanitise `target`
-                // and use it as a pre-checked literal.
+                // injection vector. Callers should validate/sanitise values first
+                // and pass clean string literals.
                 if matches!(name.as_str(), "exec" | "spawn" | "pipe_exec") {
-                    if let Some(first_arg) = arguments.first() {
-                        if Self::contains_add_with_identifier(first_arg) {
+                    for arg in arguments {
+                        if Self::contains_add_with_identifier(arg) {
                             return Err(ValidationError::Syntax(format!(
                                 "{}(): command argument must not concatenate variables with '+' \
                                  — this is a command-injection risk. \
@@ -191,6 +220,36 @@ impl SyntaxValidator {
                 for arg in arguments {
                     Self::check_expression(arg)?;
                 }
+            }
+            Expression::OptionalCall { target, arguments, .. } => {
+                Self::check_expression(target)?;
+                for arg in arguments {
+                    Self::check_expression(arg)?;
+                }
+            }
+            Expression::OptionalMember { target, .. } => {
+                Self::check_expression(target)?;
+            }
+            Expression::OptionalIndex { target, index, .. } => {
+                Self::check_expression(target)?;
+                Self::check_expression(index)?;
+            }
+            Expression::Slice { target, start, end, step, .. } => {
+                Self::check_expression(target)?;
+                if let Some(e) = start { Self::check_expression(e)?; }
+                if let Some(e) = end   { Self::check_expression(e)?; }
+                if let Some(e) = step  { Self::check_expression(e)?; }
+            }
+            Expression::Await { expression, .. } => {
+                Self::check_expression(expression)?;
+            }
+            Expression::StructLiteral { fields, .. } => {
+                for (_, val) in fields {
+                    Self::check_expression(val)?;
+                }
+            }
+            Expression::Spread { value, .. } => {
+                Self::check_expression(value)?;
             }
             _ => {}
         }

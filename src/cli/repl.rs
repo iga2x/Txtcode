@@ -6,6 +6,7 @@ use crate::lexer::{Lexer, TokenKind};
 use crate::parser::Parser;
 use crate::runtime::vm::VirtualMachine;
 use crate::runtime::Value;
+use crate::validator::Validator;
 use std::fs;
 
 pub fn start_repl(
@@ -83,10 +84,16 @@ pub fn start_repl(
                                                 Ok(toks) => {
                                                     let mut p = Parser::new(toks);
                                                     match p.parse() {
-                                                        Ok(prog) => match vm.interpret(&prog) {
-                                                            Ok(_) => println!("Loaded: {}", path),
-                                                            Err(e) => eprintln!("Runtime error: {}", e),
-                                                        },
+                                                        Ok(prog) => {
+                                                            if let Err(e) = Validator::validate_program(&prog) {
+                                                                eprintln!("Validation error: {}", e);
+                                                            } else {
+                                                                match vm.interpret(&prog) {
+                                                                    Ok(_) => println!("Loaded: {}", path),
+                                                                    Err(e) => eprintln!("Runtime error: {}", e),
+                                                                }
+                                                            }
+                                                        }
                                                         Err(e) => eprintln!("Parse error: {}", e),
                                                     }
                                                 }
@@ -193,6 +200,10 @@ pub fn start_repl(
                         let mut parser = Parser::new(tokens);
                         match parser.parse() {
                             Ok(program) => {
+                                if let Err(e) = Validator::validate_program(&program) {
+                                    eprintln!("Validation error: {}", e);
+                                    continue;
+                                }
                                 match vm.interpret_repl(&program) {
                                     Ok(value) => {
                                         if !matches!(value, Value::Null) {

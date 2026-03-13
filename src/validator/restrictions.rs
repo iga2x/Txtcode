@@ -133,8 +133,32 @@ impl RestrictionChecker {
                 Self::collect_from_expression(iterable, out);
                 for s in body { Self::collect_from_statement(s, out); }
             }
-            Statement::Repeat { body, .. } => {
+            Statement::Repeat { count, body, .. } => {
+                Self::collect_from_expression(count, out);
                 for s in body { Self::collect_from_statement(s, out); }
+            }
+            Statement::IndexAssignment { target, index, value, .. } => {
+                Self::collect_from_expression(target, out);
+                Self::collect_from_expression(index, out);
+                Self::collect_from_expression(value, out);
+            }
+            Statement::CompoundAssignment { value, .. } => {
+                Self::collect_from_expression(value, out);
+            }
+            Statement::Assert { condition, message, .. } => {
+                Self::collect_from_expression(condition, out);
+                if let Some(m) = message { Self::collect_from_expression(m, out); }
+            }
+            Statement::Const { value, .. } => {
+                Self::collect_from_expression(value, out);
+            }
+            Statement::NamedError { message, .. } => {
+                Self::collect_from_expression(message, out);
+            }
+            Statement::Enum { variants, .. } => {
+                for (_, v) in variants {
+                    if let Some(val) = v { Self::collect_from_expression(val, out); }
+                }
             }
             Statement::Try { body, catch, finally, .. } => {
                 for s in body { Self::collect_from_statement(s, out); }
@@ -187,6 +211,39 @@ impl RestrictionChecker {
                 Self::collect_from_expression(object, out);
                 for a in arguments { Self::collect_from_expression(a, out); }
             }
+            Expression::Index { target, index, .. } => {
+                Self::collect_from_expression(target, out);
+                Self::collect_from_expression(index, out);
+            }
+            Expression::Member { target, .. } => {
+                Self::collect_from_expression(target, out);
+            }
+            Expression::OptionalCall { target, arguments, .. } => {
+                Self::collect_from_expression(target, out);
+                for a in arguments { Self::collect_from_expression(a, out); }
+            }
+            Expression::OptionalMember { target, .. } => {
+                Self::collect_from_expression(target, out);
+            }
+            Expression::OptionalIndex { target, index, .. } => {
+                Self::collect_from_expression(target, out);
+                Self::collect_from_expression(index, out);
+            }
+            Expression::Slice { target, start, end, step, .. } => {
+                Self::collect_from_expression(target, out);
+                if let Some(e) = start { Self::collect_from_expression(e, out); }
+                if let Some(e) = end   { Self::collect_from_expression(e, out); }
+                if let Some(e) = step  { Self::collect_from_expression(e, out); }
+            }
+            Expression::Spread { value, .. } => {
+                Self::collect_from_expression(value, out);
+            }
+            Expression::StructLiteral { fields, .. } => {
+                for (_, v) in fields { Self::collect_from_expression(v, out); }
+            }
+            Expression::Await { expression, .. } => {
+                Self::collect_from_expression(expression, out);
+            }
             _ => {}
         }
     }
@@ -196,11 +253,14 @@ impl RestrictionChecker {
     fn required_capability(fn_name: &str) -> Option<&'static str> {
         match fn_name {
             "exec" | "spawn" | "pipe_exec" | "kill" | "signal_send" => Some("sys.exec"),
-            "http_get" | "http_post" | "tcp_connect" | "udp_send" | "resolve" => Some("net.connect"),
+            "http_get" | "http_post" | "http_put" | "http_delete" | "http_patch"
+            | "tcp_connect" | "udp_send" | "resolve" => Some("net.connect"),
             "write_file" | "append_file" | "delete" | "mkdir" | "rmdir"
-            | "copy_file" | "move_file" | "symlink_create" => Some("fs.write"),
-            "read_file" | "file_exists" | "is_file" | "is_dir" | "list_dir" => Some("fs.read"),
-            "setenv" | "getenv" => Some("sys.env"),
+            | "copy_file" | "move_file" | "symlink_create" | "csv_write" => Some("fs.write"),
+            "read_file" | "file_exists" | "is_file" | "is_dir" | "list_dir"
+            | "read_lines" | "csv_read" => Some("fs.read"),
+            "setenv" | "getenv" | "env_list" => Some("sys.env"),
+            "cpu_count" | "memory" | "disk_space" => Some("sys.info"),
             "wifi_scan" => Some("wifi.scan"),
             "wifi_capture" => Some("wifi.capture"),
             "wifi_deauth" => Some("wifi.deauth"),

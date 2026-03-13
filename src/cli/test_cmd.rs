@@ -3,6 +3,7 @@
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::runtime::vm::VirtualMachine;
+use crate::validator::Validator;
 use std::fs;
 use std::path::PathBuf;
 
@@ -91,6 +92,20 @@ pub fn run_tests(
                 continue;
             }
         };
+        if let Err(e) = Validator::validate_program(&program) {
+            let msg = format!("validation error: {}", e);
+            if json_out {
+                json_tests.push(format!(
+                    "{{\"name\":\"{}\",\"passed\":false,\"error\":\"{}\"}}",
+                    name,
+                    msg.replace('"', "\\\"")
+                ));
+            } else {
+                println!("  FAIL  {} — {}", name, msg);
+            }
+            failed += 1;
+            continue;
+        }
         let mut vm = VirtualMachine::new();
         match vm.interpret(&program) {
             Ok(_) => {

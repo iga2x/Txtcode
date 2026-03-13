@@ -4,6 +4,7 @@ use crate::compiler::bytecode::BytecodeCompiler;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::tools::debugger::Debugger;
+use crate::validator::Validator;
 use std::fs;
 use std::path::PathBuf;
 
@@ -20,6 +21,7 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
     let tokens = lexer.tokenize().map_err(|e| format!("Lex error: {}", e))?;
     let mut parser = Parser::new(tokens);
     let program = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
+    Validator::validate_program(&program).map_err(|e| format!("Validation error: {}", e))?;
     let mut compiler = BytecodeCompiler::new();
     let bytecode = compiler.compile(&program);
 
