@@ -517,7 +517,118 @@ impl BytecodeVM {
                     }
                 }
 
-                // Fall back to stdlib with permission enforcement
+                // Scope-aware pre-flight permission check.
+                //
+                // The BcvmExecutor below calls check_permission with scope=None, which can
+                // fail to match scoped grants (e.g. fs.read:/tmp/*) and cannot pass the real
+                // path/hostname to the permission manager. We do the authoritative check here
+                // where the actual argument values are available.
+                //
+                // PARITY NOTE — the bytecode VM currently lacks vs the AST VM:
+                //   • intent checking (IntentChecker)
+                //   • capability token checking (CapabilityManager / active_capability)
+                //   • per-action rate limiting (PolicyEngine)
+                //   • audit trail logging (AuditTrail)
+                // These are tracked for closure before the bytecode VM graduates to production.
+                {
+                    let preflight: Option<(PermissionResource, Option<&str>)> = if name
+                        == "read_file"
+                        || name == "file_exists"
+                        || name == "is_file"
+                        || name == "is_dir"
+                        || name == "list_dir"
+                    {
+                        args.first()
+                            .and_then(|v| match v {
+                                Value::String(p) => Some(p.as_str()),
+                                _ => None,
+                            })
+                            .map(|p| (PermissionResource::FileSystem("read".to_string()), Some(p)))
+                    } else if name == "write_file"
+                        || name == "append_file"
+                        || name == "copy_file"
+                        || name == "move_file"
+                        || name == "temp_file"
+                        || name == "watch_file"
+                        || name == "symlink_create"
+                        || name == "mkdir"
+                    {
+                        args.first()
+                            .and_then(|v| match v {
+                                Value::String(p) => Some(p.as_str()),
+                                _ => None,
+                            })
+                            .map(|p| (PermissionResource::FileSystem("write".to_string()), Some(p)))
+                    } else if name == "delete" || name == "rmdir" {
+                        args.first()
+                            .and_then(|v| match v {
+                                Value::String(p) => Some(p.as_str()),
+                                _ => None,
+                            })
+                            .map(|p| {
+                                (PermissionResource::FileSystem("delete".to_string()), Some(p))
+                            })
+                    } else if name == "http_get"
+                        || name == "http_post"
+                        || name == "tcp_connect"
+                        || name == "udp_send"
+                        || name == "resolve"
+                    {
+                        args.first().and_then(|v| match v {
+                            Value::String(url) => {
+                                let host = url
+                                    .split("//")
+                                    .nth(1)
+                                    .and_then(|s| s.split('/').next())
+                                    .and_then(|s| s.split(':').next())
+                                    .unwrap_or(url.as_str());
+                                if host.is_empty() {
+                                    None
+                                } else {
+                                    Some((
+                                        PermissionResource::Network("connect".to_string()),
+                                        Some(host),
+                                    ))
+                                }
+                            }
+                            _ => None,
+                        })
+                    } else if name == "exec" || name == "spawn" || name == "pipe_exec" {
+                        if self.safe_mode {
+                            return Err(RuntimeError::new(
+                                "exec() is disabled in safe mode (--safe-mode)".to_string(),
+                            ));
+                        }
+                        args.first().and_then(|v| match v {
+                            Value::String(cmd) => {
+                                let prog =
+                                    cmd.split_whitespace().next().unwrap_or(cmd.as_str());
+                                if prog.is_empty() {
+                                    None
+                                } else {
+                                    Some((
+                                        PermissionResource::System("exec".to_string()),
+                                        Some(prog),
+                                    ))
+                                }
+                            }
+                            _ => None,
+                        })
+                    } else if name == "getenv" || name == "setenv" {
+                        Some((PermissionResource::System("env".to_string()), None))
+                    } else {
+                        None
+                    };
+
+                    if let Some((resource, scope)) = preflight {
+                        self.permission_manager
+                            .check(&resource, scope)
+                            .map_err(|e| RuntimeError::new(format!("Permission error: {}", e)))?;
+                    }
+                }
+
+                // Fall back to stdlib — BcvmExecutor provides a secondary scopeless check
+                // for any stdlib function not covered by the pre-flight above.
                 struct BcvmExecutor<'a> {
                     pm: &'a PermissionManager,
                     safe_mode: bool,
@@ -539,9 +650,10 @@ impl BytecodeVM {
                         resource: &PermissionResource,
                         scope: Option<&str>,
                     ) -> Result<(), RuntimeError> {
-                        // Safe mode blocks process execution
+                        // Safe mode: exec functions are already blocked in the pre-flight above.
+                        // Guard here catches any exec call that bypasses the pre-flight.
                         if self.safe_mode {
-                            if let PermissionResource::Process(_) = resource {
+                            if matches!(resource, PermissionResource::System(a) if a == "exec") {
                                 return Err(RuntimeError::new(
                                     "exec() is disabled in safe mode (--safe-mode)".to_string(),
                                 ));

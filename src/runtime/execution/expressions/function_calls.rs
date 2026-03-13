@@ -19,100 +19,106 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         .map(|arg| super::ExpressionEvaluator::evaluate(vm, arg))
         .collect::<Result<_, _>>()?;
 
-    // Check permissions with audit logging and policy enforcement
+    // Single canonical permission gate: intent → capability → rate-limit → permission → audit
+    // Every privileged stdlib call passes through check_permission_with_audit, which internally
+    // enforces the full pipeline. Scope (path/hostname/cmd) is extracted here so the audit log
+    // and capability scope-matching receive the real resource value.
+
+    // Filesystem reads
+    if name == "read_file"
+        || name == "file_exists"
+        || name == "is_file"
+        || name == "is_dir"
+        || name == "list_dir"
     {
-        // Check permissions for I/O operations
-        if name == "read_file" || name == "write_file" || name == "delete" {
-            let path_opt = args.first().and_then(|v| match v {
-                Value::String(p) => Some(p.as_str()),
-                _ => None,
-            });
-
-            if let Some(path) = path_opt {
-                vm.check_rate_limit(name)?;
-                let action = if name == "read_file" {
-                    "read"
-                } else if name == "write_file" {
-                    "write"
-                } else {
-                    "delete"
-                };
-                vm.check_permission_with_audit(
-                    &PermissionResource::FileSystem(action.to_string()),
-                    Some(path),
-                )?;
-            }
+        if let Some(path) = args.first().and_then(|v| match v {
+            Value::String(p) => Some(p.as_str()),
+            _ => None,
+        }) {
+            vm.check_rate_limit(name)?;
+            vm.check_permission_with_audit(
+                &PermissionResource::FileSystem("read".to_string()),
+                Some(path),
+            )?;
         }
+    }
 
-        // Check permissions for network operations
-        if name == "http_get" || name == "http_post" || name == "tcp_connect" {
-            let hostname_opt = args.first().and_then(|v| match v {
-                Value::String(url) => Some(
-                    url.split("//")
-                        .nth(1)
-                        .and_then(|s| s.split('/').next())
-                        .and_then(|s| s.split(':').next())
-                        .unwrap_or(""),
-                ),
-                _ => None,
-            });
-
-            if let Some(hostname) = hostname_opt {
-                vm.check_rate_limit(name)?;
-                if !hostname.is_empty() {
-                    vm.check_permission_with_audit(
-                        &PermissionResource::Network("connect".to_string()),
-                        Some(hostname),
-                    )?;
-                }
-            }
+    // Filesystem writes / deletes
+    if name == "write_file"
+        || name == "append_file"
+        || name == "copy_file"
+        || name == "move_file"
+        || name == "temp_file"
+        || name == "watch_file"
+        || name == "symlink_create"
+        || name == "mkdir"
+        || name == "delete"
+        || name == "rmdir"
+    {
+        if let Some(path) = args.first().and_then(|v| match v {
+            Value::String(p) => Some(p.as_str()),
+            _ => None,
+        }) {
+            vm.check_rate_limit(name)?;
+            let action = if name == "delete" || name == "rmdir" {
+                "delete"
+            } else {
+                "write"
+            };
+            vm.check_permission_with_audit(
+                &PermissionResource::FileSystem(action.to_string()),
+                Some(path),
+            )?;
         }
+    }
 
-        // Check permissions for process execution
-        if name == "exec" {
-            let cmd_opt = args.first().and_then(|v| match v {
-                Value::String(cmd) => {
-                    let cmd_parts: Vec<&str> = cmd.split_whitespace().collect();
-                    cmd_parts.first().copied()
-                }
-                _ => None,
-            });
-
-            if let Some(cmd) = cmd_opt {
-                vm.check_rate_limit(name)?;
+    // Network connections
+    if name == "http_get"
+        || name == "http_post"
+        || name == "tcp_connect"
+        || name == "udp_send"
+        || name == "resolve"
+    {
+        let hostname_opt = args.first().and_then(|v| match v {
+            Value::String(url) => Some(
+                url.split("//")
+                    .nth(1)
+                    .and_then(|s| s.split('/').next())
+                    .and_then(|s| s.split(':').next())
+                    .unwrap_or(url.as_str()),
+            ),
+            _ => None,
+        });
+        if let Some(hostname) = hostname_opt {
+            vm.check_rate_limit(name)?;
+            if !hostname.is_empty() {
                 vm.check_permission_with_audit(
-                    &PermissionResource::System("exec".to_string()),
-                    Some(cmd),
+                    &PermissionResource::Network("connect".to_string()),
+                    Some(hostname),
                 )?;
             }
         }
     }
 
-    // Check intent before calling stdlib
-    // Get all needed values first to avoid borrow conflicts
-    let current_frame_opt = vm.call_stack_current_frame();
-    let caller_function_opt = current_frame_opt.map(|f| f.function_name.clone());
-    let action_resource_opt = vm.map_stdlib_to_action(name, &args);
-    let ai_meta_clone = vm.ai_metadata().clone(); // Clone to avoid borrow conflict
-
-    if let Some(caller_function) = caller_function_opt {
-        if let Some((action, resource)) = action_resource_opt {
-            if let Err(intent_err) = vm.check_intent(&caller_function, &action, &resource) {
-                // Log intent violation to audit trail
-                vm.audit_trail_log_action(
-                    format!("intent.violation.{}", action),
-                    resource.clone(),
-                    Some(format!("intent:{}", caller_function)),
-                    crate::runtime::audit::AuditResult::Denied,
-                    if ai_meta_clone.is_empty() {
-                        None
-                    } else {
-                        Some(&ai_meta_clone)
-                    },
-                );
-                return Err(intent_err);
-            }
+    // Process execution
+    if name == "exec" || name == "spawn" || name == "pipe_exec" {
+        let cmd_opt = args.first().and_then(|v| match v {
+            Value::String(cmd) => cmd.split_whitespace().next().map(|s| s.to_string()),
+            _ => None,
+        });
+        if let Some(cmd) = cmd_opt {
+            vm.check_rate_limit(name)?;
+            vm.check_permission_with_audit(
+                &PermissionResource::System("exec".to_string()),
+                Some(&cmd),
+            )?;
         }
+    }
+
+    // System environment access
+    if name == "getenv" || name == "setenv" {
+        vm.check_rate_limit(name)?;
+        vm.check_permission_with_audit(&PermissionResource::System("env".to_string()), None)?;
     }
 
     // Handle capability functions directly (before stdlib)

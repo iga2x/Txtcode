@@ -140,7 +140,9 @@ impl StdLib {
                 || name == "pipe_exec"
                 || name == "signal_send"
             {
-                Some(PermissionResource::Process(vec![name.to_string()]))
+                // System("exec") matches the AST VM path in function_calls.rs.
+                // PermissionResource::Process is for command whitelisting, not the exec gate.
+                Some(PermissionResource::System("exec".to_string()))
             } else if name == "getenv" || name == "setenv" {
                 Some(PermissionResource::System("env".to_string()))
             } else {

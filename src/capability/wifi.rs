@@ -1,11 +1,18 @@
-// WiFi capabilities - wifi.capture, wifi.deauth, etc.
+// WiFi capabilities - string constants for a future PermissionResource::WiFi variant.
 //
-// NOTE: These constants are NOT parsed by `PermissionResource::from_string` and
-// have no runtime enforcement path in v0.4. They are placeholders for a future
-// `PermissionResource::WiFi` variant. Do not use in env.toml — the string will
-// be silently ignored by the permission loader.
+// STATUS: UNENFORCED STUB — no runtime enforcement in any current code path.
+//
+// These constants are NOT parsed by `PermissionResource::from_string`.
+// Adding them to env.toml or calling `grant_permission` with these strings
+// has NO EFFECT. Permission checks for WiFi operations always fail because
+// `PermissionResource::WiFi` does not exist yet.
+//
+// Do not expose these to users as security controls. Before graduation:
+//   1. Add `PermissionResource::WiFi(String)` to permissions.rs
+//   2. Add WiFi parsing to `PermissionResource::from_string`
+//   3. Wire enforcement through `check_permission_with_audit`
 
-/// WiFi capability definitions (experimental — no runtime enforcement in v0.4)
+/// WiFi capability string constants (UNENFORCED — see module doc above)
 pub struct WiFiCapability;
 
 impl WiFiCapability {

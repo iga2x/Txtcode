@@ -1,81 +1,118 @@
+//! `txtcode compile` / `txtcode inspect` — compile to bytecode and inspect bytecode files.
+
 use crate::compiler::bytecode::BytecodeCompiler;
 use crate::compiler::optimizer::{OptimizationLevel, Optimizer};
+use crate::config::Config;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
-use crate::security::BytecodeEncryptor;
-use crate::typecheck::checker::TypeChecker;
+use crate::tools::logger;
+use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// Compile a Txtcode file
 pub fn compile_file(
-    input: &Path,
-    output: Option<&Path>,
+    file: &PathBuf,
+    output: Option<&PathBuf>,
     optimize: &str,
-    encrypt: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Read source file
-    let source = fs::read_to_string(input)?;
+    let user_config = Config::load_config().unwrap_or_default();
+    let optimize = if optimize == "basic" && user_config.compiler.optimization != "basic" {
+        user_config.compiler.optimization.as_str()
+    } else {
+        optimize
+    };
 
-    // Lex
-    let mut lexer = Lexer::new(source);
-    let tokens = lexer.tokenize()?;
+    let source = fs::read_to_string(file)?;
 
-    // Parse
-    let mut parser = Parser::new(tokens);
-    let program = parser.parse()?;
-
-    // Type check
-    let mut type_checker = TypeChecker::new();
-    if let Err(errors) = type_checker.check(&program) {
-        eprintln!("Type checking errors:");
-        for error in &errors {
-            eprintln!("  - {}", error);
+    if user_config.package.cache_packages {
+        let cache_key = generate_cache_key(&source, optimize)?;
+        let cache_path = Config::get_cache_path(&cache_key)?;
+        if cache_path.exists() {
+            logger::log_info(&format!("Using cached bytecode for: {}", file.display()));
+            let output_path = output
+                .cloned()
+                .unwrap_or_else(|| file.with_extension("txtc"));
+            fs::copy(&cache_path, &output_path)?;
+            println!("Compiled (from cache) to: {}", output_path.display());
+            return Ok(());
         }
-        return Err(format!("{} type error(s) — compilation aborted", errors.len()).into());
     }
 
-    // Compile to bytecode
-    let mut compiler = BytecodeCompiler::new();
-    let mut bytecode = compiler.compile(&program);
+    logger::log_info(&format!("Compiling: {}", file.display()));
 
-    // Optimize
+    let mut lexer = Lexer::new(source.clone());
+    let tokens = lexer.tokenize()?;
+    let mut parser = Parser::new(tokens);
+    let mut program = parser.parse()?;
+
     let opt_level = match optimize {
         "none" => OptimizationLevel::None,
-        "basic" => OptimizationLevel::Basic,
         "aggressive" => {
-            // Aggressive optimization removed - fall back to basic
-            eprintln!("Warning: 'aggressive' optimization level removed. Using 'basic' instead.");
+            eprintln!("Warning: 'aggressive' optimization not implemented. Using 'basic'.");
             OptimizationLevel::Basic
         }
         _ => OptimizationLevel::Basic,
     };
-
     let optimizer = Optimizer::new(opt_level);
-    bytecode = optimizer.optimize_bytecode(&bytecode)?;
+    optimizer.optimize_ast(&mut program);
 
-    // Determine output path
-    let output_path = if let Some(out) = output {
-        out.to_path_buf()
-    } else {
-        let mut out = input.to_path_buf();
-        out.set_extension("txtc"); // Txtcode Bytecode
-        out
-    };
+    let mut compiler = BytecodeCompiler::new();
+    let bytecode_program = compiler.compile(&program);
+    let serialized = bincode::serialize(&bytecode_program)?;
 
-    // Serialize bytecode
-    let serialized_bytes = bincode::serialize(&bytecode)?;
-
-    // Encrypt (if requested)
-    if encrypt {
-        let encryptor = BytecodeEncryptor::new();
-        let encrypted = encryptor.encrypt(&serialized_bytes)?;
-        fs::write(&output_path, encrypted.serialize())?;
-        println!("Compiled and encrypted to: {}", output_path.display());
-    } else {
-        fs::write(&output_path, &serialized_bytes)?;
-        println!("Compiled to: {}", output_path.display());
+    if user_config.package.cache_packages {
+        let cache_key = generate_cache_key(&source, optimize)?;
+        let cache_path = Config::get_cache_path(&cache_key)?;
+        if let Some(parent) = cache_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&cache_path, &serialized)?;
     }
 
+    let output_path = output
+        .cloned()
+        .unwrap_or_else(|| file.with_extension("txtc"));
+    fs::write(&output_path, serialized)?;
+    println!("Compiled to: {}", output_path.display());
     Ok(())
+}
+
+pub fn inspect_bytecode(file: &Path, format: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::compiler::bytecode::Bytecode;
+    let bytes = std::fs::read(file)?;
+    let bytecode: Bytecode = bincode::deserialize(&bytes).map_err(|e| {
+        format!(
+            "Failed to deserialize bytecode: {}. Is this a compiled .tcc file?",
+            e
+        )
+    })?;
+    match format {
+        "json" => {
+            println!("[");
+            let last = bytecode.instructions.len().saturating_sub(1);
+            for (i, instr) in bytecode.instructions.iter().enumerate() {
+                let comma = if i < last { "," } else { "" };
+                println!("  {{\"addr\":{},\"op\":{:?}}}{}", i, instr, comma);
+            }
+            println!("]");
+        }
+        _ => {
+            println!("=== Bytecode: {} ===", file.display());
+            println!("Instructions: {}", bytecode.instructions.len());
+            println!("Constants: {}", bytecode.constants.len());
+            println!("---");
+            for (i, instr) in bytecode.instructions.iter().enumerate() {
+                println!("{:04}  {:?}", i, instr);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn generate_cache_key(source: &str, optimize: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut hasher = Sha256::new();
+    hasher.update(source.as_bytes());
+    hasher.update(optimize.as_bytes());
+    let hash = hasher.finalize();
+    Ok(hex::encode(&hash[..16]))
 }

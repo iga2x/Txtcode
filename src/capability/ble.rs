@@ -1,11 +1,18 @@
-// BLE capabilities - ble.scan, ble.fuzz, etc.
+// BLE capabilities - string constants for a future PermissionResource::BLE variant.
 //
-// NOTE: These constants are NOT parsed by `PermissionResource::from_string` and
-// have no runtime enforcement path in v0.4. They are placeholders for a future
-// `PermissionResource::BLE` variant. Do not use in env.toml — the string will
-// be silently ignored by the permission loader.
+// STATUS: UNENFORCED STUB — no runtime enforcement in any current code path.
+//
+// These constants are NOT parsed by `PermissionResource::from_string`.
+// Adding them to env.toml or calling `grant_permission` with these strings
+// has NO EFFECT. Permission checks for BLE operations always fail because
+// `PermissionResource::BLE` does not exist yet.
+//
+// Do not expose these to users as security controls. Before graduation:
+//   1. Add `PermissionResource::BLE(String)` to permissions.rs
+//   2. Add BLE parsing to `PermissionResource::from_string`
+//   3. Wire enforcement through `check_permission_with_audit`
 
-/// BLE capability definitions (experimental — no runtime enforcement in v0.4)
+/// BLE capability string constants (UNENFORCED — see module doc above)
 pub struct BLECapability;
 
 impl BLECapability {

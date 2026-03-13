@@ -1,12 +1,20 @@
+pub mod bench;
+pub mod check;
 pub mod compile;
+pub mod debug;
+pub mod doc;
+pub mod doctor;
 pub mod env;
+pub mod format;
+pub mod init;
+pub mod lint;
 pub mod migrate;
 pub mod package;
+pub mod repl;
 pub mod run;
 pub mod self_manage;
+pub mod test_cmd;
 
-pub use compile::*;
 pub use env::*;
 pub use migrate::*;
 pub use package::*;
-pub use run::*;

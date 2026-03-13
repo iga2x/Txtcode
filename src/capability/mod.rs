@@ -1,6 +1,12 @@
-// Capability module - capability definitions and management
-// Network and filesystem capabilities are used by the runtime permission system.
-// WiFi and BLE capability modules are experimental stubs (no runtime integration in v0.4).
+// Capability module - capability token management and capability string constants.
+//
+// ENFORCED (used by VirtualMachine):
+//   manager  — CapabilityManager, Capability, CapabilityError, CapabilityEvent
+//   filesystem, net — FilesystemCapability / NetworkCapability string constants
+//
+// UNENFORCED STUBS (no PermissionResource variant, no runtime check):
+//   wifi — WiFiCapability string constants only; see wifi.rs for graduation checklist
+//   ble  — BLECapability  string constants only; see ble.rs  for graduation checklist
 
 pub mod ble;
 pub mod filesystem;
