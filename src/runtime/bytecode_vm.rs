@@ -4,6 +4,7 @@ use crate::policy::PolicyEngine;
 use crate::runtime::audit::{AIMetadata, AuditResult, AuditTrail};
 use crate::runtime::core::{ScopeManager, Value};
 use crate::runtime::errors::RuntimeError;
+use crate::runtime::gc::GarbageCollector;
 use crate::runtime::intent::{IntentChecker, IntentDeclaration};
 use crate::runtime::permissions::{Permission, PermissionManager, PermissionResource};
 use crate::runtime::security::RuntimeSecurity;
@@ -72,6 +73,11 @@ pub struct BytecodeVM {
     /// Cancellation flag: set to `true` by an external caller (e.g. timeout handler)
     /// to stop execution at the next instruction boundary.
     cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// Bytecode currently being executed — stored so `call_lambda_inline` can
+    /// re-enter the instruction loop without needing extra parameters.
+    current_bytecode: Option<(Vec<crate::compiler::bytecode::Instruction>, Vec<crate::compiler::bytecode::Constant>)>,
+    /// Garbage collector — tracks allocation metrics (Rust drop handles real memory).
+    gc: GarbageCollector,
 }
 
 impl BytecodeVM {
@@ -101,6 +107,8 @@ impl BytecodeVM {
             runtime_security: RuntimeSecurity::new(),
             function_name_stack: Vec::new(),
             cancel_flag: None,
+            current_bytecode: None,
+            gc: GarbageCollector::new(),
         }
     }
 
@@ -373,14 +381,16 @@ impl BytecodeVM {
     }
 
     /// Map a PermissionResource to its action string (helper for audit/capability checks).
+    /// Format matches the AST VM (vm/permissions.rs) so intent declarations registered
+    /// via either VM use the same action namespace: "fs.read", "net.connect", etc.
     fn get_action_from_resource(&self, resource: &PermissionResource) -> String {
         match resource {
-            PermissionResource::FileSystem(a) => a.clone(),
-            PermissionResource::Network(a) => a.clone(),
-            PermissionResource::System(a) => a.clone(),
-            PermissionResource::Process(_) => "exec".to_string(),
-            PermissionResource::WiFi(a) => a.clone(),
-            PermissionResource::Bluetooth(a) => a.clone(),
+            PermissionResource::FileSystem(a) => format!("fs.{}", a),
+            PermissionResource::Network(a) => format!("net.{}", a),
+            PermissionResource::System(a) => format!("sys.{}", a),
+            PermissionResource::Process(_) => "process.exec".to_string(),
+            PermissionResource::WiFi(a) => format!("wifi.{}", a),
+            PermissionResource::Bluetooth(a) => format!("ble.{}", a),
         }
     }
 
@@ -479,6 +489,9 @@ impl BytecodeVM {
         // Start execution timer for max-execution-time policy checks
         self.policy_engine.start_execution();
 
+        // Store bytecode so call_lambda_inline can re-enter the execution loop.
+        self.current_bytecode = Some((bytecode.instructions.clone(), bytecode.constants.clone()));
+
         while self.ip < bytecode.instructions.len() {
             // Check external cancellation flag at each instruction boundary.
             if self.cancel_flag.as_ref().is_some_and(|f| {
@@ -493,7 +506,19 @@ impl BytecodeVM {
             self.ip += 1;
             let instruction = bytecode.instructions[ip].clone();
             match self.execute_instruction(&instruction, &bytecode.constants) {
-                Ok(()) => {}
+                Ok(()) => {
+                    // Register heap-allocated values for GC tracking
+                    if let Some(top) = self.stack.last() {
+                        match top {
+                            Value::Array(_) | Value::Map(_) | Value::Set(_) | Value::Function(_, _, _, _) => {
+                                self.gc.register_allocation(top);
+                            }
+                            _ => {}
+                        }
+                    }
+                    // Threshold-gated collection (runs only every N allocations)
+                    self.gc.collect(&self.stack, &self.variables, &[]);
+                }
                 Err(e) => {
                     // Control-flow signals (return/break/continue) must bypass try-catch entirely
                     // and propagate directly to their respective boundary handlers.
@@ -516,7 +541,128 @@ impl BytecodeVM {
             }
         }
 
+        self.current_bytecode = None;
         Ok(self.stack.pop().unwrap_or(Value::Null))
+    }
+
+    /// Execute a registered bytecode function by name with the given arguments.
+    /// Used by `call_hof_with_bytecode_lambda` to implement HOF callbacks inline.
+    fn call_lambda_inline(&mut self, func_name: &str, args: &[Value]) -> Result<Value, RuntimeError> {
+        let (params, start_ip) = match self.functions.get(func_name).cloned() {
+            Some(f) => f,
+            None => return Err(RuntimeError::new(format!("Lambda '{}' not found", func_name))),
+        };
+
+        let (instrs, consts) = match self.current_bytecode.clone() {
+            Some(bc) => bc,
+            None => return Err(RuntimeError::new("No bytecode context for HOF lambda call".to_string())),
+        };
+
+        // Save VM state
+        let saved_ip = self.ip;
+        let saved_vars = std::mem::take(&mut self.variables);
+        let saved_stack_len = self.stack.len();
+        let saved_call_stack_len = self.call_stack.len();
+        let saved_catch_stack_len = self.catch_stack.len();
+
+        // Set up closure environment, then bind args
+        if let Some(closure_env) = self.closure_envs.get(func_name).cloned() {
+            self.variables = closure_env;
+        }
+        for (param, arg) in params.iter().zip(args.iter()) {
+            self.variables.insert(param.clone(), arg.clone());
+        }
+
+        // Run from the lambda's start IP until it returns (ip == usize::MAX or out of range)
+        self.ip = start_ip;
+        let mut exec_err: Option<RuntimeError> = None;
+        loop {
+            if self.ip == usize::MAX || self.ip >= instrs.len() {
+                break;
+            }
+            let ip = self.ip;
+            self.ip += 1;
+            let instr = instrs[ip].clone();
+            if let Err(e) = self.execute_instruction(&instr, &consts) {
+                exec_err = Some(e);
+                break;
+            }
+        }
+
+        // Collect return value (pushed by ReturnValue before setting ip=usize::MAX)
+        let return_val = if self.stack.len() > saved_stack_len {
+            self.stack.pop().unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
+
+        // Restore VM state
+        self.ip = saved_ip;
+        self.variables = saved_vars;
+        self.stack.truncate(saved_stack_len);
+        self.call_stack.truncate(saved_call_stack_len);
+        self.catch_stack.truncate(saved_catch_stack_len);
+
+        match exec_err {
+            Some(e) => Err(e),
+            None => Ok(return_val),
+        }
+    }
+
+    /// Inline implementation of map/filter/reduce/find when the callback is a bytecode lambda.
+    fn call_hof_with_bytecode_lambda(&mut self, hof_name: &str, args: &[Value], lambda_name: &str) -> Result<Value, RuntimeError> {
+        match hof_name {
+            "map" => {
+                let arr = match args.first() {
+                    Some(Value::Array(a)) => a.clone(),
+                    _ => return Err(RuntimeError::new("map: first argument must be an array".to_string())),
+                };
+                let mut result = Vec::with_capacity(arr.len());
+                for elem in arr {
+                    result.push(self.call_lambda_inline(lambda_name, &[elem])?);
+                }
+                Ok(Value::Array(result))
+            }
+            "filter" => {
+                let arr = match args.first() {
+                    Some(Value::Array(a)) => a.clone(),
+                    _ => return Err(RuntimeError::new("filter: first argument must be an array".to_string())),
+                };
+                let mut result = Vec::new();
+                for elem in arr {
+                    let pred = self.call_lambda_inline(lambda_name, &[elem.clone()])?;
+                    if matches!(pred, Value::Boolean(true)) {
+                        result.push(elem);
+                    }
+                }
+                Ok(Value::Array(result))
+            }
+            "reduce" => {
+                let arr = match args.first() {
+                    Some(Value::Array(a)) => a.clone(),
+                    _ => return Err(RuntimeError::new("reduce: first argument must be an array".to_string())),
+                };
+                let mut acc = args.get(2).cloned().unwrap_or(Value::Null);
+                for elem in arr {
+                    acc = self.call_lambda_inline(lambda_name, &[acc, elem])?;
+                }
+                Ok(acc)
+            }
+            "find" => {
+                let arr = match args.first() {
+                    Some(Value::Array(a)) => a.clone(),
+                    _ => return Err(RuntimeError::new("find: first argument must be an array".to_string())),
+                };
+                for elem in arr {
+                    let pred = self.call_lambda_inline(lambda_name, &[elem.clone()])?;
+                    if matches!(pred, Value::Boolean(true)) {
+                        return Ok(elem);
+                    }
+                }
+                Ok(Value::Null)
+            }
+            _ => Err(RuntimeError::new(format!("Unknown HOF: {}", hof_name))),
+        }
     }
 
     fn execute_instruction(
@@ -867,6 +1013,27 @@ impl BytecodeVM {
                     }
                 }
 
+                // ── HOF bytecode-lambda interception ──────────────────────────
+                //
+                // When map/filter/reduce/find is called with a bytecode lambda
+                // (Value::String pointing to a registered function), handle the HOF
+                // inline using call_lambda_inline rather than delegating to stdlib,
+                // which cannot re-enter the bytecode VM.
+                if matches!(name.as_str(), "map" | "filter" | "reduce" | "find") {
+                    // Lambda is always args[1] for these HOFs
+                    let lambda_opt = args.get(1).and_then(|v| match v {
+                        Value::String(s) if self.functions.contains_key(s.as_str()) => {
+                            Some(s.clone())
+                        }
+                        _ => None,
+                    });
+                    if let Some(lambda_name) = lambda_opt {
+                        let result = self.call_hof_with_bytecode_lambda(name, &args, &lambda_name)?;
+                        self.stack.push(result);
+                        return Ok(());
+                    }
+                }
+
                 // ── Full 6-layer security pre-flight check ────────────────────
                 //
                 // For well-known stdlib functions we extract the real scope argument
@@ -876,6 +1043,14 @@ impl BytecodeVM {
                 // This mirrors the AST VM's check_permission_with_audit() path in
                 // src/runtime/execution/expressions/function_calls.rs.
                 {
+                    // Function-name rate limit (parity with AST VM: function_calls.rs
+                    // calls check_rate_limit(name) before check_permission_with_audit).
+                    // This allows per-function call frequency limits independent of the
+                    // resource-level rate limit that runs inside check_permission_with_audit.
+                    if let Err(e) = self.policy_engine.check_rate_limit(name) {
+                        return Err(RuntimeError::new(format!("Policy error: {}", e)));
+                    }
+
                     // Resolve the (resource, scope) pair from function name + args.
                     let preflight: Option<(PermissionResource, Option<&str>)> = if name
                         == "read_file"
@@ -1013,12 +1188,43 @@ impl BytecodeVM {
                 impl<'a> FunctionExecutor for BcvmExecutor<'a> {
                     fn call_function_value(
                         &mut self,
-                        _func: &Value,
-                        _args: &[Value],
+                        func: &Value,
+                        args: &[Value],
                     ) -> Result<Value, RuntimeError> {
-                        Err(RuntimeError::new(
-                            "Higher-order stdlib calls not supported in bytecode VM".to_string(),
-                        ))
+                        match func {
+                            Value::Function(name, params, body, captured_env) => {
+                                use crate::runtime::execution::expressions::call_user_function;
+                                use crate::parser::ast::Expression;
+                                let mut temp_vm = crate::runtime::vm::VirtualMachine::new();
+                                let dummy_expr = Expression::Identifier("__lambda__".to_string());
+                                call_user_function(
+                                    &mut temp_vm,
+                                    name,
+                                    params,
+                                    body,
+                                    captured_env,
+                                    args,
+                                    &dummy_expr,
+                                )
+                            }
+                            _ => {
+                                let kind = match func {
+                                    Value::Integer(_) => "int",
+                                    Value::Float(_) => "float",
+                                    Value::String(_) => "string",
+                                    Value::Boolean(_) => "bool",
+                                    Value::Array(_) => "array",
+                                    Value::Map(_) => "map",
+                                    Value::Set(_) => "set",
+                                    Value::Null => "null",
+                                    _ => "value",
+                                };
+                                Err(RuntimeError::new(format!(
+                                    "Cannot call {} as a function",
+                                    kind
+                                )))
+                            }
+                        }
                     }
                 }
                 impl<'a> PermissionChecker for BcvmExecutor<'a> {
@@ -1329,6 +1535,14 @@ impl BytecodeVM {
                             sub_vm.active_capability = Some(token.clone());
                         }
                         sub_vm.module_search_paths = self.module_search_paths.clone();
+                        // Inherit policy engine (rate limits, max_execution_time, AI control),
+                        // intent checker (per-function allowed/forbidden actions), and
+                        // capability manager (active tokens with expiry and deny-override).
+                        // Without this, module code bypasses rate limiting, intent constraints,
+                        // and capability scoping that the caller is subject to.
+                        sub_vm.policy_engine = self.policy_engine.clone();
+                        sub_vm.intent_checker = self.intent_checker.clone();
+                        sub_vm.capability_manager = self.capability_manager.clone();
                         sub_vm.execute(&module_bc).map_err(|e| {
                             RuntimeError::new(format!(
                                 "Module '{}' runtime error: {}",
@@ -1614,26 +1828,170 @@ impl BytecodeVM {
                 let end_val = self.pop_value()?;
                 let start_val = self.pop_value()?;
                 let target = self.pop_value()?;
-                let to_opt = |v: &Value| -> Option<usize> {
-                    match v {
-                        Value::Integer(i) => Some(*i as usize),
-                        _ => None,
+
+                // Step: Value::Null means omitted (default 1). Zero is a runtime error.
+                let step_raw: i64 = match &step_val {
+                    Value::Integer(i) => *i,
+                    Value::Null => 1,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "Slice step must be an integer".to_string(),
+                        ))
                     }
                 };
-                let step = to_opt(&step_val).unwrap_or(1).max(1);
+                if step_raw == 0 {
+                    return Err(RuntimeError::new(
+                        "Slice step cannot be zero".to_string(),
+                    ));
+                }
+
                 match target {
                     Value::Array(arr) => {
-                        let s = to_opt(&start_val).unwrap_or(0);
-                        let e = to_opt(&end_val).unwrap_or(arr.len()).min(arr.len());
-                        let sliced: Vec<Value> = arr[s..e].iter().step_by(step).cloned().collect();
-                        self.stack.push(Value::Array(sliced));
+                        let len = arr.len();
+                        // Resolve an index: negative counts from end, Null uses the default.
+                        let resolve =
+                            |v: &Value, default: usize| -> Result<usize, RuntimeError> {
+                                match v {
+                                    Value::Integer(i) if *i < 0 => {
+                                        let r = len as i64 + i;
+                                        if r < 0 {
+                                            Err(RuntimeError::new(format!(
+                                                "Slice index {} out of bounds for array of length {}",
+                                                i, len
+                                            )))
+                                        } else {
+                                            Ok(r as usize)
+                                        }
+                                    }
+                                    Value::Integer(i) => Ok(*i as usize),
+                                    Value::Null => Ok(default),
+                                    _ => Err(RuntimeError::new(
+                                        "Slice index must be an integer".to_string(),
+                                    )),
+                                }
+                            };
+
+                        if step_raw < 0 {
+                            if len == 0 {
+                                self.stack.push(Value::Array(vec![]));
+                            } else {
+                                let abs_step = (-step_raw) as usize;
+                                let s = resolve(&start_val, len - 1)?;
+                                let e = resolve(&end_val, 0)?;
+                                if s >= len || e >= len {
+                                    return Err(RuntimeError::new(format!(
+                                        "Slice index out of bounds (array len={})",
+                                        len
+                                    )));
+                                }
+                                let mut result = Vec::new();
+                                let mut idx = s;
+                                while idx > e {
+                                    result.push(arr[idx].clone());
+                                    if idx < abs_step {
+                                        break;
+                                    }
+                                    idx -= abs_step;
+                                }
+                                if idx == e {
+                                    result.push(arr[idx].clone());
+                                }
+                                self.stack.push(Value::Array(result));
+                            }
+                        } else {
+                            let abs_step = step_raw as usize;
+                            let s = resolve(&start_val, 0)?;
+                            let e = resolve(&end_val, len)?;
+                            if s > len || e > len {
+                                return Err(RuntimeError::new(format!(
+                                    "Slice index out of bounds (array len={})",
+                                    len
+                                )));
+                            }
+                            if s > e {
+                                return Err(RuntimeError::new(format!(
+                                    "Slice start ({}) cannot be greater than end ({})",
+                                    s, e
+                                )));
+                            }
+                            let sliced: Vec<Value> =
+                                arr[s..e].iter().step_by(abs_step).cloned().collect();
+                            self.stack.push(Value::Array(sliced));
+                        }
                     }
                     Value::String(s_str) => {
                         let chars: Vec<char> = s_str.chars().collect();
-                        let s = to_opt(&start_val).unwrap_or(0);
-                        let e = to_opt(&end_val).unwrap_or(chars.len()).min(chars.len());
-                        let sliced: String = chars[s..e].iter().step_by(step).collect();
-                        self.stack.push(Value::String(sliced));
+                        let len = chars.len();
+                        // Resolve a char index: negative counts from end, Null uses the default.
+                        let resolve =
+                            |v: &Value, default: usize| -> Result<usize, RuntimeError> {
+                                match v {
+                                    Value::Integer(i) if *i < 0 => {
+                                        let r = len as i64 + i;
+                                        if r < 0 {
+                                            Err(RuntimeError::new(format!(
+                                                "String slice index {} out of bounds for string of length {}",
+                                                i, len
+                                            )))
+                                        } else {
+                                            Ok(r as usize)
+                                        }
+                                    }
+                                    Value::Integer(i) => Ok(*i as usize),
+                                    Value::Null => Ok(default),
+                                    _ => Err(RuntimeError::new(
+                                        "String slice index must be an integer".to_string(),
+                                    )),
+                                }
+                            };
+
+                        if step_raw < 0 {
+                            if len == 0 {
+                                self.stack.push(Value::String(String::new()));
+                            } else {
+                                let abs_step = (-step_raw) as usize;
+                                let s = resolve(&start_val, len - 1)?;
+                                let e = resolve(&end_val, 0)?;
+                                if s >= len || e >= len {
+                                    return Err(RuntimeError::new(format!(
+                                        "String slice index out of bounds (string len={})",
+                                        len
+                                    )));
+                                }
+                                let mut result = Vec::new();
+                                let mut idx = s;
+                                while idx > e {
+                                    result.push(chars[idx]);
+                                    if idx < abs_step {
+                                        break;
+                                    }
+                                    idx -= abs_step;
+                                }
+                                if idx == e {
+                                    result.push(chars[idx]);
+                                }
+                                self.stack.push(Value::String(result.into_iter().collect()));
+                            }
+                        } else {
+                            let abs_step = step_raw as usize;
+                            let s = resolve(&start_val, 0)?;
+                            let e = resolve(&end_val, len)?;
+                            if s > len || e > len {
+                                return Err(RuntimeError::new(format!(
+                                    "String slice index out of bounds (string len={})",
+                                    len
+                                )));
+                            }
+                            if s > e {
+                                return Err(RuntimeError::new(format!(
+                                    "String slice start ({}) cannot be greater than end ({})",
+                                    s, e
+                                )));
+                            }
+                            let sliced: String =
+                                chars[s..e].iter().step_by(abs_step).collect();
+                            self.stack.push(Value::String(sliced));
+                        }
                     }
                     _ => {
                         return Err(RuntimeError::new(

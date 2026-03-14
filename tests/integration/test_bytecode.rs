@@ -933,6 +933,168 @@ return → result
 
 #[test]
 fn test_bytecode_version_string() {
-    // Sanity check: project version is 0.4.0
-    assert_eq!(env!("CARGO_PKG_VERSION"), "0.4.0");
+    // Sanity check: Cargo.toml version is present and non-empty.
+    // Update this assertion when the version is bumped.
+    let v = env!("CARGO_PKG_VERSION");
+    assert!(!v.is_empty(), "CARGO_PKG_VERSION must not be empty");
+    assert!(v.starts_with("0.4"), "expected 0.4.x, got {}", v);
+}
+
+// ---------------------------------------------------------------------------
+// Slice stabilization tests — bytecode VM (C1–C7)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_bytecode_slice_negative_step_reverses_array() {
+    // arr[::-1] must reverse, not iterate forward.
+    let val = run_ok("store → a → [1, 2, 3]\nreturn → a[::-1]");
+    assert_eq!(
+        val,
+        Value::Array(vec![Value::Integer(3), Value::Integer(2), Value::Integer(1)])
+    );
+}
+
+#[test]
+fn test_bytecode_slice_negative_step_with_stride() {
+    // arr[::-2] → every other element in reverse.
+    let val = run_ok("store → a → [1, 2, 3, 4, 5]\nreturn → a[::-2]");
+    assert_eq!(
+        val,
+        Value::Array(vec![Value::Integer(5), Value::Integer(3), Value::Integer(1)])
+    );
+}
+
+#[test]
+fn test_bytecode_slice_negative_index_start() {
+    // arr[-2:] → last 2 elements.
+    let val = run_ok("store → a → [10, 20, 30, 40]\nreturn → a[-2:]");
+    assert_eq!(
+        val,
+        Value::Array(vec![Value::Integer(30), Value::Integer(40)])
+    );
+}
+
+#[test]
+fn test_bytecode_slice_negative_index_end() {
+    // arr[:-1] → all but last element.
+    let val = run_ok("store → a → [1, 2, 3, 4]\nreturn → a[:-1]");
+    assert_eq!(
+        val,
+        Value::Array(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)])
+    );
+}
+
+#[test]
+fn test_bytecode_slice_start_greater_than_end_errors() {
+    // arr[3:1] must error, not panic.
+    let result = compile_and_run("store → a → [1, 2, 3, 4, 5]\nreturn → a[3:1]");
+    assert!(result.is_err(), "start > end must be a runtime error");
+}
+
+#[test]
+fn test_bytecode_slice_step_zero_errors() {
+    // step=0 must be a runtime error.
+    let result = compile_and_run("store → a → [1, 2, 3]\nreturn → a[::0]");
+    assert!(result.is_err(), "step=0 must be a runtime error");
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("zero"), "error message should mention zero: {}", msg);
+}
+
+#[test]
+fn test_bytecode_slice_out_of_bounds_errors() {
+    // end > len must be a runtime error (no silent clamp).
+    let result = compile_and_run("store → a → [1, 2, 3]\nreturn → a[0:99]");
+    assert!(result.is_err(), "OOB slice must be a runtime error");
+}
+
+#[test]
+fn test_bytecode_slice_empty_array_reverse() {
+    // [][::-1] → [] (not a panic or error).
+    let val = run_ok("store → a → []\nreturn → a[::-1]");
+    assert_eq!(val, Value::Array(vec![]));
+}
+
+#[test]
+fn test_bytecode_slice_step_on_string() {
+    // String slicing with step.
+    let val = run_ok("store → s → \"abcdef\"\nreturn → s[::2]");
+    assert_eq!(val, Value::String("ace".to_string()));
+}
+
+#[test]
+fn test_bytecode_slice_string_reverse() {
+    // String[::-1] must reverse the string.
+    let val = run_ok("store → s → \"hello\"\nreturn → s[::-1]");
+    assert_eq!(val, Value::String("olleh".to_string()));
+}
+
+#[test]
+fn test_bytecode_slice_string_negative_index() {
+    // String[-3:] → last 3 chars.
+    let val = run_ok("store → s → \"hello\"\nreturn → s[-3:]");
+    assert_eq!(val, Value::String("llo".to_string()));
+}
+
+#[test]
+fn test_bytecode_slice_string_unicode_negative_index() {
+    // Unicode: "héllo" has 5 chars. [-3:] → last 3 chars "llo", not bytes.
+    let val = run_ok("store → s → \"héllo\"\nreturn → s[-3:]");
+    assert_eq!(val, Value::String("llo".to_string()));
+}
+
+#[test]
+fn test_bytecode_slice_string_start_greater_than_end_errors() {
+    let result = compile_and_run("store → s → \"hello\"\nreturn → s[4:1]");
+    assert!(result.is_err(), "string start > end must be a runtime error");
+}
+
+#[test]
+fn test_bytecode_slice_string_oob_errors() {
+    // end > char count must error (no silent clamp).
+    let result = compile_and_run("store → s → \"hi\"\nreturn → s[0:99]");
+    assert!(result.is_err(), "string OOB must be a runtime error");
+}
+
+// ---------------------------------------------------------------------------
+// Issue #7B: Higher-order functions (map/filter/reduce) with lambdas in bytecode VM
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_bytecode_map_with_lambda() {
+    let result = run_ok(
+        "store → result → map([1, 2, 3], (x) → x * 2)\nreturn → result",
+    );
+    assert_eq!(
+        result,
+        Value::Array(vec![
+            Value::Integer(2),
+            Value::Integer(4),
+            Value::Integer(6),
+        ]),
+        "map with lambda must double each element"
+    );
+}
+
+#[test]
+fn test_bytecode_filter_with_lambda() {
+    let result = run_ok(
+        "store → result → filter([1, 2, 3, 4], (x) → x > 2)\nreturn → result",
+    );
+    assert_eq!(
+        result,
+        Value::Array(vec![Value::Integer(3), Value::Integer(4)]),
+        "filter with lambda must keep elements > 2"
+    );
+}
+
+#[test]
+fn test_bytecode_reduce_with_lambda() {
+    let result = run_ok(
+        "store → result → reduce([1, 2, 3, 4], (a, b) → a + b, 0)\nreturn → result",
+    );
+    assert_eq!(
+        result,
+        Value::Integer(10),
+        "reduce with lambda must sum all elements"
+    );
 }

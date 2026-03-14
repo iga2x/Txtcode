@@ -1,7 +1,11 @@
 use crate::runtime::core::Value;
 use std::collections::{HashMap, HashSet};
 
-/// Mark-and-sweep garbage collector
+/// Mark-and-sweep garbage collector.
+///
+/// The sweep phase updates allocation statistics only — Rust's ownership and drop
+/// traits handle actual memory reclamation. This tracker is a future hook point
+/// for cross-VM allocation metrics and optional external memory pressure reporting.
 pub struct GarbageCollector {
     allocated_objects: HashSet<*const Value>,
     mark_set: HashSet<*const Value>,

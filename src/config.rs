@@ -299,7 +299,7 @@ optimization = "basic"
 # Default target: bytecode, native, wasm
 target = "bytecode"
 
-# Enable obfuscation by default
+# Obfuscation (planned — no-op stub in v0.4; setting has no effect yet)
 obfuscate = false
 
 # Enable encryption by default

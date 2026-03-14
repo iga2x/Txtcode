@@ -1,6 +1,6 @@
 # Txt-code Syntax Reference
 
-Quick reference guide for Txt-code v0.4 syntax.
+Quick reference guide for Txt-code v0.4.0 syntax.
 
 ## Basic Syntax
 

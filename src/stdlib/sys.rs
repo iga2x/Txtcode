@@ -21,6 +21,13 @@ impl SysLib {
         match name {
             "getenv" => {
                 if let Some(Value::String(key)) = args.first() {
+                    if let Some(checker) = permission_checker {
+                        use crate::runtime::permissions::PermissionResource;
+                        checker.check_permission(
+                            &PermissionResource::System("env".to_string()),
+                            Some(key.as_str()),
+                        )?;
+                    }
                     Ok(Value::String(std::env::var(key).unwrap_or_default()))
                 } else {
                     Err(RuntimeError::new(
@@ -265,6 +272,13 @@ impl SysLib {
                         "kill() is disabled in safe mode".to_string(),
                     ));
                 }
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(
+                        &PermissionResource::System("exec".to_string()),
+                        None,
+                    )?;
+                }
                 if args.is_empty() || args.len() > 2 {
                     return Err(RuntimeError::new(
                         "kill requires 1 or 2 arguments (pid, signal?)".to_string(),
@@ -369,6 +383,18 @@ impl SysLib {
                 Ok(Value::Map(vars))
             }
             "signal_send" => {
+                if !exec_allowed {
+                    return Err(RuntimeError::new(
+                        "signal_send() is disabled in safe mode".to_string(),
+                    ));
+                }
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(
+                        &PermissionResource::System("exec".to_string()),
+                        None,
+                    )?;
+                }
                 if args.is_empty() || args.len() > 2 {
                     return Err(RuntimeError::new(
                         "signal_send requires 1-2 arguments (pid, signal?)".to_string(),

@@ -62,24 +62,17 @@ fn run_compiled_file(
     // hash computed for .tc files in run_file_inner).
     vm.runtime_security.hash_and_set_source(&data);
 
-    // Honour exec_allowed: if neither --allow-exec nor default on, deny exec.
-    if !allow_exec && effective_safe_mode {
+    // Deny exec unconditionally when safe mode is active — mirrors the AST VM behaviour
+    // in VirtualMachine::with_all_options, where safe_mode=true always adds the deny
+    // regardless of --allow-exec. The inline `self.safe_mode` guard in the bytecode
+    // preflight is a first line of defense; this deny ensures PermissionManager also
+    // rejects exec so both layers agree.
+    if effective_safe_mode {
         vm.deny_permission(PermissionResource::System("exec".to_string()), None);
     }
 
-    // Apply active env permission grants/denials.
-    if let Some((_env_dir, _name, cfg)) = Config::load_active_env() {
-        for perm_str in &cfg.permissions.allow {
-            if let Some(resource) = parse_permission_string(perm_str) {
-                vm.grant_permission(resource, None);
-            }
-        }
-        for perm_str in &cfg.permissions.deny {
-            if let Some(resource) = parse_permission_string(perm_str) {
-                vm.deny_permission(resource, None);
-            }
-        }
-    }
+    // Apply active env permission grants/denials (shared logic with AST VM path).
+    apply_env_permissions_bytecode(&mut vm);
 
     // Apply CLI --allow-fs / --allow-net allowlists.
     for path in allow_fs {
@@ -108,6 +101,23 @@ fn parse_permission_string(s: &str) -> Option<PermissionResource> {
 
 /// Load the active env's allow/deny permission lists and apply them to the VM.
 /// Called by run_file and start_repl so that project-level env.toml is enforced.
+/// Same as `apply_env_permissions` but for the Bytecode VM.
+/// Both VMs have identical grant/deny APIs; a shared trait is not yet available.
+fn apply_env_permissions_bytecode(vm: &mut BytecodeVM) {
+    if let Some((_env_dir, _name, cfg)) = Config::load_active_env() {
+        for perm_str in &cfg.permissions.allow {
+            if let Some(resource) = parse_permission_string(perm_str) {
+                vm.grant_permission(resource, None);
+            }
+        }
+        for perm_str in &cfg.permissions.deny {
+            if let Some(resource) = parse_permission_string(perm_str) {
+                vm.deny_permission(resource, None);
+            }
+        }
+    }
+}
+
 pub fn apply_env_permissions(vm: &mut VirtualMachine) {
     if let Some((_env_dir, _name, cfg)) = Config::load_active_env() {
         for perm_str in &cfg.permissions.allow {
@@ -235,6 +245,19 @@ fn run_file_inner(
     let mut parser = Parser::new(tokens);
     let program = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
 
+    // Apply obfuscation if requested by the user compiler config.
+    let program = {
+        let should_obfuscate = crate::config::Config::load_config()
+            .map(|cfg| cfg.compiler.obfuscate)
+            .unwrap_or(false);
+        if should_obfuscate {
+            use crate::security::obfuscator::Obfuscator;
+            Obfuscator::new().obfuscate(&program)
+        } else {
+            program
+        }
+    };
+
     // Validate before execution: syntax rules, semantic checks, security restrictions.
     Validator::validate_program(&program)
         .map_err(|e| format!("Validation error: {}", e))?;
@@ -311,6 +334,8 @@ pub fn run_file_with_timeout(
     debug: bool,
     verbose: bool,
     timeout_str: &str,
+    allow_fs: &[String],
+    allow_net: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let duration = parse_duration(timeout_str).ok_or_else(|| {
         format!(
@@ -327,11 +352,15 @@ pub fn run_file_with_timeout(
     let cancel_flag_worker = Arc::clone(&cancel_flag);
 
     let file = file.to_path_buf();
+    // Clone allowlists so they can be moved into the worker thread.
+    let allow_fs = allow_fs.to_vec();
+    let allow_net = allow_net.to_vec();
     let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
     std::thread::spawn(move || {
         let result = run_file_inner(
-            &file, safe_mode, allow_exec, debug, verbose, &[], &[],
+            &file, safe_mode, allow_exec, debug, verbose,
+            &allow_fs, &allow_net,
             Some(cancel_flag_worker),
         )
         .map_err(|e| e.to_string());
