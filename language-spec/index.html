@@ -1,0 +1,5039 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A simple, memorable, security-focused programming language">
+      
+      
+      
+        <link rel="canonical" href="https://iga2x.github.io/txtcode/language-spec/">
+      
+      
+        <link rel="prev" href="../quick-start/">
+      
+      
+        <link rel="next" href="../syntax-reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Language Spec - Txt-code Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#txt-code-language-specification-v040" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Txt-code Documentation" class="md-header__button md-logo" aria-label="Txt-code Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Txt-code Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Language Spec
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iga2x/txtcode" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iga2x/txtcode
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../quick-start/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Language Spec
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../syntax-reference/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Syntax Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../permissions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Permissions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../security-features/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Security Features
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Txt-code Documentation" class="md-nav__button md-logo" aria-label="Txt-code Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Txt-code Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iga2x/txtcode" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iga2x/txtcode
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language Spec
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language Spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Syntax
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Syntax">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-source-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Source Encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-whitespace-and-line-endings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Whitespace and Line Endings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-comments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Comments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-syntax-styles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Syntax Styles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-identifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 Identifiers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-literals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Literals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-statements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7 Statements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.7 Statements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#assignment-variable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assignment (variable)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compound-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compound Assignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#index-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index Assignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#function-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Function Definition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conditional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#while-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        While Loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-while-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do-While Loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#repeat-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeat Loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#try-catch-finally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Try / Catch / Finally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Import
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#struct-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Struct Definition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enum-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enum Definition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#assert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assert
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permission-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permission Statement
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#18-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.8 Expressions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#19-slice-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.9 Slice Expressions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#110-string-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.10 String Interpolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#111-optional-chaining" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.11 Optional Chaining
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-spread-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.12 Spread Operator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-multi-return-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.13 Multi-Return Values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#114-destructured-function-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.14 Destructured Function Arguments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#115-grammar-formal-bnf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.15 Grammar (Formal BNF)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-values-and-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Values and Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Values and Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-primitive-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Primitive Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-composite-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Composite Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-async-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Async Type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-type-annotations-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Type Annotations (Optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-type-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 Type Compatibility
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-default-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Default Values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-equality-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 Equality Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-operator-behaviour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Operator Behaviour
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Operator Behaviour">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-arithmetic-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Arithmetic Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-unary-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Unary Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-comparison-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Comparison Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-logical-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Logical Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-bitwise-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 Bitwise Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-null-coalescing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 Null Coalescing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-ternary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.7 Ternary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#38-operator-precedence-highest-to-lowest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.8 Operator Precedence (highest to lowest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-function-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Function Rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Function Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-basic-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Basic Definition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-generic-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 Generic Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-return" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 Return
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-first-class-functions-and-closures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 First-Class Functions and Closures
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-async-functions-synchronous-mode-in-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.6 Async Functions (synchronous mode in v0.4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#47-capability-declarations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.7 Capability Declarations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#48-doc-and-hint-annotations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.8 Doc and Hint Annotations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#49-scope-and-variable-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.9 Scope and Variable Lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-module-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Module Resolution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Module Resolution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-search-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 Search Algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-default-search-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Default Search Paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-import-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 Import Syntax
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-circular-import-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4 Circular Import Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-module-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5 Module Caching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56-version-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.6 Version Compatibility
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#57-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.7 Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-runtime-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Runtime Limits
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Runtime Limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-source-file-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Source File Size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-execution-timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 Execution Timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-call-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 Call Stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 Memory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65-integer-overflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5 Integer Overflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#66-float-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.6 Float Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#67-rate-limiting-capability-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.7 Rate Limiting (Capability System)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#68-safe-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.8 Safe Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-error-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Error Semantics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Error Semantics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-error-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 Error Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-error-display" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 Error Display
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-try-catch-finally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3 Try / Catch / Finally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-propagation-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4 Propagation Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#75-standard-error-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.5 Standard Error Conditions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#76-assert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.6 Assert
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#77-result-pattern-idiomatic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.7 Result Pattern (Idiomatic)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-f-security-guarantees-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix F — Security Guarantees (v0.4)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Appendix F — Security Guarantees (v0.4)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f1-enforced-in-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.1 Enforced in v0.4
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f2-not-yet-enforced-v04-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.2 Not Yet Enforced (v0.4 status)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f2a-known-runtime-limitation-return-in-nested-blocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.2a Known Runtime Limitation — return → in Nested Blocks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f3-safe-mode-guarantees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.3 Safe Mode Guarantees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f4-capability-declaration-vs-permission-checker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.4 Capability Declaration vs Permission Checker
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-e-migration-tooling-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix E — Migration Tooling Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Appendix E — Migration Tooling Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#e1-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E.1 Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e2-supported-transformations-v01-v02" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E.2 Supported Transformations (v0.1 → v0.2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e3-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E.3 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e4-current-limitations-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E.4 Current Limitations (v0.4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-d-execution-engine-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix D — Execution Engine Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Appendix D — Execution Engine Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#d1-engine-overview-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.1 Engine Overview (v0.4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d2-ast-vm-production-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.2 AST VM — Production Engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d3-bytecode-vm-experimental-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.3 Bytecode VM — Experimental Engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d4-choosing-an-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.4 Choosing an Engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-a-complete-operator-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix A — Complete Operator Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-b-type-system-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix B — Type System Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-c-capability-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix C — Capability Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../syntax-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Syntax Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Syntax
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Syntax">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-source-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Source Encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-whitespace-and-line-endings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Whitespace and Line Endings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-comments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Comments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-syntax-styles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Syntax Styles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-identifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 Identifiers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-literals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Literals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-statements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7 Statements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.7 Statements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#assignment-variable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assignment (variable)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#compound-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compound Assignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#index-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index Assignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#function-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Function Definition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conditional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#while-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        While Loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-while-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do-While Loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#repeat-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeat Loop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#try-catch-finally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Try / Catch / Finally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Import
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#struct-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Struct Definition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#enum-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enum Definition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#assert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assert
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permission-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permission Statement
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#18-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.8 Expressions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#19-slice-expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.9 Slice Expressions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#110-string-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.10 String Interpolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#111-optional-chaining" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.11 Optional Chaining
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-spread-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.12 Spread Operator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-multi-return-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.13 Multi-Return Values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#114-destructured-function-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.14 Destructured Function Arguments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#115-grammar-formal-bnf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.15 Grammar (Formal BNF)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-values-and-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Values and Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Values and Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-primitive-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Primitive Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-composite-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Composite Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-async-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Async Type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-type-annotations-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Type Annotations (Optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-type-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 Type Compatibility
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-default-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Default Values
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-equality-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 Equality Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-operator-behaviour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Operator Behaviour
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Operator Behaviour">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-arithmetic-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Arithmetic Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-unary-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Unary Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-comparison-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Comparison Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-logical-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Logical Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-bitwise-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 Bitwise Operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-null-coalescing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 Null Coalescing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-ternary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.7 Ternary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#38-operator-precedence-highest-to-lowest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.8 Operator Precedence (highest to lowest)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-function-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Function Rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Function Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-basic-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Basic Definition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-generic-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 Generic Functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-return" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 Return
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-first-class-functions-and-closures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 First-Class Functions and Closures
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-async-functions-synchronous-mode-in-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.6 Async Functions (synchronous mode in v0.4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#47-capability-declarations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.7 Capability Declarations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#48-doc-and-hint-annotations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.8 Doc and Hint Annotations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#49-scope-and-variable-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.9 Scope and Variable Lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-module-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Module Resolution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Module Resolution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-search-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 Search Algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-default-search-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Default Search Paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-import-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 Import Syntax
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-circular-import-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4 Circular Import Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-module-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5 Module Caching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56-version-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.6 Version Compatibility
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#57-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.7 Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-runtime-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Runtime Limits
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Runtime Limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-source-file-size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Source File Size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-execution-timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 Execution Timeout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-call-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 Call Stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 Memory
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65-integer-overflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5 Integer Overflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#66-float-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.6 Float Semantics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#67-rate-limiting-capability-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.7 Rate Limiting (Capability System)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#68-safe-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.8 Safe Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-error-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Error Semantics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Error Semantics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-error-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 Error Structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-error-display" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 Error Display
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-try-catch-finally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3 Try / Catch / Finally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-propagation-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4 Propagation Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#75-standard-error-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.5 Standard Error Conditions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#76-assert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.6 Assert
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#77-result-pattern-idiomatic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.7 Result Pattern (Idiomatic)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-f-security-guarantees-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix F — Security Guarantees (v0.4)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Appendix F — Security Guarantees (v0.4)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#f1-enforced-in-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.1 Enforced in v0.4
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f2-not-yet-enforced-v04-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.2 Not Yet Enforced (v0.4 status)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f2a-known-runtime-limitation-return-in-nested-blocks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.2a Known Runtime Limitation — return → in Nested Blocks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f3-safe-mode-guarantees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.3 Safe Mode Guarantees
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#f4-capability-declaration-vs-permission-checker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        F.4 Capability Declaration vs Permission Checker
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-e-migration-tooling-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix E — Migration Tooling Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Appendix E — Migration Tooling Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#e1-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E.1 Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e2-supported-transformations-v01-v02" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E.2 Supported Transformations (v0.1 → v0.2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e3-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E.3 Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#e4-current-limitations-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E.4 Current Limitations (v0.4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-d-execution-engine-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix D — Execution Engine Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Appendix D — Execution Engine Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#d1-engine-overview-v04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.1 Engine Overview (v0.4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d2-ast-vm-production-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.2 AST VM — Production Engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d3-bytecode-vm-experimental-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.3 Bytecode VM — Experimental Engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#d4-choosing-an-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        D.4 Choosing an Engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-a-complete-operator-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix A — Complete Operator Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-b-type-system-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix B — Type System Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#appendix-c-capability-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Appendix C — Capability Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="txt-code-language-specification-v040">Txt-code Language Specification — v0.4.0</h1>
+<blockquote>
+<p><strong>Status:</strong> v0.4.0 release. Behaviour described here matches the current implementation
+except where explicitly marked as “planned / not yet implemented”.
+Breaking changes between minor versions are documented in the <a href="https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md">CHANGELOG</a> on GitHub.</p>
+<p><strong>New in v0.4:</strong>
+- Virtual environment system (<code>txtcode env</code>) with 12 subcommands
+- Bytecode VM: <code>break</code>/<code>continue</code>, <code>for x in arr</code>, <code>repeat N</code>, <code>match</code>, string interpolation
+- Integer overflow guards (<code>checked_*</code>) in both AST VM and bytecode VM
+- Recursion depth limit (50) enforced across all VMs
+- User-defined functions with caller/callee scope isolation in bytecode VM
+- Module imports (<code>ImportModule</code>) in bytecode VM
+- <code>?.</code> / <code>?[]</code> / <code>?()</code> optional chaining — both VMs (returns <code>null</code> on null target)
+- <code>do…while</code> loop in bytecode VM
+- <code>f”...”</code> string interpolation prefix; raw strings <code>r”...”</code>, number separators <code>1_000_000</code>
+- Spread operator <code>[...arr]</code> in both VMs
+- Multi-return: <code>return → a, b</code> auto-wraps as <code>[a, b]</code>
+- Destructured function arguments: <code>define → f → ({x, y})</code>
+- <code>doc →</code> / <code>hint →</code> canonical annotation keywords
+- Pipe operator <code>|&gt;</code> with lambda/complex RHS in both VMs
+- Pattern matching: array <code>[a, b]</code> and struct <code>{x, y}</code> destructuring in <code>match</code>
+- <code>++</code>/<code>--</code> now errors cleanly on non-identifier targets
+- <code>txtcode inspect</code> command — disassemble compiled bytecode
+- Call depth unified to 50 across all VMs
+- <code>async</code>/<code>await</code> runs synchronously (passthrough; true async planned for v0.5)</p>
+<p><strong>Still not fully implemented:</strong>
+- Generic type enforcement at runtime (type params are parsed but erased at execution)
+- <code>++arr[0]</code> / <code>--arr[0]</code> on non-identifier targets — use <code>store → arr[0] → arr[0] + 1</code> instead
+- AST identifier obfuscation (<code>Obfuscator::obfuscate</code> is a no-op placeholder)
+- WebSocket support — planned for v0.5
+- macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only</p>
+</blockquote>
+<hr />
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li><a href="#1-syntax">Syntax</a></li>
+<li><a href="#2-values-and-types">Values and Types</a></li>
+<li><a href="#3-operator-behaviour">Operator Behaviour</a></li>
+<li><a href="#4-function-rules">Function Rules</a></li>
+<li><a href="#5-module-resolution">Module Resolution</a></li>
+<li><a href="#6-runtime-limits">Runtime Limits</a></li>
+<li><a href="#7-error-semantics">Error Semantics</a></li>
+</ol>
+<hr />
+<h2 id="1-syntax">1. Syntax</h2>
+<h3 id="11-source-encoding">1.1 Source Encoding</h3>
+<p>All source files must be valid UTF-8. The file extension for Txt-code source files is <code>.tc</code>.</p>
+<h3 id="12-whitespace-and-line-endings">1.2 Whitespace and Line Endings</h3>
+<p>Statements are separated by newlines. Blank lines are ignored. LF and CRLF are both accepted.
+Indentation is not significant — it is used only for readability.</p>
+<h3 id="13-comments">1.3 Comments</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a># Single-line comment (rest of line is ignored)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>## Multi-line comment
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>   continues until the next ##
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>##
+</code></pre></div>
+<h3 id="14-syntax-styles">1.4 Syntax Styles</h3>
+<p>Txt-code supports two equivalent syntax forms. They may be mixed freely.</p>
+<table>
+<thead>
+<tr>
+<th>Style</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Arrow-based (preferred)</td>
+<td><code>store → x → 42</code></td>
+</tr>
+<tr>
+<td>Space-based (shorthand)</td>
+<td><code>store x 42</code></td>
+</tr>
+</tbody>
+</table>
+<p>The arrow <code>→</code> (Unicode U+2192) and <code>-&gt;</code> (ASCII two-character sequence) are both accepted as arrow tokens. Space-based style uses a space where the arrow would appear.</p>
+<p><code>define name (params)</code> (without arrows) is deprecated. The parser accepts it with a warning.</p>
+<h3 id="15-identifiers">1.5 Identifiers</h3>
+<p>Identifiers begin with a letter (<code>[a-zA-Z]</code>) or underscore (<code>_</code>), followed by zero or more letters, digits (<code>[0-9]</code>), or underscores. Identifiers are case-sensitive.</p>
+<p>Reserved keywords may not be used as identifiers:
+<code>and</code>, <code>array</code>, <code>assert</code>, <code>async</code>, <code>await</code>, <code>bool</code>, <code>break</code>, <code>call</code>, <code>case</code>, <code>catch</code>,
+<code>char</code>, <code>const</code>, <code>continue</code>, <code>define</code>, <code>do</code>, <code>else</code>, <code>elseif</code>, <code>end</code>, <code>enum</code>,
+<code>export</code>, <code>false</code>, <code>finally</code>, <code>float</code>, <code>for</code>, <code>forbidden</code>, <code>if</code>, <code>import</code>, <code>in</code>,
+<code>int</code>, <code>intent</code>, <code>map</code>, <code>match</code>, <code>not</code>, <code>null</code>, <code>or</code>, <code>permission</code>, <code>repeat</code>,
+<code>return</code>, <code>set</code>, <code>store</code>, <code>struct</code>, <code>times</code>, <code>true</code>, <code>try</code>, <code>while</code>.</p>
+<h3 id="16-literals">1.6 Literals</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a># Integer literals
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>42          # decimal
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>0xFF        # hexadecimal
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>0b1010      # binary
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>0o17        # octal
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a># Float literals
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>3.14
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>-0.5
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>1.0e10
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>1.5e-3
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a># String literals
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>&quot;hello&quot;
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>&#39;world&#39;
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>&quot;multi\nline&quot;
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>f&quot;Hello, {name}!&quot;     # interpolated (see §1.10)
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a># Character literals
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>&#39;a&#39;         # single Unicode code point
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a># Boolean literals
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>true
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>false
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a># Null literal
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>null
+</code></pre></div>
+<h3 id="17-statements">1.7 Statements</h3>
+<p>The complete set of valid statements:</p>
+<h4 id="assignment-variable">Assignment (variable)</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>store → name → expression
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>store → name: type → expression    # with type annotation
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>let → name → expression            # alias for store
+</code></pre></div>
+<p>Destructuring patterns are supported:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>store → [a, b, c] → array_expr          # array destructure
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>store → {x: field_x, y: field_y} → map  # struct destructure
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>store → Point(x, y) → point_value       # constructor destructure
+</code></pre></div></p>
+<h4 id="compound-assignment">Compound Assignment</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>store → x → x + 1    # explicit
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>x += 1               # compound (+=, -=, *=, /=, %=)
+</code></pre></div>
+<h4 id="index-assignment">Index Assignment</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>store → arr[0] → value
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>store → map[&quot;key&quot;] → value
+</code></pre></div>
+<h4 id="constants">Constants</h4>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>const → PI → 3.14159
+</code></pre></div>
+Constants are evaluated at parse time and may not be reassigned.</p>
+<h4 id="function-definition">Function Definition</h4>
+<p>See §4 for full rules.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>define → name → (params) → return_type
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  body
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>end
+</code></pre></div>
+<h4 id="conditional">Conditional</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>if → condition
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  body
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>elseif → condition
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  body
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>else
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  body
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>end
+</code></pre></div>
+<h4 id="while-loop">While Loop</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>while → condition
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  body
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>end
+</code></pre></div>
+<h4 id="do-while-loop">Do-While Loop</h4>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>do
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  body
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>while → condition
+</code></pre></div>
+The body executes at least once before the condition is tested.</p>
+<h4 id="for-loop">For Loop</h4>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>for → variable in iterable
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  body
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>end
+</code></pre></div>
+<code>iterable</code> may be any <code>array</code>, <code>set</code>, or a range expression <code>range(start, end)</code>.</p>
+<h4 id="repeat-loop">Repeat Loop</h4>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>repeat → N times
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  body
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>end
+</code></pre></div>
+<code>N</code> must evaluate to a non-negative integer. <code>times</code> is a required keyword.</p>
+<h4 id="pattern-matching">Pattern Matching</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>match → expression
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>  case → pattern
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    body
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>  case → pattern if guard_expression
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    body
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>  case → _
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    default_body
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>end
+</code></pre></div>
+<h4 id="try-catch-finally">Try / Catch / Finally</h4>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>try
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>  body
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>catch → error_variable
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>  body
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>finally
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>  body            # always runs, with or without error
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>end
+</code></pre></div>
+<code>catch</code> and <code>finally</code> are both optional, but at least one must be present.</p>
+<h4 id="import">Import</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>import → module_name
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>import → name1, name2 from module_name
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>import → module_name as alias
+</code></pre></div>
+<h4 id="export">Export</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>export → name1, name2
+</code></pre></div>
+<h4 id="struct-definition">Struct Definition</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>struct → Point
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  x: int
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>  y: int
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>end
+</code></pre></div>
+<h4 id="enum-definition">Enum Definition</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>enum → Color
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  Red
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  Green
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  Blue
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>  Custom → 255    # variant with associated value
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>end
+</code></pre></div>
+<h4 id="assert">Assert</h4>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>assert → condition
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>assert → condition, &quot;Failure message&quot;
+</code></pre></div>
+A failing assert raises a <code>RuntimeError</code> with the optional message (or a default if omitted).</p>
+<h4 id="permission-statement">Permission Statement</h4>
+<p>Declares required capabilities for the enclosing scope:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>permission → fs.read
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>permission → net.connect → &quot;example.com&quot;
+</code></pre></div></p>
+<h3 id="18-expressions">1.8 Expressions</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>expression :=
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>  | literal
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>  | identifier
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>  | expression op expression          # binary operation
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>  | unary_op expression               # unary operation
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>  | identifier(args)                  # function call
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>  | identifier&lt;types&gt;(args)           # generic function call
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>  | expression.method(args)           # method call
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>  | expression.field                  # member access
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a>  | expression?.field                 # optional member (null-safe)
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a>  | expression?(args)                 # optional call (null-safe)
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a>  | expression?[index]                # optional index (null-safe)
+<a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a>  | expression[index]                 # index
+<a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a>  | expression[start:end:step]        # slice (any part optional)
+<a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a>  | [elements]                        # array literal
+<a id="__codelineno-21-16" name="__codelineno-21-16" href="#__codelineno-21-16"></a>  | {key: value, ...}                 # map literal
+<a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a>  | {| elements |}                    # set literal
+<a id="__codelineno-21-18" name="__codelineno-21-18" href="#__codelineno-21-18"></a>  | (params) → body                   # lambda
+<a id="__codelineno-21-19" name="__codelineno-21-19" href="#__codelineno-21-19"></a>  | condition ? true_expr : false_expr  # ternary
+<a id="__codelineno-21-20" name="__codelineno-21-20" href="#__codelineno-21-20"></a>  | await → expression                # await (inside async only)
+<a id="__codelineno-21-21" name="__codelineno-21-21" href="#__codelineno-21-21"></a>  | f&quot;text {expr} text&quot;              # interpolated string
+</code></pre></div>
+<h3 id="19-slice-expressions">1.9 Slice Expressions</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>store → sub → arr[1:4]        # elements at indices 1, 2, 3 (end is exclusive)
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>store → evens → arr[::2]      # every second element (step=2)
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>store → rev → arr[::-1]       # reversed (negative step)
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>store → tail → arr[-3:]       # last 3 elements (negative index)
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>store → s → &quot;hello&quot;[1:4]     # &quot;ell&quot; (char-based, not byte-based)
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>store → s → &quot;hello&quot;[::2]     # &quot;hlo&quot; (every other char, step on strings supported)
+</code></pre></div>
+<p>Syntax: <code>target[start:end:step]</code>. Any of <code>start</code>, <code>end</code>, <code>step</code> may be omitted.</p>
+<ul>
+<li><strong><code>step</code></strong> defaults to 1. <code>step = 0</code> is a runtime error.</li>
+<li><strong>Negative <code>step</code></strong>: iterates in reverse. <code>start</code> defaults to the last index; <code>end</code> defaults to index 0.</li>
+<li><strong>Negative <code>start</code>/<code>end</code></strong>: count from the end — <code>-1</code> is the last element, <code>-2</code> is second-to-last, etc.</li>
+<li><strong>Out-of-bounds indices</strong>: raise a runtime error (no silent clamping).</li>
+<li><strong>Strings</strong>: slices are char-based (Unicode code points, not bytes). <code>step</code> is supported on strings.</li>
+<li>Slices work on arrays and strings. Maps and sets do not support slicing.</li>
+</ul>
+<h3 id="110-string-interpolation">1.10 String Interpolation</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>store → name → &quot;Alice&quot;
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>store → greeting → f&quot;Hello, {name}!&quot;    # → &quot;Hello, Alice!&quot;
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>store → math → f&quot;1 + 1 = {1 + 1}&quot;      # → &quot;1 + 1 = 2&quot;
+</code></pre></div>
+<p>The <code>f</code> prefix triggers interpolation. Expressions inside <code>{}</code> are fully evaluated.</p>
+<h3 id="111-optional-chaining">1.11 Optional Chaining</h3>
+<p>Optional access operators return <code>null</code> when the target is <code>null</code> rather than raising an error:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>store → len → user?.name         # null if user is null
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>store → val → map?.[&quot;key&quot;]       # null if map is null
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>store → res → func?.()           # null if func is null; calls func if not null
+</code></pre></div>
+<p>All three operators (<code>?.</code>, <code>?[]</code>, <code>?()</code>) are fully implemented in both the AST VM and bytecode VM as of v0.4.</p>
+<h3 id="112-spread-operator">1.12 Spread Operator</h3>
+<p>The <code>...</code> spread operator expands an array into the surrounding array literal:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>store → a → [1, 2]
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>store → b → [3, 4]
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>store → c → [...a, ...b]       # [1, 2, 3, 4]
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>store → d → [0, ...a, 5]       # [0, 1, 2, 5]
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>store → e → [...a, ...b, ...a] # [1, 2, 3, 4, 1, 2]
+</code></pre></div>
+<p>Rules:
+- Spread elements must evaluate to <code>array</code>. Spreading a non-array is a <code>RuntimeError</code>.
+- Spread is only supported inside array literals (<code>[...]</code>). It is not supported in function call arguments in v0.4.</p>
+<h3 id="113-multi-return-values">1.13 Multi-Return Values</h3>
+<p>A <code>return</code> statement may return multiple comma-separated expressions. They are automatically wrapped in an <code>array</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>define → minmax → (arr)
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>  return → arr[0], arr[len(arr) - 1]
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>end
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>store → result → minmax([3, 1, 4, 5, 2])
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a># result == [3, 2]  (first and last element)
+</code></pre></div>
+<p>The caller receives a plain <code>array</code>. To unpack: <code>store → lo → result[0]</code>.</p>
+<h3 id="114-destructured-function-arguments">1.14 Destructured Function Arguments</h3>
+<p>A function parameter wrapped in <code>{...}</code> destructures a <code>map</code> argument:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>define → describe → ({name, age})
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>  return → f&quot;{name} is {age} years old&quot;
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>end
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>print → describe({&quot;name&quot;: &quot;Alice&quot;, &quot;age&quot;: 30})
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a># Alice is 30 years old
+</code></pre></div>
+<p>Rules:
+- Each field name in <code>{...}</code> becomes a local variable bound to <code>arg["field_name"]</code>.
+- If the key is absent in the map, the variable is <code>null</code>.
+- Destructured parameters are positional — the map is passed as a single argument.</p>
+<h3 id="115-grammar-formal-bnf">1.15 Grammar (Formal BNF)</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>program           := statement*
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>statement         :=
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>    | assignment | compound_assignment | index_assignment
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>    | function_def | return | break | continue
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>    | if_stmt | while_stmt | do_while_stmt | for_stmt | repeat_stmt
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>    | match_stmt | try_stmt | assert_stmt
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>    | import_stmt | export_stmt | const_stmt
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a>    | struct_def | enum_def | permission_stmt
+<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a>    | expression
+<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>
+<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a>assignment        := (&quot;store&quot;|&quot;let&quot;) (&quot;→&quot;|WS) pattern (&quot;:&quot; type)? (&quot;→&quot;|WS) expression
+<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a>compound_assignment := identifier op &quot;=&quot; expression    # op: + - * / %
+<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a>index_assignment  := expression &quot;[&quot; expression &quot;]&quot; (&quot;→&quot;|&quot;=&quot;) expression
+<a id="__codelineno-28-15" name="__codelineno-28-15" href="#__codelineno-28-15"></a>
+<a id="__codelineno-28-16" name="__codelineno-28-16" href="#__codelineno-28-16"></a>function_def      := (&quot;async&quot; (&quot;→&quot;)?)? &quot;define&quot; (&quot;→&quot;|WS) identifier
+<a id="__codelineno-28-17" name="__codelineno-28-17" href="#__codelineno-28-17"></a>                     (&quot;&lt;&quot; type_params &quot;&gt;&quot;)? (&quot;→&quot;)? &quot;(&quot; params? &quot;)&quot; (&quot;→&quot; type)?
+<a id="__codelineno-28-18" name="__codelineno-28-18" href="#__codelineno-28-18"></a>                     (intent_decl | ai_hint_decl | allowed_decl | forbidden_decl)*
+<a id="__codelineno-28-19" name="__codelineno-28-19" href="#__codelineno-28-19"></a>                     statement* &quot;end&quot;
+<a id="__codelineno-28-20" name="__codelineno-28-20" href="#__codelineno-28-20"></a>
+<a id="__codelineno-28-21" name="__codelineno-28-21" href="#__codelineno-28-21"></a>params            := param (&quot;,&quot; param)*
+<a id="__codelineno-28-22" name="__codelineno-28-22" href="#__codelineno-28-22"></a>param             := &quot;...&quot;? identifier (&quot;:&quot; type)? (&quot;=&quot; expression)?
+<a id="__codelineno-28-23" name="__codelineno-28-23" href="#__codelineno-28-23"></a>
+<a id="__codelineno-28-24" name="__codelineno-28-24" href="#__codelineno-28-24"></a>intent_decl       := &quot;intent&quot; &quot;→&quot; string_literal
+<a id="__codelineno-28-25" name="__codelineno-28-25" href="#__codelineno-28-25"></a>ai_hint_decl      := &quot;ai_hint&quot; &quot;→&quot; string_literal
+<a id="__codelineno-28-26" name="__codelineno-28-26" href="#__codelineno-28-26"></a>allowed_decl      := &quot;allowed&quot; &quot;→&quot; &quot;[&quot; cap_string (&quot;,&quot; cap_string)* &quot;]&quot;
+<a id="__codelineno-28-27" name="__codelineno-28-27" href="#__codelineno-28-27"></a>forbidden_decl    := &quot;forbidden&quot; &quot;→&quot; &quot;[&quot; cap_string (&quot;,&quot; cap_string)* &quot;]&quot;
+<a id="__codelineno-28-28" name="__codelineno-28-28" href="#__codelineno-28-28"></a>
+<a id="__codelineno-28-29" name="__codelineno-28-29" href="#__codelineno-28-29"></a>if_stmt           := &quot;if&quot; (&quot;→&quot;|WS) expression statement*
+<a id="__codelineno-28-30" name="__codelineno-28-30" href="#__codelineno-28-30"></a>                     (&quot;elseif&quot; (&quot;→&quot;|WS) expression statement*)*
+<a id="__codelineno-28-31" name="__codelineno-28-31" href="#__codelineno-28-31"></a>                     (&quot;else&quot; statement*)? &quot;end&quot;
+<a id="__codelineno-28-32" name="__codelineno-28-32" href="#__codelineno-28-32"></a>
+<a id="__codelineno-28-33" name="__codelineno-28-33" href="#__codelineno-28-33"></a>while_stmt        := &quot;while&quot; (&quot;→&quot;|WS) expression statement* &quot;end&quot;
+<a id="__codelineno-28-34" name="__codelineno-28-34" href="#__codelineno-28-34"></a>do_while_stmt     := &quot;do&quot; statement* &quot;while&quot; (&quot;→&quot;|WS) expression
+<a id="__codelineno-28-35" name="__codelineno-28-35" href="#__codelineno-28-35"></a>for_stmt          := &quot;for&quot; (&quot;→&quot;|WS) identifier &quot;in&quot; expression statement* &quot;end&quot;
+<a id="__codelineno-28-36" name="__codelineno-28-36" href="#__codelineno-28-36"></a>repeat_stmt       := &quot;repeat&quot; (&quot;→&quot;|WS) expression &quot;times&quot; statement* &quot;end&quot;
+<a id="__codelineno-28-37" name="__codelineno-28-37" href="#__codelineno-28-37"></a>
+<a id="__codelineno-28-38" name="__codelineno-28-38" href="#__codelineno-28-38"></a>match_stmt        := &quot;match&quot; (&quot;→&quot;|WS) expression
+<a id="__codelineno-28-39" name="__codelineno-28-39" href="#__codelineno-28-39"></a>                     (&quot;case&quot; (&quot;→&quot;|WS) pattern (&quot;if&quot; expression)? statement*)+
+<a id="__codelineno-28-40" name="__codelineno-28-40" href="#__codelineno-28-40"></a>                     (&quot;case&quot; (&quot;→&quot;|WS) &quot;_&quot; statement*)? &quot;end&quot;
+<a id="__codelineno-28-41" name="__codelineno-28-41" href="#__codelineno-28-41"></a>
+<a id="__codelineno-28-42" name="__codelineno-28-42" href="#__codelineno-28-42"></a>try_stmt          := &quot;try&quot; statement*
+<a id="__codelineno-28-43" name="__codelineno-28-43" href="#__codelineno-28-43"></a>                     (&quot;catch&quot; (&quot;→&quot;|WS) identifier statement*)?
+<a id="__codelineno-28-44" name="__codelineno-28-44" href="#__codelineno-28-44"></a>                     (&quot;finally&quot; statement*)? &quot;end&quot;
+<a id="__codelineno-28-45" name="__codelineno-28-45" href="#__codelineno-28-45"></a>
+<a id="__codelineno-28-46" name="__codelineno-28-46" href="#__codelineno-28-46"></a>assert_stmt       := &quot;assert&quot; (&quot;→&quot;|WS) expression (&quot;,&quot; expression)?
+<a id="__codelineno-28-47" name="__codelineno-28-47" href="#__codelineno-28-47"></a>import_stmt       := &quot;import&quot; (&quot;→&quot;|WS) (name_list &quot;from&quot;)? identifier (&quot;as&quot; identifier)?
+<a id="__codelineno-28-48" name="__codelineno-28-48" href="#__codelineno-28-48"></a>export_stmt       := &quot;export&quot; (&quot;→&quot;|WS) name_list
+<a id="__codelineno-28-49" name="__codelineno-28-49" href="#__codelineno-28-49"></a>const_stmt        := &quot;const&quot; (&quot;→&quot;|WS) identifier (&quot;→&quot;|WS) expression
+<a id="__codelineno-28-50" name="__codelineno-28-50" href="#__codelineno-28-50"></a>
+<a id="__codelineno-28-51" name="__codelineno-28-51" href="#__codelineno-28-51"></a>struct_def        := &quot;struct&quot; (&quot;→&quot;|WS) identifier field* &quot;end&quot;
+<a id="__codelineno-28-52" name="__codelineno-28-52" href="#__codelineno-28-52"></a>field             := identifier &quot;:&quot; type
+<a id="__codelineno-28-53" name="__codelineno-28-53" href="#__codelineno-28-53"></a>enum_def          := &quot;enum&quot; (&quot;→&quot;|WS) identifier variant* &quot;end&quot;
+<a id="__codelineno-28-54" name="__codelineno-28-54" href="#__codelineno-28-54"></a>variant           := identifier (&quot;→&quot; expression)?
+<a id="__codelineno-28-55" name="__codelineno-28-55" href="#__codelineno-28-55"></a>permission_stmt   := &quot;permission&quot; &quot;→&quot; identifier &quot;.&quot; identifier (&quot;→&quot; string_literal)?
+<a id="__codelineno-28-56" name="__codelineno-28-56" href="#__codelineno-28-56"></a>
+<a id="__codelineno-28-57" name="__codelineno-28-57" href="#__codelineno-28-57"></a>type              := &quot;int&quot; | &quot;float&quot; | &quot;string&quot; | &quot;char&quot; | &quot;bool&quot;
+<a id="__codelineno-28-58" name="__codelineno-28-58" href="#__codelineno-28-58"></a>                   | &quot;array&quot; &quot;[&quot; type &quot;]&quot; | &quot;map&quot; &quot;[&quot; type &quot;]&quot; | &quot;set&quot; &quot;[&quot; type &quot;]&quot;
+<a id="__codelineno-28-59" name="__codelineno-28-59" href="#__codelineno-28-59"></a>                   | &quot;Future&quot; &quot;&lt;&quot; type &quot;&gt;&quot;
+<a id="__codelineno-28-60" name="__codelineno-28-60" href="#__codelineno-28-60"></a>                   | identifier           # named struct/enum
+<a id="__codelineno-28-61" name="__codelineno-28-61" href="#__codelineno-28-61"></a>                   | identifier           # generic type parameter
+<a id="__codelineno-28-62" name="__codelineno-28-62" href="#__codelineno-28-62"></a>
+<a id="__codelineno-28-63" name="__codelineno-28-63" href="#__codelineno-28-63"></a>pattern           := identifier | &quot;[&quot; pattern_list &quot;]&quot;
+<a id="__codelineno-28-64" name="__codelineno-28-64" href="#__codelineno-28-64"></a>                   | &quot;{&quot; (identifier &quot;:&quot; pattern)* (&quot;...&quot; identifier)? &quot;}&quot;
+<a id="__codelineno-28-65" name="__codelineno-28-65" href="#__codelineno-28-65"></a>                   | identifier &quot;(&quot; pattern_list &quot;)&quot;
+<a id="__codelineno-28-66" name="__codelineno-28-66" href="#__codelineno-28-66"></a>                   | &quot;_&quot;
+</code></pre></div>
+<hr />
+<h2 id="2-values-and-types">2. Values and Types</h2>
+<h3 id="21-primitive-types">2.1 Primitive Types</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Storage</th>
+<th>Range / Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>int</code></td>
+<td>64-bit signed integer</td>
+<td>−9 223 372 036 854 775 808 to 9 223 372 036 854 775 807</td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td>64-bit IEEE 754 double</td>
+<td>±1.8 × 10^308, 15–17 significant digits</td>
+</tr>
+<tr>
+<td><code>string</code></td>
+<td>UTF-8 heap string</td>
+<td>Arbitrary length</td>
+</tr>
+<tr>
+<td><code>char</code></td>
+<td>Single Unicode code point</td>
+<td>U+0000 – U+10FFFF</td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td>Boolean</td>
+<td><code>true</code> or <code>false</code></td>
+</tr>
+<tr>
+<td><code>null</code></td>
+<td>Absence of value</td>
+<td>Only value is <code>null</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-composite-types">2.2 Composite Types</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Syntax</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>array[T]</code></td>
+<td><code>[1, 2, 3]</code></td>
+<td>Ordered, zero-indexed, dynamically sized</td>
+</tr>
+<tr>
+<td><code>map[T]</code></td>
+<td><code>{"key": value}</code></td>
+<td>String keys only, values of type T</td>
+</tr>
+<tr>
+<td><code>set[T]</code></td>
+<td><code>{| 1, 2, 3 |}</code></td>
+<td>Unordered, unique values</td>
+</tr>
+<tr>
+<td><code>struct Name</code></td>
+<td><code>Name { field: value }</code></td>
+<td>Named fields, declared with <code>struct</code></td>
+</tr>
+<tr>
+<td><code>enum Name</code></td>
+<td><code>Name.Variant</code></td>
+<td>Discriminated union, declared with <code>enum</code></td>
+</tr>
+<tr>
+<td><code>function</code></td>
+<td><code>(x) → x + 1</code></td>
+<td>First-class, captures enclosing environment</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23-async-type">2.3 Async Type</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Future&lt;T&gt;</code></td>
+<td>Returned by <code>async</code> functions; resolved with <code>await</code></td>
+</tr>
+</tbody>
+</table>
+<p>Calling an async function without <code>await</code> yields a <code>Future&lt;T&gt;</code>.
+Calling <code>await</code> on a non-<code>Future</code> value is a runtime error.</p>
+<h3 id="24-type-annotations-optional">2.4 Type Annotations (Optional)</h3>
+<p>Type annotations are optional everywhere. The type checker uses Hindley-Milner-style inference.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>store → x: int → 42
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>store → name: string → &quot;Alice&quot;
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>define → add → (a: int, b: int) → int
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>  return → a + b
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>end
+</code></pre></div>
+<h3 id="25-type-compatibility">2.5 Type Compatibility</h3>
+<p>The following implicit coercions apply (checked at runtime for dynamic paths):</p>
+<table>
+<thead>
+<tr>
+<th>From</th>
+<th>To</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td>Widening: exact value preserved</td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td><code>int</code></td>
+<td>Narrowing: <strong>not</strong> implicit — explicit <code>int(f)</code> required</td>
+</tr>
+<tr>
+<td><code>char</code></td>
+<td><code>string</code></td>
+<td>Lossless: single-character string</td>
+</tr>
+<tr>
+<td><code>string</code></td>
+<td><code>char</code></td>
+<td>Only if string has exactly one code point</td>
+</tr>
+<tr>
+<td><code>T</code></td>
+<td><code>string</code></td>
+<td>Via <code>+</code> operator: <code>str(T)</code> conversion applied automatically</td>
+</tr>
+</tbody>
+</table>
+<p>Type compatibility for parameterised types is covariant on the element type.
+<code>array[int]</code> is compatible with <code>array[float]</code> because <code>int</code> is compatible with <code>float</code>.</p>
+<h3 id="26-default-values">2.6 Default Values</h3>
+<p>Variables declared without assignment are <code>null</code>.
+Functions with no explicit <code>return</code> return <code>null</code>.</p>
+<h3 id="27-equality-semantics">2.7 Equality Semantics</h3>
+<ul>
+<li><code>int == int</code>: bitwise equality</li>
+<li><code>float == float</code>: within <code>f64::EPSILON</code> (approximately 2.2 × 10^−16)</li>
+<li><code>string == string</code>: byte-for-byte equality</li>
+<li><code>char == char</code>: Unicode code-point equality</li>
+<li><code>bool == bool</code>: value equality</li>
+<li><code>null == null</code>: always <code>true</code></li>
+<li>Cross-type <code>==</code>: always <code>false</code> (no coercion for equality)</li>
+<li><code>array</code>, <code>map</code>, <code>set</code>, <code>struct</code>, <code>function</code>: reference equality (same instance)</li>
+</ul>
+<hr />
+<h2 id="3-operator-behaviour">3. Operator Behaviour</h2>
+<h3 id="31-arithmetic-operators">3.1 Arithmetic Operators</h3>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>Left</th>
+<th>Right</th>
+<th>Result</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>+</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>int widened to float</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>float</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td>int widened to float</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>string</code></td>
+<td><code>string</code></td>
+<td><code>string</code></td>
+<td>Concatenation</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>char</code></td>
+<td><code>char</code></td>
+<td><code>string</code></td>
+<td>Both chars concatenated</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>string</code></td>
+<td><code>char</code></td>
+<td><code>string</code></td>
+<td>Char appended</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>char</code></td>
+<td><code>string</code></td>
+<td><code>string</code></td>
+<td>Char prepended</td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>string</code></td>
+<td><code>any</code></td>
+<td><code>string</code></td>
+<td>Right auto-converted via <code>str()</code></td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td><code>any</code></td>
+<td><code>string</code></td>
+<td><code>string</code></td>
+<td>Left auto-converted via <code>str()</code></td>
+</tr>
+<tr>
+<td><code>+</code></td>
+<td>other</td>
+<td>other</td>
+<td><strong>RuntimeError</strong></td>
+<td>Invalid operands</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td><code>float</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td>other</td>
+<td>other</td>
+<td><strong>RuntimeError</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td><code>float</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td>other</td>
+<td>other</td>
+<td><strong>RuntimeError</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>/</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>Truncating (floor toward zero). <strong>Error</strong> if divisor is 0</td>
+</tr>
+<tr>
+<td><code>/</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>IEEE 754. <strong>Error</strong> if divisor is 0.0</td>
+</tr>
+<tr>
+<td><code>/</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><strong>Error</strong> if divisor is 0.0</td>
+</tr>
+<tr>
+<td><code>/</code></td>
+<td><code>float</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td><strong>Error</strong> if divisor is 0</td>
+</tr>
+<tr>
+<td><code>%</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><strong>Error</strong> if divisor is 0</td>
+</tr>
+<tr>
+<td><code>%</code></td>
+<td>other</td>
+<td>other</td>
+<td><strong>RuntimeError</strong></td>
+<td>Modulo requires both <code>int</code></td>
+</tr>
+<tr>
+<td><code>**</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td><strong>Error</strong> if exponent is negative</td>
+</tr>
+<tr>
+<td><code>**</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>**</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>**</code></td>
+<td><code>float</code></td>
+<td><code>int</code></td>
+<td><code>float</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>**</code></td>
+<td>other</td>
+<td>other</td>
+<td><strong>RuntimeError</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Integer division</strong> truncates toward zero: <code>7 / 2 == 3</code>, <code>-7 / 2 == -3</code>.</p>
+<h3 id="32-unary-operators">3.2 Unary Operators</h3>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>Operand</th>
+<th>Result</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-</code> (negate)</td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>Two's complement negation</td>
+</tr>
+<tr>
+<td><code>-</code> (negate)</td>
+<td><code>float</code></td>
+<td><code>float</code></td>
+<td>IEEE 754 negation</td>
+</tr>
+<tr>
+<td><code>not</code></td>
+<td><code>bool</code></td>
+<td><code>bool</code></td>
+<td>Logical complement</td>
+</tr>
+<tr>
+<td><code>~</code></td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>Bitwise NOT</td>
+</tr>
+<tr>
+<td><code>++</code> (prefix)</td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>Implemented in v0.4.</td>
+</tr>
+<tr>
+<td><code>--</code> (prefix)</td>
+<td><code>int</code></td>
+<td><code>int</code></td>
+<td>Implemented in v0.4.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-comparison-operators">3.3 Comparison Operators</h3>
+<p>Comparison is defined between values of <strong>compatible types only</strong>. Comparing incompatible types raises a <code>RuntimeError</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Types</th>
+<th>Operators</th>
+<th>Semantics</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>int</code> ↔ <code>int</code></td>
+<td><code>== != &lt; &gt; &lt;= &gt;=</code></td>
+<td>Numeric</td>
+</tr>
+<tr>
+<td><code>float</code> ↔ <code>float</code></td>
+<td><code>== != &lt; &gt; &lt;= &gt;=</code></td>
+<td>IEEE 754 (<code>==</code> uses epsilon tolerance)</td>
+</tr>
+<tr>
+<td><code>int</code> ↔ <code>float</code></td>
+<td><code>== != &lt; &gt; &lt;= &gt;=</code></td>
+<td>int widened to float</td>
+</tr>
+<tr>
+<td><code>string</code> ↔ <code>string</code></td>
+<td><code>== != &lt; &gt; &lt;= &gt;=</code></td>
+<td>Lexicographic (byte order)</td>
+</tr>
+<tr>
+<td><code>char</code> ↔ <code>char</code></td>
+<td><code>== != &lt; &gt; &lt;= &gt;=</code></td>
+<td>Unicode code-point order</td>
+</tr>
+<tr>
+<td><code>bool</code> ↔ <code>bool</code></td>
+<td><code>== !=</code></td>
+<td>Value equality only</td>
+</tr>
+<tr>
+<td><code>null</code> ↔ <code>null</code></td>
+<td><code>== !=</code></td>
+<td>Always <code>null == null</code> is <code>true</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="34-logical-operators">3.4 Logical Operators</h3>
+<p>Short-circuit evaluation applies to <code>and</code> and <code>or</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>and</code></td>
+<td>Returns <code>false</code> as soon as left operand is falsy; otherwise evaluates right</td>
+</tr>
+<tr>
+<td><code>or</code></td>
+<td>Returns <code>true</code> as soon as left operand is truthy; otherwise evaluates right</td>
+</tr>
+<tr>
+<td><code>not</code></td>
+<td>Negates a boolean value</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Truthiness rules</strong> (used by <code>if</code>, <code>while</code>, logical ops):</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Truthiness</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>false</code></td>
+<td>falsy</td>
+</tr>
+<tr>
+<td><code>null</code></td>
+<td>falsy</td>
+</tr>
+<tr>
+<td><code>0</code> (int)</td>
+<td>falsy</td>
+</tr>
+<tr>
+<td><code>0.0</code> (float)</td>
+<td>falsy</td>
+</tr>
+<tr>
+<td><code>""</code> (empty string)</td>
+<td>falsy</td>
+</tr>
+<tr>
+<td><code>[]</code> (empty array)</td>
+<td>falsy</td>
+</tr>
+<tr>
+<td><code>{}</code> (empty map)</td>
+<td>falsy</td>
+</tr>
+<tr>
+<td>everything else</td>
+<td>truthy</td>
+</tr>
+</tbody>
+</table>
+<h3 id="35-bitwise-operators">3.5 Bitwise Operators</h3>
+<p>Require <code>int</code> operands on both sides. Any other type raises a <code>RuntimeError</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Operator</th>
+<th>Operation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&amp;</code></td>
+<td>Bitwise AND</td>
+</tr>
+<tr>
+<td><code>\|</code></td>
+<td>Bitwise OR</td>
+</tr>
+<tr>
+<td><code>^</code></td>
+<td>Bitwise XOR</td>
+</tr>
+<tr>
+<td><code>&lt;&lt;</code></td>
+<td>Left shift</td>
+</tr>
+<tr>
+<td><code>&gt;&gt;</code></td>
+<td>Right shift (arithmetic, sign-extending)</td>
+</tr>
+<tr>
+<td><code>~</code></td>
+<td>Bitwise NOT (unary)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="36-null-coalescing">3.6 Null Coalescing</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>store → result → value ?? default
+</code></pre></div>
+<p>Returns <code>value</code> if it is not <code>null</code>, otherwise returns <code>default</code>. The right operand is only evaluated if needed.</p>
+<blockquote>
+<p><strong>v0.4 status:</strong> <code>??</code> is fully implemented in the bytecode VM (<code>NullCoalesce</code> instruction). Works in both AST VM and bytecode mode.</p>
+</blockquote>
+<h3 id="37-ternary">3.7 Ternary</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>store → abs → x &gt;= 0 ? x : -x
+</code></pre></div>
+<h3 id="38-operator-precedence-highest-to-lowest">3.8 Operator Precedence (highest to lowest)</h3>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Operators</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>()</code> parentheses, <code>[]</code> index, <code>.</code> member, <code>?.</code> <code>?[]</code> <code>?()</code> optional</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>++</code> <code>--</code> (prefix), <code>-</code> (unary), <code>not</code>, <code>~</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>**</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>*</code> <code>/</code> <code>%</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>+</code> <code>-</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>&amp;</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>^</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>\|</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>==</code> <code>!=</code></td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>and</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>or</code></td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>??</code> (null coalesce)</td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>? :</code> (ternary)</td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>→</code> (arrow, assignment/call)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-function-rules">4. Function Rules</h2>
+<h3 id="41-basic-definition">4.1 Basic Definition</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>define → name → (params) → return_type
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>  body
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>end
+</code></pre></div>
+<p>All parts except <code>define</code>, the name, and the parameter list are optional.
+<code>return_type</code> is an annotation only; the runtime does not enforce it except via the type checker.</p>
+<h3 id="42-parameters">4.2 Parameters</h3>
+<p>Each parameter supports:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Syntax</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plain</td>
+<td><code>name</code></td>
+<td>Positional</td>
+</tr>
+<tr>
+<td>Typed</td>
+<td><code>name: type</code></td>
+<td>Type annotation</td>
+</tr>
+<tr>
+<td>Default value</td>
+<td><code>name = expr</code></td>
+<td>Used when argument is omitted</td>
+</tr>
+<tr>
+<td>Typed with default</td>
+<td><code>name: type = expr</code></td>
+<td>Both combined</td>
+</tr>
+<tr>
+<td>Variadic</td>
+<td><code>...name</code></td>
+<td>Collects remaining args into an array; must be last</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>define → greet → (name: string, title = &quot;Mr&quot;)
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>  return → &quot;Hello, &quot; + title + &quot; &quot; + name
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>end
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>define → sum_all → (...nums: int) → int
+<a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a>  store → total → 0
+<a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a>  for → n in nums
+<a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a>    store → total → total + n
+<a id="__codelineno-33-9" name="__codelineno-33-9" href="#__codelineno-33-9"></a>  end
+<a id="__codelineno-33-10" name="__codelineno-33-10" href="#__codelineno-33-10"></a>  return → total
+<a id="__codelineno-33-11" name="__codelineno-33-11" href="#__codelineno-33-11"></a>end
+</code></pre></div>
+<p><strong>Constraints:</strong>
+- A variadic parameter must be the last parameter.
+- A variadic parameter may not have a default value.
+- Parameters with default values must appear after parameters without defaults.</p>
+<h3 id="43-generic-functions">4.3 Generic Functions</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>define → identity&lt;T&gt; → (x: T) → T
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>  return → x
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>end
+</code></pre></div>
+<p>Type parameters are listed after the function name inside <code>&lt;&gt;</code> and may be used in parameter types and return types.</p>
+<blockquote>
+<p><strong>v0.4 note:</strong> Type parameters are parsed and stored in the AST but are <strong>type-erased at runtime</strong>. No generic specialisation or type-checking against <code>T</code> occurs. All type annotations are advisory and validated by the type-checker tool only, not by the runtime.</p>
+</blockquote>
+<h3 id="44-return">4.4 Return</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>return → expression       # returns single value
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>return → a, b, c          # multi-return: auto-wraps as [a, b, c]
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>return                    # returns null
+</code></pre></div>
+<p>A <code>return → a, b</code> statement wraps all expressions in a plain <code>array</code> at the call site. The caller receives a regular array value.</p>
+<p>Execution stops at the first <code>return</code> encountered. A function that reaches <code>end</code> without a <code>return</code> returns <code>null</code>.</p>
+<h3 id="45-first-class-functions-and-closures">4.5 First-Class Functions and Closures</h3>
+<p>Functions are values. They capture their enclosing environment at definition time (closure semantics).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>define → make_adder → (n: int)
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>  return → (x: int) → x + n    # captures n
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>end
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a>store → add5 → make_adder(5)
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a>print → add5(3)    # 8
+</code></pre></div>
+<p>The captured environment is a snapshot: mutations to <code>n</code> after <code>make_adder</code> returns do not affect existing closures.</p>
+<h3 id="46-async-functions-synchronous-mode-in-v04">4.6 Async Functions (synchronous mode in v0.4)</h3>
+<blockquote>
+<p><strong>v0.4 note:</strong> <code>async</code>/<code>await</code> syntax is fully parsed and accepted. In the current
+implementation both VMs execute async functions <strong>synchronously</strong> — <code>await</code> evaluates
+the expression and returns its value immediately without any blocking or parallelism.
+Full Tokio-backed async I/O is planned for v0.5.</p>
+</blockquote>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>async → define → fetch → (url: string) → string
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>  # In v0.4 this runs synchronously — http_get blocks
+<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>  store → body → await → http_get(url)
+<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>  return → body
+<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a>end
+<a id="__codelineno-37-6" name="__codelineno-37-6" href="#__codelineno-37-6"></a>
+<a id="__codelineno-37-7" name="__codelineno-37-7" href="#__codelineno-37-7"></a>store → result → fetch(&quot;https://example.com&quot;)
+</code></pre></div>
+<ul>
+<li><code>async → define</code> is accepted; the function runs synchronously.</li>
+<li><code>await → expr</code> evaluates <code>expr</code> and returns the result directly.</li>
+<li>No <code>Future&lt;T&gt;</code> type at runtime — the value is returned as-is.</li>
+<li><code>await_all</code> is not built-in; model parallel execution with sequential calls for now.</li>
+</ul>
+<h3 id="47-capability-declarations">4.7 Capability Declarations</h3>
+<p>Functions may declare which system capabilities they require or prohibit:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>define → read_config → (path: string) → string
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>  allowed → [&quot;fs.read&quot;]
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a>  forbidden → [&quot;net.connect&quot;, &quot;sys.exec&quot;]
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a>  return → read_file(path)
+<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a>end
+</code></pre></div>
+<p><strong>Capability format:</strong> <code>"resource.action"</code> or <code>"resource.action:scope"</code></p>
+<table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>Actions</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fs</code></td>
+<td><code>read</code>, <code>write</code>, <code>delete</code>, <code>*</code></td>
+<td>Filesystem I/O</td>
+</tr>
+<tr>
+<td><code>net</code></td>
+<td><code>connect</code>, <code>listen</code>, <code>*</code></td>
+<td>HTTP, TCP, UDP, DNS</td>
+</tr>
+<tr>
+<td><code>sys</code></td>
+<td><code>exec</code>, <code>env</code>, <code>*</code></td>
+<td>Process execution, environment</td>
+</tr>
+<tr>
+<td><code>wifi</code></td>
+<td><code>scan</code>, <code>capture</code>, <code>deauth</code>, <code>inject</code></td>
+<td>WiFi operations (enforced, v0.4.1+)</td>
+</tr>
+<tr>
+<td><code>ble</code></td>
+<td><code>scan</code>, <code>connect</code>, <code>fuzz</code>, <code>read</code>, <code>write</code></td>
+<td>Bluetooth LE (enforced, v0.4.1+)</td>
+</tr>
+</tbody>
+</table>
+<p>Alias: <code>"bluetooth"</code> is accepted as a synonym for <code>"ble"</code>.</p>
+<p>Wildcard forms: <code>"fs.*"</code> (any fs action), <code>"*.*"</code> (unrestricted).</p>
+<p>Scoped form: <code>"fs.read:/tmp/*"</code> restricts the action to a specific path/host pattern.</p>
+<p>The runtime enforces capability declarations. Violating a <code>forbidden</code> capability raises a <code>RuntimeError</code>.</p>
+<h3 id="48-doc-and-hint-annotations">4.8 Doc and Hint Annotations</h3>
+<p>These are metadata-only annotations that do not affect runtime behaviour but are emitted by <code>txtcode doc</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>define → parse_json → (input: string) → map
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>  doc → &quot;Parse a JSON string into a map&quot;
+<a id="__codelineno-39-3" name="__codelineno-39-3" href="#__codelineno-39-3"></a>  hint → &quot;Input must be valid JSON; raises on parse error&quot;
+<a id="__codelineno-39-4" name="__codelineno-39-4" href="#__codelineno-39-4"></a>  return → json_decode(input)
+<a id="__codelineno-39-5" name="__codelineno-39-5" href="#__codelineno-39-5"></a>end
+</code></pre></div>
+<ul>
+<li><code>doc →</code> (canonical) / <code>intent →</code> (legacy alias) — human-readable description</li>
+<li><code>hint →</code> (canonical) / <code>ai_hint →</code> (legacy alias) — AI/tooling guidance</li>
+</ul>
+<p>Both legacy names are still accepted and automatically canonicalized by the parser.</p>
+<h3 id="49-scope-and-variable-lookup">4.9 Scope and Variable Lookup</h3>
+<p>Variables are looked up in scope order: local → enclosing closures → module-level globals.
+Re-assigning a variable in an inner scope creates a new binding; it does not modify the outer scope.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>store → x → 10
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>define → f → ()
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>  store → x → 20    # new binding, does not modify outer x
+<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a>  return → x
+<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a>end
+<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a>print → f()   # 20
+<a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a>print → x     # 10
+</code></pre></div>
+<hr />
+<h2 id="5-module-resolution">5. Module Resolution</h2>
+<h3 id="51-search-algorithm">5.1 Search Algorithm</h3>
+<p>When the interpreter encounters <code>import → name</code>, it resolves the module path as follows:</p>
+<ol>
+<li><strong>Relative import</strong> — if <code>name</code> starts with <code>./</code> or <code>../</code>:</li>
+<li>Resolve relative to the directory containing the current source file.</li>
+<li>
+<p>Requires a current file context; raises an error otherwise.</p>
+</li>
+<li>
+<p><strong>Absolute import</strong> — any other name:</p>
+</li>
+<li>Search each path in the <strong>search path list</strong> in order.</li>
+<li>For each directory <code>dir</code>, try:<ol>
+<li><code>dir/name.tc</code></li>
+<li><code>dir/name</code> (exact, no extension added)</li>
+</ol>
+</li>
+<li>Use the first match found.</li>
+<li>If no match: raise <code>RuntimeError: Module 'name' not found in search paths</code>.</li>
+</ol>
+<h3 id="52-default-search-paths">5.2 Default Search Paths</h3>
+<ol>
+<li>The current working directory (<code>cwd</code>) at interpreter startup.</li>
+<li>Each colon-separated path in the <code>TXTCODE_MODULE_PATH</code> environment variable (if set).</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a><span class="nv">TXTCODE_MODULE_PATH</span><span class="o">=</span>/usr/lib/txtcode:/home/user/modules<span class="w"> </span>txtcode<span class="w"> </span>run<span class="w"> </span>main.tc
+</code></pre></div>
+<p>Additional paths may be added programmatically via the <code>ModuleResolver</code> API.</p>
+<h3 id="53-import-syntax">5.3 Import Syntax</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a># Import entire module; access via module_name.symbol
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>import → math
+<a id="__codelineno-42-3" name="__codelineno-42-3" href="#__codelineno-42-3"></a>
+<a id="__codelineno-42-4" name="__codelineno-42-4" href="#__codelineno-42-4"></a># Import specific names into local scope
+<a id="__codelineno-42-5" name="__codelineno-42-5" href="#__codelineno-42-5"></a>import → sqrt, pow from math
+<a id="__codelineno-42-6" name="__codelineno-42-6" href="#__codelineno-42-6"></a>
+<a id="__codelineno-42-7" name="__codelineno-42-7" href="#__codelineno-42-7"></a># Import with alias
+<a id="__codelineno-42-8" name="__codelineno-42-8" href="#__codelineno-42-8"></a>import → math as m
+<a id="__codelineno-42-9" name="__codelineno-42-9" href="#__codelineno-42-9"></a>store → x → m.sqrt(16.0)
+</code></pre></div>
+<h3 id="54-circular-import-detection">5.4 Circular Import Detection</h3>
+<p>The resolver tracks the current import chain. If a module being loaded is already in the chain, a <code>RuntimeError</code> is raised:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>RuntimeError: Circular import detected: a.tc -&gt; b.tc -&gt; a.tc
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>Hint: Remove the circular dependency between modules.
+</code></pre></div>
+<h3 id="55-module-caching">5.5 Module Caching</h3>
+<p>Each module is loaded and parsed <strong>at most once</strong> per interpreter session. Subsequent imports of the same resolved path return the cached <code>Program</code> AST directly.</p>
+<h3 id="56-version-compatibility">5.6 Version Compatibility</h3>
+<p>Module source files may include a version header:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>## @version 0.1.0
+</code></pre></div>
+<p>If the module's declared version is older than the current runtime version, the AST is automatically migrated via the compatibility layer before execution.
+If the version is declared <strong>incompatible</strong>, loading raises a <code>RuntimeError</code> with the reason.</p>
+<h3 id="57-export">5.7 Export</h3>
+<p>Modules explicitly export symbols using <code>export</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a># math.tc
+<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a>define → add → (a: int, b: int) → int
+<a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a>  return → a + b
+<a id="__codelineno-45-4" name="__codelineno-45-4" href="#__codelineno-45-4"></a>end
+<a id="__codelineno-45-5" name="__codelineno-45-5" href="#__codelineno-45-5"></a>export → add
+</code></pre></div>
+<p>Importing a module that does not export a symbol raises a <code>RuntimeError</code> at runtime.</p>
+<hr />
+<h2 id="6-runtime-limits">6. Runtime Limits</h2>
+<h3 id="61-source-file-size">6.1 Source File Size</h3>
+<p>The CLI enforces a <strong>10 MB</strong> maximum source file size. Files exceeding this limit are rejected before parsing with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>Error: File &#39;path&#39; is too large (N bytes). Maximum allowed: 10485760 bytes
+</code></pre></div>
+<h3 id="62-execution-timeout">6.2 Execution Timeout</h3>
+<p>A timeout policy is available and configurable. There is <strong>no default timeout</strong> — programs run to completion unless a timeout is explicitly set via API or future CLI flag.</p>
+<p>When a timeout is configured and exceeded, the runtime raises:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>RuntimeError: Maximum execution time exceeded: N seconds (max: M seconds)
+</code></pre></div>
+<h3 id="63-call-stack">6.3 Call Stack</h3>
+<p>The call stack depth limit is enforced at <strong>50</strong> across all VMs as of v0.4. Recursion or mutual calls that exceed this depth return a <code>RuntimeError</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>RuntimeError: Maximum call depth exceeded (50)
+</code></pre></div>
+<p>Design functions to stay within this budget. Deeply recursive algorithms should be rewritten iteratively.</p>
+<h3 id="64-memory">6.4 Memory</h3>
+<p>Memory is managed by Rust's ownership system combined with reference counting for shared values. There is <strong>no explicit memory limit</strong> in v0.4. The process is bounded by the host OS.</p>
+<p><code>MemoryManager</code> (stub in v0.4) is a placeholder for future GC integration.</p>
+<h3 id="65-integer-overflow">6.5 Integer Overflow</h3>
+<p>Integer arithmetic uses Rust <code>i64</code>. All arithmetic (<code>+</code>, <code>-</code>, <code>*</code>, <code>**</code>) in both the AST VM and bytecode VM uses Rust's <code>checked_*</code> methods as of v0.4, returning a <code>RuntimeError</code> on overflow instead of wrapping or panicking.</p>
+<h3 id="66-float-semantics">6.6 Float Semantics</h3>
+<p>Float arithmetic follows IEEE 754 strictly. The runtime does not raise errors for:
+- <code>Infinity</code> (result of e.g. <code>1.0 / 0.0</code> in float context)
+- <code>-Infinity</code>
+- <code>NaN</code></p>
+<p>These propagate silently. Use <code>math.is_nan()</code> and <code>math.is_finite()</code> to check.</p>
+<h3 id="67-rate-limiting-capability-system">6.7 Rate Limiting (Capability System)</h3>
+<p>When capabilities include rate limits (e.g. <code>"net.connect:100/hour"</code>), the runtime enforces them via the policy engine. Exceeding the rate limit raises a <code>RuntimeError</code> with details:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>RuntimeError: Rate limit exceeded for net.connect: 100 per 3600s
+</code></pre></div>
+<h3 id="68-safe-mode">6.8 Safe Mode</h3>
+<p>When launched with <code>--safe-mode</code>, the <code>exec()</code> stdlib function is disabled.
+<code>--allow-exec</code> re-enables it and overrides <code>--safe-mode</code>.</p>
+<hr />
+<h2 id="7-error-semantics">7. Error Semantics</h2>
+<h3 id="71-error-structure">7.1 Error Structure</h3>
+<p>All runtime errors are instances of <code>RuntimeError</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a>RuntimeError {
+<a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>  message:     string     -- human-readable description
+<a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a>  hint:        string?    -- optional resolution hint
+<a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a>  stack_trace: CallFrame* -- ordered list of call frames (innermost last)
+<a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a>}
+</code></pre></div>
+<p><code>CallFrame</code> contains:
+- <code>function_name</code>: name of the function, or <code>"&lt;main&gt;"</code> for top-level code
+- <code>line</code>: 1-based line number in source
+- <code>column</code>: 1-based column number</p>
+<h3 id="72-error-display">7.2 Error Display</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>RuntimeError: Division by zero
+<a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a>  (Hint: Check divisor before dividing)
+<a id="__codelineno-51-3" name="__codelineno-51-3" href="#__codelineno-51-3"></a>
+<a id="__codelineno-51-4" name="__codelineno-51-4" href="#__codelineno-51-4"></a>Stack trace:
+<a id="__codelineno-51-5" name="__codelineno-51-5" href="#__codelineno-51-5"></a>  3: divide at line 5, column 12
+<a id="__codelineno-51-6" name="__codelineno-51-6" href="#__codelineno-51-6"></a>  2: calculate at line 12, column 8
+<a id="__codelineno-51-7" name="__codelineno-51-7" href="#__codelineno-51-7"></a>  1: &lt;main&gt; at line 20, column 1
+</code></pre></div>
+<h3 id="73-try-catch-finally">7.3 Try / Catch / Finally</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a>try
+<a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a>  store → result → divide(10, 0)
+<a id="__codelineno-52-3" name="__codelineno-52-3" href="#__codelineno-52-3"></a>catch → err
+<a id="__codelineno-52-4" name="__codelineno-52-4" href="#__codelineno-52-4"></a>  print → err          # prints error message string
+<a id="__codelineno-52-5" name="__codelineno-52-5" href="#__codelineno-52-5"></a>  print → &quot;Failed&quot;
+<a id="__codelineno-52-6" name="__codelineno-52-6" href="#__codelineno-52-6"></a>finally
+<a id="__codelineno-52-7" name="__codelineno-52-7" href="#__codelineno-52-7"></a>  print → &quot;Always runs&quot;
+<a id="__codelineno-52-8" name="__codelineno-52-8" href="#__codelineno-52-8"></a>end
+</code></pre></div>
+<ul>
+<li>The <code>catch</code> variable is bound to the <strong>error message string</strong> (not the full <code>RuntimeError</code> object).</li>
+<li>Access <code>err</code> as a string inside the catch block.</li>
+<li><code>finally</code> runs regardless of whether an error occurred, and regardless of whether the catch block itself raises.</li>
+<li>If no <code>catch</code> is present and an error occurs, <code>finally</code> runs, then the error propagates.</li>
+<li>Re-raising from inside <code>catch</code> is done by not catching the new error: any error raised in <code>catch</code> propagates normally.</li>
+</ul>
+<h3 id="74-propagation-rules">7.4 Propagation Rules</h3>
+<ol>
+<li>An uncaught <code>RuntimeError</code> propagates up the call stack until a <code>try/catch</code> handles it.</li>
+<li>If it reaches the top-level without being caught, the interpreter prints it to <code>stderr</code> and exits with code <code>1</code>.</li>
+<li>Errors from async functions propagate when the <code>Future</code> is <code>await</code>-ed.</li>
+</ol>
+<h3 id="75-standard-error-conditions">7.5 Standard Error Conditions</h3>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Message</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Undefined variable</td>
+<td><code>"Undefined variable: name"</code></td>
+</tr>
+<tr>
+<td>Division by zero</td>
+<td><code>"Division by zero"</code></td>
+</tr>
+<tr>
+<td>Modulo by zero</td>
+<td><code>"Modulo by zero"</code></td>
+</tr>
+<tr>
+<td>Index out of bounds</td>
+<td><code>"Index out of bounds"</code></td>
+</tr>
+<tr>
+<td>Key not found in map</td>
+<td><code>"Key not found: key"</code></td>
+</tr>
+<tr>
+<td>Undefined function</td>
+<td><code>"Function not found: name"</code></td>
+</tr>
+<tr>
+<td>Type mismatch in operator</td>
+<td><code>"Invalid operands for [operation]"</code></td>
+</tr>
+<tr>
+<td>Negative int exponent</td>
+<td><code>"Negative exponent not supported for integers"</code></td>
+</tr>
+<tr>
+<td>Module not found</td>
+<td><code>"Module 'name' not found in search paths"</code></td>
+</tr>
+<tr>
+<td>Circular import</td>
+<td><code>"Circular import detected: a -&gt; b -&gt; a"</code></td>
+</tr>
+<tr>
+<td>Assert failure</td>
+<td><code>"Assertion failed"</code> or custom message</td>
+</tr>
+<tr>
+<td>Capability / forbidden violation</td>
+<td><code>"Capability [cap] is forbidden in function [fn]"</code></td>
+</tr>
+<tr>
+<td>Permission not granted</td>
+<td><code>"Permission not granted: wifi.scan"</code></td>
+</tr>
+<tr>
+<td>Permission explicitly denied</td>
+<td><code>"Permission denied: fs.write"</code></td>
+</tr>
+<tr>
+<td>Intent violation</td>
+<td><code>"intent.violation.net.connect logged in audit trail"</code></td>
+</tr>
+<tr>
+<td>Timeout exceeded</td>
+<td><code>"Maximum execution time exceeded"</code></td>
+</tr>
+<tr>
+<td>Call depth exceeded</td>
+<td><code>"Maximum call depth exceeded (50)"</code></td>
+</tr>
+<tr>
+<td>File too large</td>
+<td><code>"File 'path' is too large"</code></td>
+</tr>
+<tr>
+<td>Stack overflow (OS)</td>
+<td>Process abort — not catchable in v0.4</td>
+</tr>
+</tbody>
+</table>
+<h3 id="76-assert">7.6 Assert</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a>assert → x &gt; 0
+<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a>assert → x &gt; 0, &quot;x must be positive&quot;
+</code></pre></div>
+<p>Equivalent to:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a>if → not (x &gt; 0)
+<a id="__codelineno-54-2" name="__codelineno-54-2" href="#__codelineno-54-2"></a>  # raise RuntimeError(&quot;Assertion failed&quot;) or RuntimeError(message)
+<a id="__codelineno-54-3" name="__codelineno-54-3" href="#__codelineno-54-3"></a>end
+</code></pre></div></p>
+<p>Assert is always evaluated — there is no release-mode stripping in v0.4.</p>
+<h3 id="77-result-pattern-idiomatic">7.7 Result Pattern (Idiomatic)</h3>
+<p>While there is no language-level <code>Result&lt;T, E&gt;</code> syntax type in v0.4, the convention is:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>define → safe_divide → (a: int, b: int)
+<a id="__codelineno-55-2" name="__codelineno-55-2" href="#__codelineno-55-2"></a>  if → b == 0
+<a id="__codelineno-55-3" name="__codelineno-55-3" href="#__codelineno-55-3"></a>    return → {&quot;ok&quot;: false, &quot;error&quot;: &quot;Division by zero&quot;}
+<a id="__codelineno-55-4" name="__codelineno-55-4" href="#__codelineno-55-4"></a>  end
+<a id="__codelineno-55-5" name="__codelineno-55-5" href="#__codelineno-55-5"></a>  return → {&quot;ok&quot;: true, &quot;value&quot;: a / b}
+<a id="__codelineno-55-6" name="__codelineno-55-6" href="#__codelineno-55-6"></a>end
+<a id="__codelineno-55-7" name="__codelineno-55-7" href="#__codelineno-55-7"></a>
+<a id="__codelineno-55-8" name="__codelineno-55-8" href="#__codelineno-55-8"></a>store → r → safe_divide(10, 2)
+<a id="__codelineno-55-9" name="__codelineno-55-9" href="#__codelineno-55-9"></a>if → r[&quot;ok&quot;]
+<a id="__codelineno-55-10" name="__codelineno-55-10" href="#__codelineno-55-10"></a>  print → r[&quot;value&quot;]
+<a id="__codelineno-55-11" name="__codelineno-55-11" href="#__codelineno-55-11"></a>else
+<a id="__codelineno-55-12" name="__codelineno-55-12" href="#__codelineno-55-12"></a>  print → &quot;Error: &quot; + r[&quot;error&quot;]
+<a id="__codelineno-55-13" name="__codelineno-55-13" href="#__codelineno-55-13"></a>end
+</code></pre></div>
+<p>A native <code>Result&lt;T, E&gt;</code> type is planned for a future release.</p>
+<hr />
+<hr />
+<h2 id="appendix-f-security-guarantees-v04">Appendix F — Security Guarantees (v0.4)</h2>
+<p>This section documents what the v0.4 runtime does and does not enforce, so users can make
+informed decisions about running Txt-code scripts.</p>
+<h3 id="f1-enforced-in-v04">F.1 Enforced in v0.4</h3>
+<table>
+<thead>
+<tr>
+<th>Guarantee</th>
+<th>Mechanism</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Permission declarations</strong></td>
+<td><code>allowed</code>/<code>forbidden</code> in functions checked by AST VM</td>
+<td>Capability violations raise RuntimeError</td>
+</tr>
+<tr>
+<td><strong>Safe mode</strong> (<code>--safe-mode</code>)</td>
+<td>Disables <code>exec()</code> stdlib call</td>
+<td>Can be overridden by <code>--allow-exec</code></td>
+</tr>
+<tr>
+<td><strong>Rate limiting</strong></td>
+<td>Policy engine applies capability rate limits</td>
+<td>e.g. <code>"net.connect:100/hour"</code></td>
+</tr>
+<tr>
+<td><strong>Audit trail</strong></td>
+<td>All major events logged to <code>~/.txtcode/logs/</code></td>
+<td>Includes call targets, timestamps, errors</td>
+</tr>
+<tr>
+<td><strong>Capability scoping</strong></td>
+<td><code>permission → fs.read:/tmp/*</code> restricts to path glob</td>
+<td>Checked per-call in AST VM</td>
+</tr>
+<tr>
+<td><strong>Circular import detection</strong></td>
+<td>Raises RuntimeError with full chain</td>
+<td>Prevents infinite module loops</td>
+</tr>
+<tr>
+<td><strong>Division/modulo by zero</strong></td>
+<td>Always raises RuntimeError</td>
+<td>Both AST VM and bytecode VM</td>
+</tr>
+<tr>
+<td><strong>Source file size limit</strong></td>
+<td>10 MB max, rejected before parsing</td>
+<td>Prevents resource exhaustion</td>
+</tr>
+<tr>
+<td><strong>Permission checking in stdlib</strong></td>
+<td><code>call_function_with_combined_traits</code> checks net/IO/sys/exec</td>
+<td>Before call via PermissionChecker trait</td>
+</tr>
+</tbody>
+</table>
+<h3 id="f2-not-yet-enforced-v04-status">F.2 Not Yet Enforced (v0.4 status)</h3>
+<table>
+<thead>
+<tr>
+<th>Gap</th>
+<th>Impact</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Memory limits</strong></td>
+<td>No explicit heap limit; bounded by host OS only</td>
+<td>Future</td>
+</tr>
+<tr>
+<td><strong><code>?()</code> optional call on non-null non-function</strong></td>
+<td>Raises RuntimeError in bytecode VM</td>
+<td>v0.5</td>
+</tr>
+<tr>
+<td><strong>Source comments in migrate</strong></td>
+<td><code>#</code> comments are not preserved through AST printer</td>
+<td>v0.4</td>
+</tr>
+<tr>
+<td><strong><code>return →</code> inside nested blocks</strong></td>
+<td>Does not propagate through <code>match</code>, <code>if</code>, or <code>for</code> to caller</td>
+<td>v0.5</td>
+</tr>
+</tbody>
+</table>
+<h3 id="f2a-known-runtime-limitation-return-in-nested-blocks">F.2a Known Runtime Limitation — <code>return →</code> in Nested Blocks</h3>
+<p>In v0.4, <code>return →</code> only propagates to the caller when it appears <strong>at the top level of the
+function body</strong>. A <code>return →</code> inside a <code>match</code> case, <code>if</code> branch, <code>for</code> loop, or <code>try</code> block
+is silently swallowed — execution continues after the enclosing block, and the function returns
+whatever its final top-level expression evaluates to (<code>null</code> if nothing else).</p>
+<p><strong>Does not work:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a>define → f → (x)
+<a id="__codelineno-56-2" name="__codelineno-56-2" href="#__codelineno-56-2"></a>  if → x &gt; 0
+<a id="__codelineno-56-3" name="__codelineno-56-3" href="#__codelineno-56-3"></a>    return → &quot;positive&quot;   ## BUG: not propagated to caller
+<a id="__codelineno-56-4" name="__codelineno-56-4" href="#__codelineno-56-4"></a>  end
+<a id="__codelineno-56-5" name="__codelineno-56-5" href="#__codelineno-56-5"></a>  return → &quot;other&quot;
+<a id="__codelineno-56-6" name="__codelineno-56-6" href="#__codelineno-56-6"></a>end
+</code></pre></div></p>
+<p><strong>Workaround — store then return at top level:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a>define → f → (x)
+<a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>  store → result → &quot;other&quot;
+<a id="__codelineno-57-3" name="__codelineno-57-3" href="#__codelineno-57-3"></a>  if → x &gt; 0
+<a id="__codelineno-57-4" name="__codelineno-57-4" href="#__codelineno-57-4"></a>    store → result → &quot;positive&quot;
+<a id="__codelineno-57-5" name="__codelineno-57-5" href="#__codelineno-57-5"></a>  end
+<a id="__codelineno-57-6" name="__codelineno-57-6" href="#__codelineno-57-6"></a>  return → result           ## OK: top-level return
+<a id="__codelineno-57-7" name="__codelineno-57-7" href="#__codelineno-57-7"></a>end
+</code></pre></div></p>
+<p>The same pattern applies to <code>match</code> cases and <code>try</code>/<code>catch</code> bodies. Always accumulate the
+result in a variable and place a single <code>return → result</code> as the last statement of the function.</p>
+<h3 id="f3-safe-mode-guarantees">F.3 Safe Mode Guarantees</h3>
+<p>When <code>--safe-mode</code> is active:
+- <code>exec()</code>, <code>spawn()</code>, and <code>kill()</code> stdlib calls return RuntimeError before executing.
+- <code>sys.exec</code> capability is treated as denied regardless of <code>permission</code> declarations.
+- All other capabilities (fs, net, tool) remain subject to their declared permissions.</p>
+<p>Safe mode <strong>does not</strong> restrict:
+- Network access (use <code>forbidden → ["net.*"]</code> in function declarations for that)
+- File system reads/writes (use <code>forbidden → ["fs.*"]</code> for that)
+- Loading and executing modules</p>
+<h3 id="f4-capability-declaration-vs-permission-checker">F.4 Capability Declaration vs Permission Checker</h3>
+<p>Two independent mechanisms enforce permissions in v0.4:</p>
+<ol>
+<li><strong>Capability declarations</strong> (<code>allowed</code>/<code>forbidden</code>) — declared in function bodies, enforced
+   by the AST VM at runtime when the function executes.</li>
+<li><strong>PermissionChecker</strong> — a Rust trait implemented by the VM executor, checked by
+   <code>StdLib::call_function_with_combined_traits</code> before routing to stdlib modules.</li>
+</ol>
+<p>Both must allow an operation for it to proceed in the AST VM. Either mechanism alone is
+sufficient to block a call. The bytecode VM does not implement either mechanism.</p>
+<hr />
+<h2 id="appendix-e-migration-tooling-reference">Appendix E — Migration Tooling Reference</h2>
+<h3 id="e1-overview">E.1 Overview</h3>
+<p><code>txtcode migrate</code> assists with updating Txt-code source files when syntax or semantics change between versions.</p>
+<h3 id="e2-supported-transformations-v01-v02">E.2 Supported Transformations (v0.1 → v0.2)</h3>
+<table>
+<thead>
+<tr>
+<th>Change</th>
+<th>From (v0.1)</th>
+<th>To (v0.2)</th>
+<th>Auto-migrated?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Deprecated space syntax</td>
+<td><code>define name (params)</code></td>
+<td><code>define → name → (params)</code></td>
+<td>Warning emitted</td>
+</tr>
+<tr>
+<td>Module version header</td>
+<td><code>## @version 0.1.0</code></td>
+<td><code>## @version 0.2.0</code></td>
+<td>Reported</td>
+</tr>
+</tbody>
+</table>
+<p>No breaking syntax changes were introduced between v0.1 and v0.2. Migration is advisory.</p>
+<h3 id="e3-usage">E.3 Usage</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a><span class="c1"># Validate files without modifying them (default: dry-run is ON)</span>
+<a id="__codelineno-58-2" name="__codelineno-58-2" href="#__codelineno-58-2"></a>txtcode<span class="w"> </span>migrate<span class="w"> </span>--files<span class="w"> </span>main.tc<span class="w"> </span>lib.tc
+<a id="__codelineno-58-3" name="__codelineno-58-3" href="#__codelineno-58-3"></a>
+<a id="__codelineno-58-4" name="__codelineno-58-4" href="#__codelineno-58-4"></a><span class="c1"># Migrate an entire directory</span>
+<a id="__codelineno-58-5" name="__codelineno-58-5" href="#__codelineno-58-5"></a>txtcode<span class="w"> </span>migrate<span class="w"> </span>--directory<span class="w"> </span>src/
+<a id="__codelineno-58-6" name="__codelineno-58-6" href="#__codelineno-58-6"></a>
+<a id="__codelineno-58-7" name="__codelineno-58-7" href="#__codelineno-58-7"></a><span class="c1"># Specify versions explicitly</span>
+<a id="__codelineno-58-8" name="__codelineno-58-8" href="#__codelineno-58-8"></a>txtcode<span class="w"> </span>migrate<span class="w"> </span>--files<span class="w"> </span>main.tc<span class="w"> </span>--from<span class="w"> </span><span class="m">0</span>.1.0<span class="w"> </span>--to<span class="w"> </span><span class="m">0</span>.2.0
+<a id="__codelineno-58-9" name="__codelineno-58-9" href="#__codelineno-58-9"></a>
+<a id="__codelineno-58-10" name="__codelineno-58-10" href="#__codelineno-58-10"></a><span class="c1"># Write migrated source back to file (v0.4+)</span>
+<a id="__codelineno-58-11" name="__codelineno-58-11" href="#__codelineno-58-11"></a>txtcode<span class="w"> </span>migrate<span class="w"> </span>--files<span class="w"> </span>main.tc<span class="w"> </span>--dry-run<span class="o">=</span><span class="nb">false</span>
+</code></pre></div>
+<h3 id="e4-current-limitations-v04">E.4 Current Limitations (v0.4)</h3>
+<ul>
+<li><strong>Source code regeneration</strong> is now implemented via the AST printer. Files are written when
+  <code>--dry-run=false</code>. The written source uses canonical syntax (<code>store →</code>, <code>define →</code>, etc.)
+  and may differ in formatting from the original.</li>
+<li><strong>Version auto-detection</strong> reads <code># version: X.Y.Z</code> from the first 20 lines of the file.
+  If not present, defaults to 0.1.0. Add a <code># version: 0.2.0</code> header to your files for
+  accurate detection without needing <code>--from</code>.</li>
+<li><strong>Source comments</strong> (lines starting with <code>#</code>) are not preserved through the AST printer,
+  as the AST does not store comment nodes. Back up your files before migrating.</li>
+</ul>
+<p>The AST-to-source printer is implemented as of v0.4, enabling actual file transformation via <code>--dry-run=false</code>.</p>
+<hr />
+<h2 id="appendix-d-execution-engine-reference">Appendix D — Execution Engine Reference</h2>
+<h3 id="d1-engine-overview-v04">D.1 Engine Overview (v0.4)</h3>
+<p>Txt-code has two execution engines. Understanding which one is active is important for security and
+compatibility guarantees.</p>
+<table>
+<thead>
+<tr>
+<th>Engine</th>
+<th>Entry point</th>
+<th>Policy/audit</th>
+<th>Permission checks</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>AST VM</strong> (<code>VirtualMachine</code>)</td>
+<td><code>txtcode run</code>, <code>txtcode repl</code>, <code>txtcode &lt;file&gt;</code></td>
+<td>Full</td>
+<td>Full</td>
+<td>Production</td>
+</tr>
+<tr>
+<td><strong>Bytecode VM</strong> (<code>BytecodeVM</code>)</td>
+<td><code>txtcode compile</code> output, debugger, benchmarks</td>
+<td>None</td>
+<td>None</td>
+<td>Experimental</td>
+</tr>
+</tbody>
+</table>
+<h3 id="d2-ast-vm-production-engine">D.2 AST VM — Production Engine</h3>
+<p><code>VirtualMachine</code> (in <code>src/runtime/vm.rs</code>) is the primary execution engine used by <code>txtcode run</code> and the REPL.</p>
+<ul>
+<li>All permission declarations (<code>allowed</code>, <code>forbidden</code>) are enforced at the call site.</li>
+<li>All stdlib calls for net/IO/sys go through <code>PermissionChecker</code> before execution.</li>
+<li>Every executed statement is recorded in the audit trail (<code>src/runtime/audit.rs</code>).</li>
+<li>Policy constraints (rate limits, timeouts) are applied by the policy engine.</li>
+<li>Intent and AI-hint annotations are visible to the audit log.</li>
+</ul>
+<p>This engine is the <strong>only</strong> execution path with production security guarantees in v0.4.</p>
+<h3 id="d3-bytecode-vm-experimental-engine">D.3 Bytecode VM — Experimental Engine</h3>
+<p><code>BytecodeVM</code> (in <code>src/runtime/bytecode_vm.rs</code>) is a stack-based interpreter for compiled <code>.txtc</code> files.</p>
+<p><strong>v0.4 status:</strong> Full feature and security parity with the AST VM. Implemented:
+<code>break</code>/<code>continue</code>, <code>for x in arr</code>, <code>repeat N</code>, <code>match</code>, <code>++</code>/<code>--</code>, string interpolation,
+user-defined functions, <code>ImportModule</code>, and as of v0.4.2, the complete 6-layer security pipeline:</p>
+<ul>
+<li>Permission enforcement — all stdlib calls pass through <code>PermissionChecker</code> (grant/deny).</li>
+<li>Audit logging — all permission checks logged with AI metadata via <code>AuditTrail</code>.</li>
+<li>Intent checking — per-function <code>allowed</code>/<code>forbidden</code> action enforcement via <code>IntentChecker</code>.</li>
+<li>Capability scoping — time-bound authorisation tokens enforced via <code>CapabilityManager</code>.</li>
+<li>Policy engine — rate limiting, AI control, and max execution time via <code>PolicyEngine</code>.</li>
+<li>Runtime security — anti-debug, bytecode integrity hash, platform detection via <code>RuntimeSecurity</code>.</li>
+</ul>
+<p><strong>Recommended use in v0.4:</strong> all execution paths, including production. Both <code>txtcode run &lt;file&gt;</code>
+(AST VM) and <code>txtcode run &lt;file.txtc&gt;</code> (bytecode VM) enforce the same security guarantees.</p>
+<h3 id="d4-choosing-an-engine">D.4 Choosing an Engine</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a>┌─────────────────────────────────────────────────────────────┐
+<a id="__codelineno-59-2" name="__codelineno-59-2" href="#__codelineno-59-2"></a>│ Use case                       Recommended command          │
+<a id="__codelineno-59-3" name="__codelineno-59-3" href="#__codelineno-59-3"></a>├─────────────────────────────────────────────────────────────┤
+<a id="__codelineno-59-4" name="__codelineno-59-4" href="#__codelineno-59-4"></a>│ Production script execution    txtcode run &lt;file&gt;           │
+<a id="__codelineno-59-5" name="__codelineno-59-5" href="#__codelineno-59-5"></a>│ Interactive development        txtcode repl                 │
+<a id="__codelineno-59-6" name="__codelineno-59-6" href="#__codelineno-59-6"></a>│ Security-critical automation   txtcode run --safe-mode      │
+<a id="__codelineno-59-7" name="__codelineno-59-7" href="#__codelineno-59-7"></a>│ Offline inspection / bench     txtcode compile + bench      │
+<a id="__codelineno-59-8" name="__codelineno-59-8" href="#__codelineno-59-8"></a>│ Debugging with breakpoints     txtcode debug &lt;file&gt;         │
+<a id="__codelineno-59-9" name="__codelineno-59-9" href="#__codelineno-59-9"></a>└─────────────────────────────────────────────────────────────┘
+</code></pre></div>
+<hr />
+<h2 id="appendix-a-complete-operator-quick-reference">Appendix A — Complete Operator Quick Reference</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a>Arithmetic:   +  -  *  /  %  **
+<a id="__codelineno-60-2" name="__codelineno-60-2" href="#__codelineno-60-2"></a>Unary:        -  not  ~
+<a id="__codelineno-60-3" name="__codelineno-60-3" href="#__codelineno-60-3"></a>              ++  --  (syntax reserved; not yet implemented in all backends — use x+1/x-1)
+<a id="__codelineno-60-4" name="__codelineno-60-4" href="#__codelineno-60-4"></a>Comparison:   ==  !=  &lt;  &gt;  &lt;=  &gt;=
+<a id="__codelineno-60-5" name="__codelineno-60-5" href="#__codelineno-60-5"></a>Logical:      and  or  not
+<a id="__codelineno-60-6" name="__codelineno-60-6" href="#__codelineno-60-6"></a>Bitwise:      &amp;  |  ^  &lt;&lt;  &gt;&gt;  ~
+<a id="__codelineno-60-7" name="__codelineno-60-7" href="#__codelineno-60-7"></a>Null-safe:    ??  ?.  ?[]  ?()  (AST VM only; bytecode VM emits Nop — see §1.11, §3.6)
+<a id="__codelineno-60-8" name="__codelineno-60-8" href="#__codelineno-60-8"></a>Ternary:      ? :
+<a id="__codelineno-60-9" name="__codelineno-60-9" href="#__codelineno-60-9"></a>Arrow:        →  (alias: -&gt;)
+</code></pre></div>
+<h2 id="appendix-b-type-system-quick-reference">Appendix B — Type System Quick Reference</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-61-1" name="__codelineno-61-1" href="#__codelineno-61-1"></a>Primitives:    int  float  string  char  bool  null
+<a id="__codelineno-61-2" name="__codelineno-61-2" href="#__codelineno-61-2"></a>Collections:   array[T]  map[T]  set[T]
+<a id="__codelineno-61-3" name="__codelineno-61-3" href="#__codelineno-61-3"></a>User-defined:  struct Name  enum Name
+<a id="__codelineno-61-4" name="__codelineno-61-4" href="#__codelineno-61-4"></a>Callable:      function (params) → T
+<a id="__codelineno-61-5" name="__codelineno-61-5" href="#__codelineno-61-5"></a>Async:         Future&lt;T&gt;
+<a id="__codelineno-61-6" name="__codelineno-61-6" href="#__codelineno-61-6"></a>Generic:       define name&lt;T, U&gt;(...)
+</code></pre></div>
+<h2 id="appendix-c-capability-reference">Appendix C — Capability Reference</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a>fs.read                  Read filesystem
+<a id="__codelineno-62-2" name="__codelineno-62-2" href="#__codelineno-62-2"></a>fs.write                 Write filesystem
+<a id="__codelineno-62-3" name="__codelineno-62-3" href="#__codelineno-62-3"></a>fs.delete                Delete files
+<a id="__codelineno-62-4" name="__codelineno-62-4" href="#__codelineno-62-4"></a>fs.*                     All filesystem operations
+<a id="__codelineno-62-5" name="__codelineno-62-5" href="#__codelineno-62-5"></a>net.connect              Outbound TCP/HTTP connections
+<a id="__codelineno-62-6" name="__codelineno-62-6" href="#__codelineno-62-6"></a>net.listen               Bind a port
+<a id="__codelineno-62-7" name="__codelineno-62-7" href="#__codelineno-62-7"></a>net.*                    All network operations
+<a id="__codelineno-62-8" name="__codelineno-62-8" href="#__codelineno-62-8"></a>sys.exec                 Execute external processes
+<a id="__codelineno-62-9" name="__codelineno-62-9" href="#__codelineno-62-9"></a>sys.env                  Read environment variables
+<a id="__codelineno-62-10" name="__codelineno-62-10" href="#__codelineno-62-10"></a>sys.*                    All system calls
+<a id="__codelineno-62-11" name="__codelineno-62-11" href="#__codelineno-62-11"></a>tool:name                Execute a specific tool
+<a id="__codelineno-62-12" name="__codelineno-62-12" href="#__codelineno-62-12"></a>tool:*                   Execute any tool
+<a id="__codelineno-62-13" name="__codelineno-62-13" href="#__codelineno-62-13"></a>*.read                   Read on any resource
+<a id="__codelineno-62-14" name="__codelineno-62-14" href="#__codelineno-62-14"></a>*.*                      Unrestricted
+<a id="__codelineno-62-15" name="__codelineno-62-15" href="#__codelineno-62-15"></a>resource.action:scope    Scoped (e.g. fs.read:/tmp/*)
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/iga2x/txtcode" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
