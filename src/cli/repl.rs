@@ -77,7 +77,28 @@ pub fn start_repl(
                                 if path.is_empty() {
                                     eprintln!("Usage: :load <file>");
                                 } else {
-                                    match fs::read_to_string(path) {
+                                    // Validate path before reading (2.5): prevents loading
+                                    // files outside the working directory and checks for traversal.
+                                    let validated_path = match crate::stdlib::io::IOLib::validate_path_pub(path) {
+                                        Ok(p) => p,
+                                        Err(e) => {
+                                            eprintln!("Path error: {}", e);
+                                            continue;
+                                        }
+                                    };
+                                    // File size guard — same 10MB limit as run.rs
+                                    match fs::metadata(&validated_path) {
+                                        Ok(meta) if meta.len() > 10 * 1024 * 1024 => {
+                                            eprintln!("Cannot :load '{}': file too large (max 10 MB)", path);
+                                            continue;
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Cannot read '{}': {}", path, e);
+                                            continue;
+                                        }
+                                        _ => {}
+                                    }
+                                    match fs::read_to_string(&validated_path) {
                                         Ok(src) => {
                                             let mut lx = Lexer::new(src);
                                             match lx.tokenize() {
@@ -184,6 +205,11 @@ pub fn start_repl(
                     continue;
                 }
                 history.push(source.trim().to_string());
+
+                // Hash the current input so integrity checking in interpret_repl
+                // can verify the in-memory representation matches what was typed.
+                // SecurityLevel reaches Full on Linux/macOS/Windows with this hash.
+                vm.runtime_security.hash_and_set_source(source.trim().as_bytes());
 
                 let mut lexer = Lexer::new(source.trim().to_string());
                 match lexer.tokenize() {

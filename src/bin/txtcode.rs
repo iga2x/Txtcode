@@ -18,6 +18,7 @@ use txtcode::cli::test_cmd;
 use txtcode::config::Config;
 use txtcode::lexer::Lexer;
 use txtcode::parser::Parser;
+use txtcode::typecheck::TypeChecker;
 use txtcode::validator::Validator;
 use txtcode::runtime::vm::VirtualMachine;
 use txtcode::runtime::Value;
@@ -93,6 +94,12 @@ pub enum Commands {
         /// Allow network access scoped to a host pattern (e.g. --allow-net=api.example.com).
         #[arg(long, value_name = "HOST")]
         allow_net: Vec<String>,
+        /// Run the static type checker before execution (advisory — warnings only by default).
+        #[arg(long)]
+        type_check: bool,
+        /// Treat type-check errors as hard errors (requires --type-check).
+        #[arg(long)]
+        strict_types: bool,
     },
     /// Inspect / disassemble a compiled bytecode file
     Inspect {
@@ -419,6 +426,8 @@ pub fn main() {
                     watch,
                     allow_fs,
                     allow_net,
+                    type_check,
+                    strict_types,
                 } => {
                     if *no_color || std::env::var_os("NO_COLOR").is_some() {
                         std::env::set_var("NO_COLOR", "1");
@@ -435,6 +444,42 @@ pub fn main() {
                     }
                     let effective_safe = safe_mode || *sandbox;
                     let effective_allow_exec = if *sandbox { false } else { allow_exec };
+
+                    // Optional static type check before execution.
+                    // Only runs on .tc source files (bytecode files skip this step).
+                    if *type_check && file.extension().and_then(|e| e.to_str()) == Some("tc") {
+                        match std::fs::read_to_string(file) {
+                            Ok(source) => {
+                                let mut lexer = Lexer::new(source);
+                                match lexer.tokenize() {
+                                    Ok(tokens) => {
+                                        let mut parser = Parser::new(tokens);
+                                        match parser.parse() {
+                                            Ok(program) => {
+                                                let mut checker = TypeChecker::new();
+                                                if let Err(type_errors) = checker.check(&program) {
+                                                    for err in &type_errors {
+                                                        if *strict_types {
+                                                            eprintln!("type error: {}", err);
+                                                        } else {
+                                                            eprintln!("type warning: {}", err);
+                                                        }
+                                                    }
+                                                    if *strict_types && !type_errors.is_empty() {
+                                                        std::process::exit(1);
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => eprintln!("type-check parse error: {}", e),
+                                        }
+                                    }
+                                    Err(e) => eprintln!("type-check lex error: {}", e),
+                                }
+                            }
+                            Err(e) => eprintln!("type-check read error: {}", e),
+                        }
+                    }
+
                     if *watch {
                         run_cli::run_file_watch(
                             file,
@@ -455,6 +500,8 @@ pub fn main() {
                             debug,
                             verbose,
                             ts,
+                            allow_fs,
+                            allow_net,
                         )
                     } else {
                         run_cli::run_file_with_allowlists(
@@ -470,7 +517,11 @@ pub fn main() {
                     if let Err(e) = result {
                         if *json {
                             let msg = e.to_string().replace('"', "\\\"");
-                            eprintln!("{{\"error\":\"{}\",\"type\":\"RuntimeError\"}}", msg);
+                            let code = txtcode::runtime::errors::ErrorCode::infer_from_message(&msg);
+                            eprintln!(
+                                "{{\"error\":\"{}\",\"type\":\"RuntimeError\",\"code\":\"{}\"}}",
+                                msg, code.as_str()
+                            );
                         } else {
                             eprintln!("Error: {}", e);
                         }

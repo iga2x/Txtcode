@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 
 const TEMPLATE_DEV: &str = r#"[env]
 name        = "dev"
-version     = "0.4.0"
+version     = "{pkg_version}"
 description = "Development environment — full access, verbose output"
 
 [permissions]
@@ -46,7 +46,7 @@ use_local_packages = true
 
 const TEMPLATE_PROD: &str = r#"[env]
 name        = "prod"
-version     = "0.4.0"
+version     = "{pkg_version}"
 description = "Production environment — restricted permissions, safe mode on"
 
 [permissions]
@@ -63,7 +63,7 @@ use_local_packages = true
 
 const TEMPLATE_TEST: &str = r#"[env]
 name        = "test"
-version     = "0.4.0"
+version     = "{pkg_version}"
 description = "Test environment — full fs/net, no process spawning"
 
 [permissions]
@@ -80,7 +80,7 @@ use_local_packages = true
 
 const TEMPLATE_SANDBOX: &str = r#"[env]
 name        = "sandbox"
-version     = "0.4.0"
+version     = "{pkg_version}"
 description = "Sandbox environment — zero trust, nothing allowed by default"
 
 [permissions]
@@ -130,9 +130,9 @@ fn write_file(path: &Path, content: &str) -> Result<(), RuntimeError> {
         .map_err(|e| RuntimeError::new(format!("Failed to write {}: {}", path.display(), e)))
 }
 
-/// Return the template string for a given preset name.
-fn template_for(name: &str, sandbox: bool) -> &'static str {
-    if sandbox || name == "sandbox" {
+/// Return the template string for a given preset name, with version substituted.
+fn template_for(name: &str, sandbox: bool) -> String {
+    let raw = if sandbox || name == "sandbox" {
         TEMPLATE_SANDBOX
     } else {
         match name {
@@ -140,7 +140,8 @@ fn template_for(name: &str, sandbox: bool) -> &'static str {
             "test" | "testing" => TEMPLATE_TEST,
             _ => TEMPLATE_DEV, // dev / default / custom
         }
-    }
+    };
+    raw.replace("{pkg_version}", env!("CARGO_PKG_VERSION"))
 }
 
 /// Print a status line. ok=true → green tick, ok=false → red cross.
@@ -216,7 +217,8 @@ fn create_single_env(env_dir: &Path, name: &str, sandbox: bool) -> Result<(), Ru
 
     // Only write env.toml if it doesn't already exist (don't overwrite)
     if !env_toml.exists() {
-        write_file(&env_toml, template_for(name, sandbox))?;
+        let content = template_for(name, sandbox);
+        write_file(&env_toml, &content)?;
     }
     Ok(())
 }

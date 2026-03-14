@@ -116,3 +116,23 @@ impl RateLimiter {
         self.limit.count.saturating_sub(recent as u64)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rate_limit_parsing() {
+        let limit = RateLimit::from_string("100/hour").unwrap();
+        assert_eq!(limit.count, 100);
+        assert_eq!(limit.window_seconds, 3600);
+
+        let limit = RateLimit::from_string("10/minute").unwrap();
+        assert_eq!(limit.count, 10);
+        assert_eq!(limit.window_seconds, 60);
+
+        let limit = RateLimit::from_string("5/second").unwrap();
+        assert_eq!(limit.count, 5);
+        assert_eq!(limit.window_seconds, 1);
+    }
+}

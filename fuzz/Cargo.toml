@@ -1,0 +1,47 @@
+[package]
+name = "txtcode-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.txtcode]
+path = ".."
+
+# Prevent this from interfering with parent workspace
+[workspace]
+
+[[bin]]
+name = "fuzz_lexer"
+path = "fuzz_targets/fuzz_lexer.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_parser"
+path = "fuzz_targets/fuzz_parser.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_bytecode"
+path = "fuzz_targets/fuzz_bytecode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_zip"
+path = "fuzz_targets/fuzz_zip.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_env_file"
+path = "fuzz_targets/fuzz_env_file.rs"
+test = false
+doc = false

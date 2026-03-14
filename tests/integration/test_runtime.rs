@@ -245,8 +245,122 @@ store → r → f(1)
     );
 }
 
+/// Like `run_ast_source` but uses `interpret_repl` so the last expression's
+/// value is returned (instead of always `Null`). Use for tests that need to
+/// assert the actual return value of a stdlib call.
+#[allow(clippy::result_large_err)]
+fn run_ast_repl(
+    source: &str,
+) -> Result<txtcode::runtime::Value, txtcode::runtime::errors::RuntimeError> {
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    vm.interpret_repl(&program)
+}
+
 // ---------------------------------------------------------------------------
-// Phase 6 — AST VM pipe and async tests
+// Phase 6 — stdlib panic hardening tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_substring_ascii_valid() {
+    let result = run_ast_repl(r#"substring("hello", 1, 3)"#);
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("el".to_string()));
+}
+
+#[test]
+fn test_substring_unicode_valid() {
+    // "hé" = 2 chars; substring(s, 0, 2) must return those 2 chars, not 3 bytes
+    let result = run_ast_repl(r#"substring("héllo", 0, 2)"#);
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("hé".to_string()));
+}
+
+#[test]
+fn test_substring_unicode_mid_char() {
+    // char index 1 = 'é', char index 2 = 'l'; this was a byte-slice panic before the fix
+    let result = run_ast_repl(r#"substring("héllo", 1, 2)"#);
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("é".to_string()));
+}
+
+#[test]
+fn test_substring_negative_start_errors() {
+    let result = run_ast_source(r#"store → r → substring("hello", -1, 3)"#);
+    assert!(result.is_err(), "expected error for negative start index");
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("non-negative"), "error message: {}", msg);
+}
+
+#[test]
+fn test_substring_oob_errors() {
+    let result = run_ast_source(r#"store → r → substring("hello", 2, 10)"#);
+    assert!(result.is_err(), "expected error for out-of-bounds end index");
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("out of bounds"), "error message: {}", msg);
+}
+
+#[test]
+fn test_str_pad_left_valid() {
+    let result = run_ast_repl(r#"str_pad_left("hi", 5)"#);
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("   hi".to_string()));
+}
+
+#[test]
+fn test_str_pad_left_negative_width_errors() {
+    let result = run_ast_source(r#"store → r → str_pad_left("x", -1)"#);
+    assert!(result.is_err(), "expected error for negative width");
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("non-negative"), "error message: {}", msg);
+}
+
+#[test]
+fn test_str_pad_right_valid() {
+    let result = run_ast_repl(r#"str_pad_right("hi", 5)"#);
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("hi   ".to_string()));
+}
+
+#[test]
+fn test_str_pad_right_negative_width_errors() {
+    let result = run_ast_source(r#"store → r → str_pad_right("x", -5)"#);
+    assert!(result.is_err(), "expected error for negative width");
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("non-negative"), "error message: {}", msg);
+}
+
+#[test]
+fn test_math_random_int_valid() {
+    let result = run_ast_repl(r#"math_random_int(1, 100)"#);
+    assert!(result.is_ok(), "{:?}", result);
+    if let Ok(txtcode::runtime::Value::Integer(n)) = result {
+        assert!((1..=100).contains(&n), "got out-of-range value: {}", n);
+    } else {
+        panic!("expected integer");
+    }
+}
+
+#[test]
+fn test_math_random_int_equal_bounds() {
+    let result = run_ast_repl(r#"math_random_int(5, 5)"#);
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(5));
+}
+
+#[test]
+fn test_math_random_int_inverted_range_errors() {
+    let result = run_ast_source(r#"store → r → math_random_int(10, 1)"#);
+    assert!(result.is_err(), "expected error for inverted range");
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("min"), "error message: {}", msg);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — AST VM pipe and async tests
 // ---------------------------------------------------------------------------
 
 #[allow(clippy::result_large_err)]
@@ -295,4 +409,93 @@ store → result → add_one(41)
         "async function should run synchronously: {:?}",
         result
     );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — Slice stabilization tests — AST VM + stdlib
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ast_slice_string_step() {
+    // String slicing with step is now supported in AST VM.
+    let result = run_ast_repl(r#""abcdef"[::2]"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("ace".to_string()));
+}
+
+#[test]
+fn test_ast_slice_string_reverse() {
+    let result = run_ast_repl(r#""hello"[::-1]"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("olleh".to_string()));
+}
+
+#[test]
+fn test_ast_slice_string_negative_index_char_based() {
+    // "héllo" — 5 Unicode chars; [-3:] must use char count (5), not byte count (6).
+    let result = run_ast_repl(r#""héllo"[-3:]"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("llo".to_string()));
+}
+
+#[test]
+fn test_ast_slice_string_step_zero_errors() {
+    let result = run_ast_repl(r#""hello"[::0]"#);
+    assert!(result.is_err(), "step=0 must error in AST VM");
+}
+
+#[test]
+fn test_ast_slice_empty_array_reverse() {
+    // [][::-1] must return [] without panic.
+    let result = run_ast_repl(r#"[][::  -1]"#);
+    // Parser may not support spaces inside slice — use store approach instead.
+    let result = run_ast_source(
+        r#"
+store → a → []
+store → r → a[::-1]
+"#,
+    );
+    assert!(result.is_ok(), "empty array reverse must not panic: {:?}", result);
+}
+
+#[test]
+fn test_ast_slice_array_negative_index() {
+    let result = run_ast_repl(r#"[10, 20, 30, 40][-2:]"#);
+    assert_eq!(
+        result.unwrap(),
+        txtcode::runtime::Value::Array(vec![
+            txtcode::runtime::Value::Integer(30),
+            txtcode::runtime::Value::Integer(40),
+        ])
+    );
+}
+
+#[test]
+fn test_array_slice_stdlib_negative_start() {
+    // array_slice(arr, -2) → last 2 elements.
+    let result = run_ast_repl(r#"array_slice([1, 2, 3, 4], -2)"#);
+    assert_eq!(
+        result.unwrap(),
+        txtcode::runtime::Value::Array(vec![
+            txtcode::runtime::Value::Integer(3),
+            txtcode::runtime::Value::Integer(4),
+        ])
+    );
+}
+
+#[test]
+fn test_array_slice_stdlib_negative_end() {
+    // array_slice(arr, 0, -1) → all but last.
+    let result = run_ast_repl(r#"array_slice([1, 2, 3, 4], 0, -1)"#);
+    assert_eq!(
+        result.unwrap(),
+        txtcode::runtime::Value::Array(vec![
+            txtcode::runtime::Value::Integer(1),
+            txtcode::runtime::Value::Integer(2),
+            txtcode::runtime::Value::Integer(3),
+        ])
+    );
+}
+
+#[test]
+fn test_array_slice_stdlib_oob_errors() {
+    let result = run_ast_repl(r#"array_slice([1, 2, 3], 0, 99)"#);
+    assert!(result.is_err(), "OOB must error");
 }

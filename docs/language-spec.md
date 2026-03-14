@@ -307,12 +307,22 @@ expression :=
 ### 1.9 Slice Expressions
 
 ```txtcode
-store → sub → arr[1:4]        # elements 1, 2, 3
-store → evens → arr[::2]      # every second element
-store → rev → arr[::-1]       # reversed
+store → sub → arr[1:4]        # elements at indices 1, 2, 3 (end is exclusive)
+store → evens → arr[::2]      # every second element (step=2)
+store → rev → arr[::-1]       # reversed (negative step)
+store → tail → arr[-3:]       # last 3 elements (negative index)
+store → s → "hello"[1:4]     # "ell" (char-based, not byte-based)
+store → s → "hello"[::2]     # "hlo" (every other char, step on strings supported)
 ```
 
-Any of `start`, `end`, `step` may be omitted. `step` defaults to 1.
+Syntax: `target[start:end:step]`. Any of `start`, `end`, `step` may be omitted.
+
+- **`step`** defaults to 1. `step = 0` is a runtime error.
+- **Negative `step`**: iterates in reverse. `start` defaults to the last index; `end` defaults to index 0.
+- **Negative `start`/`end`**: count from the end — `-1` is the last element, `-2` is second-to-last, etc.
+- **Out-of-bounds indices**: raise a runtime error (no silent clamping).
+- **Strings**: slices are char-based (Unicode code points, not bytes). `step` is supported on strings.
+- Slices work on arrays and strings. Maps and sets do not support slicing.
 
 ### 1.10 String Interpolation
 
@@ -1274,18 +1284,19 @@ This engine is the **only** execution path with production security guarantees i
 
 `BytecodeVM` (in `src/runtime/bytecode_vm.rs`) is a stack-based interpreter for compiled `.txtc` files.
 
-**v0.4 status:** Significant improvements shipped — `break`/`continue`, `for x in arr`, `repeat N`,
-`match`, `++`/`--`, string interpolation, user-defined functions, and `ImportModule` are all
-implemented. Remaining limitations:
-- No permission enforcement — all stdlib calls bypass `PermissionChecker`.
-- No audit logging — executed instructions are not recorded.
-- No capability scoping — `allowed`/`forbidden` declarations are ignored.
+**v0.4 status:** Full feature and security parity with the AST VM. Implemented:
+`break`/`continue`, `for x in arr`, `repeat N`, `match`, `++`/`--`, string interpolation,
+user-defined functions, `ImportModule`, and as of v0.4.2, the complete 6-layer security pipeline:
 
-**Recommended use in v0.4:** benchmarking (`txtcode bench`), debugger step-through, and
-offline bytecode inspection. **Do not** use compiled `.txtc` output in production environments
-where permission enforcement or audit logging is required.
+- Permission enforcement — all stdlib calls pass through `PermissionChecker` (grant/deny).
+- Audit logging — all permission checks logged with AI metadata via `AuditTrail`.
+- Intent checking — per-function `allowed`/`forbidden` action enforcement via `IntentChecker`.
+- Capability scoping — time-bound authorisation tokens enforced via `CapabilityManager`.
+- Policy engine — rate limiting, AI control, and max execution time via `PolicyEngine`.
+- Runtime security — anti-debug, bytecode integrity hash, platform detection via `RuntimeSecurity`.
 
-**Planned for v0.5:** BytecodeVM permission and audit parity with AST VM.
+**Recommended use in v0.4:** all execution paths, including production. Both `txtcode run <file>`
+(AST VM) and `txtcode run <file.txtc>` (bytecode VM) enforce the same security guarantees.
 
 ### D.4 Choosing an Engine
 

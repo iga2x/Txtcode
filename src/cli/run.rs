@@ -427,8 +427,25 @@ pub fn run_file_watch(
 
 // ── .env file loader ──────────────────────────────────────────────────────────
 
+/// Env keys that must never be set from a `.env` file — they control the dynamic
+/// linker and debugger attachment, allowing a malicious `.env` to execute arbitrary
+/// code via library injection before the process even starts a function.
+const RESERVED_ENV_KEYS: &[&str] = &[
+    "LD_PRELOAD",
+    "LD_AUDIT",
+    "LD_LIBRARY_PATH",
+    "DYLD_INSERT_LIBRARIES",
+    "DYLD_FORCE_FLAT_NAMESPACE",
+    "DYLD_LIBRARY_PATH",
+    "_FRIDA_AGENT",
+    "FRIDA_TRANSPORT",
+    "FRIDA_LISTEN",
+];
+
 /// Parse a .env file (KEY=VALUE lines, # comments, blank lines ignored)
 /// and set each key into the process environment.
+///
+/// Rejects reserved keys that could be used for dynamic-linker injection.
 pub fn load_env_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     if !path.exists() {
         return Err(format!("env-file '{}' not found", path.display()).into());
@@ -447,9 +464,19 @@ pub fn load_env_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
             {
                 val = &val[1..val.len() - 1];
             }
-            if !key.is_empty() {
-                std::env::set_var(key, val);
+            if key.is_empty() {
+                continue;
             }
+            // Block dynamic-linker injection keys (0.6)
+            if RESERVED_ENV_KEYS.contains(&key) {
+                return Err(format!(
+                    "Forbidden env key '{}': this key controls the dynamic linker \
+                     and cannot be set from a .env file",
+                    key
+                )
+                .into());
+            }
+            std::env::set_var(key, val);
         }
     }
     Ok(())

@@ -15,6 +15,105 @@ pub enum ControlFlowSignal {
     Continue,
 }
 
+/// Stable machine-readable error codes for IDE and CI consumers.
+/// Codes are stable across patch versions; new codes are additive only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorCode {
+    /// General unclassified runtime error (catch-all).
+    E0000,
+    /// Permission denied (any resource).
+    E0001,
+    /// Capability token denied.
+    E0002,
+    /// Rate limit exceeded.
+    E0003,
+    /// Intent declaration violation.
+    E0004,
+    /// Undefined variable or function.
+    E0010,
+    /// Type mismatch at runtime.
+    E0011,
+    /// Division by zero.
+    E0012,
+    /// Index out of bounds.
+    E0013,
+    /// Maximum call depth exceeded.
+    E0014,
+    /// Execution timeout.
+    E0020,
+    /// File system error.
+    E0030,
+    /// Network error.
+    E0031,
+    /// OS / process error.
+    E0032,
+    /// Import / module error.
+    E0040,
+    /// Cryptographic operation failed.
+    E0050,
+}
+
+impl ErrorCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::E0000 => "E0000",
+            Self::E0001 => "E0001",
+            Self::E0002 => "E0002",
+            Self::E0003 => "E0003",
+            Self::E0004 => "E0004",
+            Self::E0010 => "E0010",
+            Self::E0011 => "E0011",
+            Self::E0012 => "E0012",
+            Self::E0013 => "E0013",
+            Self::E0014 => "E0014",
+            Self::E0020 => "E0020",
+            Self::E0030 => "E0030",
+            Self::E0031 => "E0031",
+            Self::E0032 => "E0032",
+            Self::E0040 => "E0040",
+            Self::E0050 => "E0050",
+        }
+    }
+
+    /// Infer an error code from an error message string.
+    pub fn infer_from_message(msg: &str) -> Self {
+        let lower = msg.to_ascii_lowercase();
+        if lower.contains("permission") || lower.contains("access denied") {
+            Self::E0001
+        } else if lower.contains("capability") {
+            Self::E0002
+        } else if lower.contains("rate limit") {
+            Self::E0003
+        } else if lower.contains("intent") {
+            Self::E0004
+        } else if lower.contains("undefined") || lower.contains("not defined") {
+            Self::E0010
+        } else if lower.contains("type") && (lower.contains("mismatch") || lower.contains("expected")) {
+            Self::E0011
+        } else if lower.contains("division by zero") || lower.contains("divide by zero") {
+            Self::E0012
+        } else if lower.contains("index out of bounds") || lower.contains("out of range") {
+            Self::E0013
+        } else if lower.contains("call depth") || lower.contains("stack overflow") || lower.contains("recursion") {
+            Self::E0014
+        } else if lower.contains("timeout") || lower.contains("timed out") {
+            Self::E0020
+        } else if lower.contains("file") || lower.contains("io error") || lower.contains("path") {
+            Self::E0030
+        } else if lower.contains("network") || lower.contains("connect") || lower.contains("http") {
+            Self::E0031
+        } else if lower.contains("process") || lower.contains("exec") || lower.contains("spawn") {
+            Self::E0032
+        } else if lower.contains("import") || lower.contains("module") {
+            Self::E0040
+        } else if lower.contains("encrypt") || lower.contains("decrypt") || lower.contains("crypto") || lower.contains("hmac") {
+            Self::E0050
+        } else {
+            Self::E0000
+        }
+    }
+}
+
 /// Runtime error
 #[derive(Debug)]
 pub struct RuntimeError {
@@ -23,12 +122,17 @@ pub struct RuntimeError {
     stack_trace: Vec<CallFrame>,
     /// Set only for control-flow signals; None for genuine runtime errors.
     signal: Option<ControlFlowSignal>,
+    /// Machine-readable error code for IDE and CI consumers.
+    pub code: Option<ErrorCode>,
 }
 
 impl RuntimeError {
     /// Create a genuine runtime error with a message.
+    /// The error code is inferred automatically from the message content.
     pub fn new(message: String) -> Self {
+        let code = ErrorCode::infer_from_message(&message);
         Self {
+            code: Some(code),
             message,
             hint: None,
             stack_trace: Vec::new(),
@@ -36,11 +140,18 @@ impl RuntimeError {
         }
     }
 
+    /// Attach an explicit error code, overriding the inferred one.
+    pub fn with_code(mut self, code: ErrorCode) -> Self {
+        self.code = Some(code);
+        self
+    }
+
     // ── Control-flow signal constructors ────────────────────────────────────
 
     /// Wrap a `return →` value as a propagation signal.
     pub fn return_value(v: Value) -> Self {
         Self {
+            code: None,
             message: String::new(),
             hint: None,
             stack_trace: Vec::new(),
@@ -51,6 +162,7 @@ impl RuntimeError {
     /// Create a `break` signal.
     pub fn break_signal() -> Self {
         Self {
+            code: None,
             message: String::new(),
             hint: None,
             stack_trace: Vec::new(),
@@ -61,6 +173,7 @@ impl RuntimeError {
     /// Create a `continue` signal.
     pub fn continue_signal() -> Self {
         Self {
+            code: None,
             message: String::new(),
             hint: None,
             stack_trace: Vec::new(),

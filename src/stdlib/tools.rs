@@ -1,7 +1,8 @@
 // Tool standard library - safe wrapper for tool_exec()
 // Replaces raw exec() with permission-checked tool execution
 
-use crate::runtime::permissions::PermissionResource;
+use crate::policy::PolicyEngine;
+use crate::runtime::audit::{AIMetadata, AuditTrail};
 use crate::runtime::tools::{ToolContext, ToolExecutor};
 use crate::runtime::{RuntimeError, Value};
 use crate::tools::logger::log_debug;
@@ -10,14 +11,20 @@ use crate::tools::logger::log_debug;
 pub struct ToolLib;
 
 impl ToolLib {
-    /// Call a tool library function
-    /// This provides a safe interface for executing pentest tools
+    /// Call a tool library function.
+    ///
+    /// - `tool_exec`: requires `permission_checker`; uses `audit_trail` and `policy` when
+    ///   provided. If `audit_trail` is `None`, execution is still permitted but the run is
+    ///   logged to the debug channel only (best-effort — the VM layer must provide a real
+    ///   audit trail for production use).
+    /// - `tool_list` / `tool_info`: read-only metadata; no permission checker required.
     pub fn call_function(
         name: &str,
         args: &[Value],
         permission_checker: Option<&dyn crate::stdlib::permission_checker::PermissionChecker>,
-        audit_trail: Option<&mut crate::runtime::audit::AuditTrail>,
-        ai_metadata: Option<&crate::runtime::audit::AIMetadata>,
+        audit_trail: Option<&mut AuditTrail>,
+        ai_metadata: Option<&AIMetadata>,
+        policy: Option<&mut PolicyEngine>,
     ) -> Result<Value, RuntimeError> {
         match name {
             "tool_exec" => {
@@ -37,9 +44,9 @@ impl ToolLib {
                     }
                 };
 
-                // Remaining arguments are tool arguments
-                // If a single Array is passed (e.g. tool_exec("system", ["-c", "cmd"])),
-                // flatten it into individual string args
+                // Remaining arguments are tool arguments.
+                // If a single Array is passed (e.g. tool_exec("nmap", ["-sV", "host"])),
+                // flatten it into individual string args.
                 let tool_args: Vec<String> = {
                     let remaining: Vec<&Value> = args.iter().skip(1).collect();
                     if remaining.len() == 1 {
@@ -53,64 +60,93 @@ impl ToolLib {
                     }
                 };
 
-                // Check permission if checker is available
-                if let Some(checker) = permission_checker {
-                    checker.check_permission(
-                        &PermissionResource::System("tool_exec".to_string()),
-                        Some(&tool_name),
-                    )?;
-                }
+                // Fail secure: tool execution without a permission checker is not allowed.
+                let checker = permission_checker.ok_or_else(|| {
+                    RuntimeError::new(
+                        "tool_exec() requires a permission checker. \
+                         Cannot execute tools without VM permission enforcement."
+                            .to_string(),
+                    )
+                })?;
 
                 log_debug(&format!(
                     "Executing tool '{}' with args: {:?}",
                     tool_name, tool_args
                 ));
 
-                // Create tool executor
                 let executor = ToolExecutor::new();
                 let context = ToolContext::new();
 
-                // Execute tool — pass permission_checker so the executor can
-                // enforce the finer-grained Process permission as well.
-                let result = executor.execute_tool(
-                    &tool_name,
-                    tool_args,
-                    Some(context),
-                    audit_trail,
-                    ai_metadata,
-                    permission_checker,
-                )?;
-
-                // Return result based on success
-                if result.success {
-                    Ok(Value::String(result.output.stdout))
-                } else {
-                    Err(RuntimeError::new(format!(
-                        "Tool '{}' failed with exit code {}: {}",
-                        tool_name, result.output.exit_code, result.output.stderr
-                    )))
+                match audit_trail {
+                    Some(audit) => {
+                        // Full path: audit trail present — execute with logging and policy.
+                        let result = executor.execute_tool(
+                            &tool_name,
+                            tool_args,
+                            Some(context),
+                            audit,
+                            ai_metadata,
+                            checker,
+                            policy,
+                        )?;
+                        if result.success {
+                            Ok(Value::String(result.output.stdout))
+                        } else {
+                            Err(RuntimeError::new(format!(
+                                "Tool '{}' failed with exit code {}: {}",
+                                tool_name, result.output.exit_code, result.output.stderr
+                            )))
+                        }
+                    }
+                    None => {
+                        // Degraded path: no audit trail provided by VM.
+                        // Log a debug warning and execute with a no-op audit trail.
+                        // Production VM paths must supply a real audit trail.
+                        log_debug(&format!(
+                            "tool_exec: WARNING — no audit trail available for '{}'. \
+                             Execution proceeds but is not audited.",
+                            tool_name
+                        ));
+                        let mut fallback_audit = crate::runtime::audit::AuditTrail::new();
+                        let result = executor.execute_tool(
+                            &tool_name,
+                            tool_args,
+                            Some(context),
+                            &mut fallback_audit,
+                            ai_metadata,
+                            checker,
+                            policy,
+                        )?;
+                        if result.success {
+                            Ok(Value::String(result.output.stdout))
+                        } else {
+                            Err(RuntimeError::new(format!(
+                                "Tool '{}' failed with exit code {}: {}",
+                                tool_name, result.output.exit_code, result.output.stderr
+                            )))
+                        }
+                    }
                 }
             }
+
             "tool_list" => {
-                // List available tools
+                // List available tools — no permission check required (read-only metadata).
                 let executor = ToolExecutor::new();
                 let tools = executor.registry().list();
-
                 let tool_names: Vec<Value> = tools
                     .iter()
                     .map(|t| Value::String(t.name.clone()))
                     .collect();
-
                 Ok(Value::Array(tool_names))
             }
+
             "tool_info" => {
-                // Get tool information
+                // Get tool information — no permission check required (read-only metadata).
                 if args.is_empty() {
                     return Err(RuntimeError::new(
                         "tool_info() requires tool name argument".to_string(),
                     ));
                 }
-
                 let tool_name = match &args[0] {
                     Value::String(name) => name.clone(),
                     _ => {
@@ -138,6 +174,15 @@ impl ToolLib {
                         "default_timeout".to_string(),
                         Value::Integer(tool.default_timeout as i64),
                     );
+                    info.insert(
+                        "allowed_actions".to_string(),
+                        Value::Array(
+                            tool.allowed_actions
+                                .iter()
+                                .map(|a| Value::String(a.clone()))
+                                .collect(),
+                        ),
+                    );
                     Ok(Value::Map(info))
                 } else {
                     Err(RuntimeError::new(format!(
@@ -146,6 +191,7 @@ impl ToolLib {
                     )))
                 }
             }
+
             _ => Err(RuntimeError::new(format!(
                 "Unknown tool function: {}",
                 name

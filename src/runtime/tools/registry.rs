@@ -1,7 +1,15 @@
 // Tool registry - manages available pentest tools
 
 use super::{Tool, ToolCategory};
+use crate::runtime::errors::RuntimeError;
 use std::collections::HashMap;
+
+/// Shell interpreter binaries that must never be registered as a tool command.
+/// Path-qualified variants (e.g. "/bin/sh") are caught by basename extraction.
+const SHELL_BINARIES: &[&str] = &[
+    "sh", "bash", "zsh", "fish", "ksh", "csh", "tcsh", "dash",
+    "cmd", "powershell", "pwsh",
+];
 
 /// Registry of available pentest tools
 pub struct ToolRegistry {
@@ -14,15 +22,33 @@ impl ToolRegistry {
             tools: HashMap::new(),
         };
 
-        // Register common pentest tools
+        // Register common pentest tools (all known-safe, unwrap is intentional).
         registry.register_default_tools();
 
         registry
     }
 
-    /// Register a tool
-    pub fn register(&mut self, tool: Tool) {
+    /// Register a tool.
+    ///
+    /// Returns `Err` if the tool's `command` field is a shell interpreter binary,
+    /// since that would give any caller with process permissions a shell escape vector.
+    pub fn register(&mut self, tool: Tool) -> Result<(), RuntimeError> {
+        let cmd = tool.command.trim();
+        // Extract basename so "/bin/sh" and "sh" are treated identically.
+        let basename = std::path::Path::new(cmd)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(cmd);
+        if SHELL_BINARIES.contains(&basename) {
+            return Err(RuntimeError::new(format!(
+                "Tool '{}': registering a shell interpreter ('{}') as a tool command is not \
+                 permitted — it creates a shell escape vector. Use sys.exec() with explicit \
+                 Process permission for one-off commands.",
+                tool.name, cmd
+            )));
+        }
         self.tools.insert(tool.name.clone(), tool);
+        Ok(())
     }
 
     /// Get a tool by name
@@ -40,7 +66,8 @@ impl ToolRegistry {
         self.tools.contains_key(name)
     }
 
-    /// Register default pentest tools
+    /// Register default pentest tools.
+    /// All built-in commands are known-safe binaries; `unwrap()` here is intentional.
     fn register_default_tools(&mut self) {
         // Network scanning tools
         self.register(Tool {
@@ -51,7 +78,8 @@ impl ToolRegistry {
             requires_sudo: false, // Can run without sudo for basic scans
             default_timeout: 300, // 5 minutes
             allowed_actions: vec!["scan".to_string(), "enum".to_string()],
-        });
+        })
+        .unwrap();
 
         self.register(Tool {
             name: "masscan".to_string(),
@@ -61,7 +89,8 @@ impl ToolRegistry {
             requires_sudo: true,  // Requires sudo for raw sockets
             default_timeout: 600, // 10 minutes
             allowed_actions: vec!["scan".to_string()],
-        });
+        })
+        .unwrap();
 
         // Web testing tools
         self.register(Tool {
@@ -72,7 +101,8 @@ impl ToolRegistry {
             requires_sudo: false,
             default_timeout: 900, // 15 minutes
             allowed_actions: vec!["scan".to_string(), "test".to_string()],
-        });
+        })
+        .unwrap();
 
         self.register(Tool {
             name: "sqlmap".to_string(),
@@ -82,7 +112,8 @@ impl ToolRegistry {
             requires_sudo: false,
             default_timeout: 1800, // 30 minutes
             allowed_actions: vec!["test".to_string(), "exploit".to_string()],
-        });
+        })
+        .unwrap();
 
         // Password cracking tools
         self.register(Tool {
@@ -93,7 +124,8 @@ impl ToolRegistry {
             requires_sudo: false,
             default_timeout: 3600, // 1 hour
             allowed_actions: vec!["crack".to_string()],
-        });
+        })
+        .unwrap();
 
         // NOTE: A generic "system" → "sh" tool is intentionally NOT registered.
         // Mapping a tool to a shell interpreter gives any caller with net.connect

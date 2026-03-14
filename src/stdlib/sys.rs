@@ -112,6 +112,14 @@ impl SysLib {
                 std::process::exit(code);
             }
             "args" => {
+                // CLI arguments can contain secrets; gate behind sys.env like getenv (2.6)
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(
+                        &PermissionResource::System("env".to_string()),
+                        None,
+                    )?;
+                }
                 let args: Vec<Value> = std::env::args()
                     .skip(1) // Skip program name
                     .map(Value::String)
@@ -261,7 +269,7 @@ impl SysLib {
                 let pid = child.id() as i64;
 
                 // Store child process
-                let mut processes = CHILD_PROCESSES.lock().unwrap();
+                let mut processes = CHILD_PROCESSES.lock().unwrap_or_else(|e| e.into_inner());
                 processes.insert(pid, child);
 
                 Ok(Value::Integer(pid))
@@ -291,7 +299,7 @@ impl SysLib {
                 };
 
                 // Try to kill from our managed processes first
-                let mut processes = CHILD_PROCESSES.lock().unwrap();
+                let mut processes = CHILD_PROCESSES.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(mut child) = processes.remove(&pid) {
                     let _ = child.kill();
                     return Ok(Value::Boolean(true));
@@ -341,7 +349,7 @@ impl SysLib {
                     _ => return Err(RuntimeError::new("wait pid must be an integer".to_string())),
                 };
 
-                let mut processes = CHILD_PROCESSES.lock().unwrap();
+                let mut processes = CHILD_PROCESSES.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(mut child) = processes.remove(&pid) {
                     match child.wait() {
                         Ok(status) => {
@@ -377,6 +385,13 @@ impl SysLib {
                 Ok(Value::Null)
             }
             "env_list" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(
+                        &PermissionResource::System("env".to_string()),
+                        None,
+                    )?;
+                }
                 let vars: HashMap<String, Value> = std::env::vars()
                     .map(|(k, v)| (k, Value::String(v)))
                     .collect();
@@ -644,8 +659,10 @@ impl SysLib {
             }
             "os_name" => Ok(Value::String(std::env::consts::OS.to_string())),
             "os_version" => {
-                #[cfg(unix)]
+                // Read kernel/OS version from files — no external process spawn needed (2.1).
+                #[cfg(target_os = "linux")]
                 {
+                    // Try /etc/os-release for pretty distro name first
                     if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
                         for line in content.lines() {
                             if line.starts_with("PRETTY_NAME=") {
@@ -654,16 +671,38 @@ impl SysLib {
                             }
                         }
                     }
-                    let output = Command::new("uname")
-                        .arg("-r")
-                        .output()
-                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                        .unwrap_or_else(|_| "unknown".to_string());
-                    Ok(Value::String(output))
+                    // Fallback: read kernel version from /proc/version
+                    if let Ok(content) = std::fs::read_to_string("/proc/version") {
+                        let version = content.split_whitespace().take(3).collect::<Vec<_>>().join(" ");
+                        return Ok(Value::String(version));
+                    }
+                    Ok(Value::String("linux/unknown".to_string()))
                 }
-                #[cfg(not(unix))]
+                #[cfg(target_os = "macos")]
                 {
-                    Ok(Value::String("unknown".to_string()))
+                    // Read macOS version from /System/Library/CoreServices/SystemVersion.plist (XML)
+                    if let Ok(content) = std::fs::read_to_string(
+                        "/System/Library/CoreServices/SystemVersion.plist",
+                    ) {
+                        // Simple key/value extraction — no XML parser needed for this flat plist
+                        let lines: Vec<&str> = content.lines().collect();
+                        for (i, line) in lines.iter().enumerate() {
+                            if line.contains("ProductUserVisibleVersion") {
+                                if let Some(next) = lines.get(i + 1) {
+                                    let ver = next
+                                        .trim()
+                                        .trim_start_matches("<string>")
+                                        .trim_end_matches("</string>");
+                                    return Ok(Value::String(format!("macOS {}", ver)));
+                                }
+                            }
+                        }
+                    }
+                    Ok(Value::String("macOS/unknown".to_string()))
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+                {
+                    Ok(Value::String(std::env::consts::OS.to_string()))
                 }
             }
             _ => Err(RuntimeError::new(format!("Unknown sys function: {}", name))),

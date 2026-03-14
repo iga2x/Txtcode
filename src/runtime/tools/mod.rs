@@ -10,7 +10,6 @@ pub use registry::ToolRegistry;
 pub use result::{ToolOutput, ToolResult};
 
 use crate::runtime::errors::RuntimeError;
-use crate::runtime::permissions::PermissionResource;
 
 /// Tool definition - describes a pentest tool that can be executed
 #[derive(Debug, Clone, PartialEq)]
@@ -76,15 +75,15 @@ impl Default for ToolContext {
 
 /// Tool permission check - determines if a tool can be executed.
 ///
-/// NOTE: This check is intentionally minimal. The main permission gate is the
-/// `PermissionChecker` trait call in `stdlib/tools.rs` (which runs against the
-/// VM's `PermissionManager`). This function handles tool-level invariants that
-/// do not require access to VM state.
-pub fn check_tool_permission(
-    tool: &Tool,
-    _resource: &PermissionResource,
-    _scope: Option<&str>,
-) -> Result<(), RuntimeError> {
+/// Enforces tool-level invariants that do not require VM state:
+/// - `requires_sudo` blocks privilege escalation unconditionally.
+/// - `action` (if provided) is validated against `tool.allowed_actions`.
+///   Pass `None` to skip action validation (e.g. when the caller has no
+///   action context). An empty `allowed_actions` list means "all actions allowed".
+///
+/// The VM permission gate (PermissionChecker) is enforced separately in
+/// ToolExecutor::execute_tool.
+pub fn check_tool_permission(tool: &Tool, action: Option<&str>) -> Result<(), RuntimeError> {
     // Tools that require sudo cannot be safely executed inside the runtime
     // sandbox — privilege escalation is never permitted implicitly.
     if tool.requires_sudo {
@@ -94,6 +93,19 @@ pub fn check_tool_permission(
              the sandbox.",
             tool.name
         )));
+    }
+
+    // Validate requested action against the tool's allow-list.
+    // An empty allowed_actions means no restriction on action.
+    if let Some(act) = action {
+        if !tool.allowed_actions.is_empty()
+            && !tool.allowed_actions.iter().any(|a| a == act)
+        {
+            return Err(RuntimeError::new(format!(
+                "Tool '{}': action '{}' is not permitted. Allowed actions: {:?}",
+                tool.name, act, tool.allowed_actions
+            )));
+        }
     }
 
     Ok(())

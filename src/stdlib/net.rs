@@ -230,6 +230,10 @@ impl NetLib {
                 }
                 match (&args[0], &args[1], &args[2]) {
                     (Value::String(host), Value::Integer(port), Value::String(data)) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                        }
                         if *port < 1 || *port > 65535 {
                             return Err(RuntimeError::new("Port must be between 1 and 65535".to_string()));
                         }
@@ -243,7 +247,13 @@ impl NetLib {
                     return Err(RuntimeError::new("resolve requires 1 argument (domain)".to_string()));
                 }
                 match &args[0] {
-                    Value::String(domain) => Self::resolve_dns_sync(domain),
+                    Value::String(domain) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(domain.as_str()))?;
+                        }
+                        Self::resolve_dns_sync(domain)
+                    }
                     _ => Err(RuntimeError::new("resolve requires a string domain".to_string())),
                 }
             }

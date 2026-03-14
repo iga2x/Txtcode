@@ -92,6 +92,10 @@ pub fn evaluate_slice<VM: ExpressionVM>(
                         // Negative step - reverse slicing
                         let abs_step = (-i) as usize;
 
+                        if arr.is_empty() {
+                            return Ok(Value::Array(vec![]));
+                        }
+
                         let start_idx = if let Some(s) = start {
                             match super::ExpressionEvaluator::evaluate(vm, s)? {
                                 Value::Integer(i) => {
@@ -205,61 +209,95 @@ pub fn evaluate_slice<VM: ExpressionVM>(
             Ok(Value::Array(result))
         }
         Value::String(s) => {
-            if step.is_some() {
-                return Err(RuntimeError::new(
-                    "String slicing with step not yet supported".to_string(),
-                ));
+            // Evaluate step (Null/None → 1). Zero is a runtime error.
+            let step_raw: i64 = if let Some(step_expr) = step {
+                match super::ExpressionEvaluator::evaluate(vm, step_expr.as_ref())? {
+                    Value::Integer(i) => i,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "String slice step must be an integer".to_string(),
+                        ))
+                    }
+                }
+            } else {
+                1
+            };
+            if step_raw == 0 {
+                return Err(RuntimeError::new("Slice step cannot be zero".to_string()));
             }
 
-            let start_idx = if let Some(s_expr) = start {
-                match super::ExpressionEvaluator::evaluate(vm, s_expr.as_ref())? {
-                    Value::Integer(i) => {
-                        if i < 0 {
-                            (s.len() as i64 + i) as usize
-                        } else {
-                            i as usize
-                        }
-                    }
-                    _ => {
-                        return Err(RuntimeError::new(
-                            "String slice start must be integer".to_string(),
-                        ))
-                    }
-                }
-            } else {
-                0
-            };
+            let chars: Vec<char> = s.chars().collect();
+            let char_count = chars.len();
 
-            let end_idx = if let Some(e_expr) = end {
-                match super::ExpressionEvaluator::evaluate(vm, e_expr.as_ref())? {
-                    Value::Integer(i) => {
-                        if i < 0 {
-                            (s.len() as i64 + i) as usize
-                        } else {
-                            i as usize
+            // Resolve a char index: negative counts from end (using char count, not byte length).
+            // Defined as a macro to avoid borrow-checker conflict with `vm`.
+            macro_rules! resolve_str_idx {
+                ($opt_expr:expr, $default:expr) => {
+                    if let Some(expr) = $opt_expr {
+                        match super::ExpressionEvaluator::evaluate(vm, (expr as &Box<Expression>).as_ref())? {
+                            Value::Integer(i) => {
+                                if i < 0 {
+                                    let r = char_count as i64 + i;
+                                    if r < 0 {
+                                        return Err(RuntimeError::new(format!(
+                                            "String slice index {} out of bounds for string of length {}",
+                                            i, char_count
+                                        )));
+                                    }
+                                    r as usize
+                                } else {
+                                    i as usize
+                                }
+                            }
+                            _ => {
+                                return Err(RuntimeError::new(
+                                    "String slice index must be an integer".to_string(),
+                                ))
+                            }
                         }
+                    } else {
+                        $default
                     }
-                    _ => {
-                        return Err(RuntimeError::new(
-                            "String slice end must be integer".to_string(),
-                        ))
-                    }
-                }
-            } else {
-                s.len()
-            };
+                };
+            }
 
-            if start_idx > s.len() || end_idx > s.len() || start_idx > end_idx {
+            if step_raw < 0 {
+                if char_count == 0 {
+                    return Ok(Value::String(String::new()));
+                }
+                let abs_step = (-step_raw) as usize;
+                let start_idx = resolve_str_idx!(start, char_count - 1);
+                let end_idx = resolve_str_idx!(end, 0);
+                if start_idx >= char_count || end_idx >= char_count {
+                    return Err(RuntimeError::new(
+                        "Invalid string slice indices".to_string(),
+                    ));
+                }
+                let mut result = Vec::new();
+                let mut idx = start_idx;
+                while idx > end_idx {
+                    result.push(chars[idx]);
+                    if idx < abs_step {
+                        break;
+                    }
+                    idx -= abs_step;
+                }
+                if idx == end_idx {
+                    result.push(chars[idx]);
+                }
+                return Ok(Value::String(result.into_iter().collect()));
+            }
+
+            // Positive step (forward).
+            let abs_step = step_raw as usize;
+            let start_idx = resolve_str_idx!(start, 0);
+            let end_idx = resolve_str_idx!(end, char_count);
+            if start_idx > char_count || end_idx > char_count || start_idx > end_idx {
                 return Err(RuntimeError::new(
                     "Invalid string slice indices".to_string(),
                 ));
             }
-
-            let result = s
-                .chars()
-                .skip(start_idx)
-                .take(end_idx - start_idx)
-                .collect::<String>();
+            let result: String = chars[start_idx..end_idx].iter().step_by(abs_step).collect();
             Ok(Value::String(result))
         }
         _ => Err(RuntimeError::new(

@@ -52,11 +52,13 @@ impl BytecodeEncryptor {
 
     /// Generate a cryptographically random 32-byte salt for use with `from_passphrase()`.
     /// Store the salt alongside the encrypted data; it does not need to be secret.
-    pub fn generate_salt() -> Vec<u8> {
+    pub fn generate_salt() -> Result<Vec<u8>, crate::runtime::RuntimeError> {
         let rng = ring::rand::SystemRandom::new();
         let mut salt = vec![0u8; 32];
-        rng.fill(&mut salt).expect("CSPRNG fill failed");
-        salt
+        rng.fill(&mut salt).map_err(|_| {
+            crate::runtime::RuntimeError::new("OS CSPRNG unavailable".to_string())
+        })?;
+        Ok(salt)
     }
 
     /// Derive key from runtime environment.

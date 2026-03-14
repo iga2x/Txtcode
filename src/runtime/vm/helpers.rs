@@ -18,7 +18,14 @@ impl VirtualMachine {
                 // Check if this is a literal pattern (starts with "__literal_")
                 if name.starts_with("__literal_") {
                     // Extract the literal value from the pattern name
-                    let literal_str = name.strip_prefix("__literal_").unwrap();
+                    let literal_str = name
+                        .strip_prefix("__literal_")
+                        .ok_or_else(|| {
+                            self.create_error(format!(
+                                "Internal: expected __literal_ prefix in '{}'",
+                                name
+                            ))
+                        })?;
 
                     // Parse and match against the actual value
                     // Try to parse as integer

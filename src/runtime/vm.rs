@@ -13,7 +13,6 @@ mod policy;
 use crate::capability::CapabilityManager;
 use crate::parser::ast::*;
 use crate::policy::PolicyEngine;
-use crate::runtime::async_executor::AsyncExecutor;
 use crate::runtime::audit::{AIMetadata, AuditTrail};
 use crate::runtime::core::{CallFrame, CallStack, ScopeManager, Value};
 use crate::runtime::errors::RuntimeError;
@@ -42,7 +41,9 @@ pub struct VirtualMachine {
     call_stack: CallStack,
     gc: GarbageCollector,
     module_resolver: ModuleResolver,
-    async_executor: Option<AsyncExecutor>, // Async executor for async/await
+    // async_executor removed in Phase 4.1 — zero callers; will be redesigned as a proper subsystem.
+    #[allow(dead_code)]
+    _async_executor: Option<()>,
     current_file: Option<PathBuf>,
     import_stack: Vec<PathBuf>, // Track imports to detect circular dependencies
     exported_symbols: HashSet<String>, // Track explicitly exported symbols for current module
@@ -154,6 +155,36 @@ impl VirtualMachine {
 
     /// Like interpret, but returns the last expression's value (for REPL display).
     pub fn interpret_repl(&mut self, program: &Program) -> Result<Value, RuntimeError> {
+        // ── Security startup checks (per REPL input) ──────────────────────────
+        // Run anti-debug + integrity at the best available level. Note: no source
+        // hash is set for REPL input, so SecurityLevel stays at Standard (Full
+        // requires a hash). Integrity field will be None, not a failure.
+        {
+            let report = self.runtime_security.run_startup_checks();
+            for w in &report.warnings {
+                log_warn(&format!("Security warning: {}", w));
+            }
+            let _ = self.audit_trail.log_action(
+                "security.startup".to_string(),
+                report.summary(),
+                Some(format!(
+                    "level={} platform={} secure={}",
+                    report.level,
+                    report.platform,
+                    report.is_secure()
+                )),
+                if report.is_secure() {
+                    crate::runtime::audit::AuditResult::Allowed
+                } else {
+                    crate::runtime::audit::AuditResult::Error(
+                        report.warnings.first().cloned().unwrap_or_default(),
+                    )
+                },
+                None,
+            );
+            RuntimeSecurity::enforce_security_report(&report)
+                .map_err(RuntimeError::new)?;
+        }
         self.policy_engine.start_execution();
         if !self.ai_metadata.is_empty() {
             self.check_ai_allowed()?;
@@ -644,11 +675,49 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
 
     fn call_stdlib_function(&mut self, name: &str, args: &[Value]) -> Result<Value, RuntimeError> {
         use crate::stdlib::StdLib;
-        // Extract permission checker from self first (immutable borrow)
-        // Then use it in the call with mutable borrow of self as executor
-        // We need to split the borrow: check permissions first, then call
-        // For now, use call_function - it will route correctly, permissions are checked inside NetLib/IOLib
-        // The stdlib functions receive executor but check permissions themselves if needed
+        // Tool functions need audit_trail and policy_engine from VM state, which cannot
+        // be passed through the generic StdLib::call_function path without borrow conflicts.
+        // Intercept them here and route to a dedicated helper on impl VirtualMachine.
+        if name == "tool_exec" || name == "tool_list" || name == "tool_info" {
+            return self.dispatch_tool_function(name, args);
+        }
         StdLib::call_function(name, args, self.exec_allowed, Some(self))
+    }
+}
+
+impl VirtualMachine {
+    /// Route tool_ stdlib functions with full audit trail and policy wiring.
+    ///
+    /// Borrow split strategy: permission check (immutable) is performed first via
+    /// `self.check_permission`, then mutable borrows of `audit_trail` and `policy_engine`
+    /// are taken sequentially for the ToolLib call.
+    fn dispatch_tool_function(
+        &mut self,
+        name: &str,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        use crate::runtime::permissions::PermissionResource;
+        use crate::stdlib::ToolLib;
+
+        // Upfront permission gate for tool_exec.
+        // tool_list and tool_info are read-only metadata — no process permission needed.
+        if name == "tool_exec" {
+            self.check_permission(&PermissionResource::System("exec".to_string()), None)?;
+        }
+
+        // Clone ai_metadata by-value so we can then take &mut borrows on the other fields.
+        let ai_meta = self.ai_metadata.clone();
+
+        // Pass None for permission_checker: the check was already enforced above.
+        // ToolExecutor's permission_checker path is bypassed intentionally — the upfront
+        // check_permission call above covers the exec gate.
+        ToolLib::call_function(
+            name,
+            args,
+            None,
+            Some(&mut self.audit_trail),
+            Some(&ai_meta),
+            Some(&mut self.policy_engine),
+        )
     }
 }

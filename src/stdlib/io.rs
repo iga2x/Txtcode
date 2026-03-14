@@ -7,6 +7,51 @@ use std::path::PathBuf;
 pub struct IOLib;
 
 impl IOLib {
+    /// Validate a zip entry name against an output directory to prevent zip-slip attacks.
+    ///
+    /// Anchors to `output_dir` (not `current_dir()`), which must already exist.
+    /// Rejects entries with `..` path components and entries that resolve outside `output_dir`.
+    fn validate_zip_entry_path(
+        output_dir: &std::path::Path,
+        entry_name: &str,
+    ) -> Result<PathBuf, RuntimeError> {
+        // Reject any entry component that is ParentDir (..)
+        let entry_path = std::path::Path::new(entry_name);
+        for component in entry_path.components() {
+            if component == std::path::Component::ParentDir {
+                return Err(RuntimeError::new(format!(
+                    "zip_extract: entry '{}' contains '..' path traversal",
+                    entry_name
+                )));
+            }
+        }
+
+        // Canonicalize the output directory (it must already exist at this point)
+        let canonical_output = output_dir.canonicalize().map_err(|e| {
+            RuntimeError::new(format!(
+                "zip_extract: cannot canonicalize output dir '{}': {}",
+                output_dir.display(),
+                e
+            ))
+        })?;
+
+        // Construct the joined path and verify it stays inside canonical_output
+        let out_path = canonical_output.join(entry_name);
+        if !out_path.starts_with(&canonical_output) {
+            return Err(RuntimeError::new(format!(
+                "zip_extract: entry '{}' would escape the output directory",
+                entry_name
+            )));
+        }
+
+        Ok(out_path)
+    }
+
+    /// Public wrapper for `validate_path` used by external callers such as the REPL.
+    pub fn validate_path_pub(path: &str) -> Result<PathBuf, RuntimeError> {
+        Self::validate_path(path)
+    }
+
     /// Validate and sanitize file paths to prevent path traversal attacks
     fn validate_path(path: &str) -> Result<PathBuf, RuntimeError> {
         // Check length
@@ -316,6 +361,13 @@ impl IOLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         let validated_path = Self::validate_path(path)?;
                         fs::create_dir_all(&validated_path)
                             .map(|_| Value::Null)
@@ -336,6 +388,13 @@ impl IOLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         let validated_path = Self::validate_path(path)?;
                         fs::remove_dir(&validated_path)
                             .map(|_| Value::Null)
@@ -393,6 +452,13 @@ impl IOLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("read".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         let validated_path = Self::validate_path(path)?;
                         let data = fs::read(&validated_path).map_err(|e| {
                             RuntimeError::new(format!("Failed to read file: {}", e))
@@ -413,6 +479,13 @@ impl IOLib {
                 }
                 match (&args[0], &args[1]) {
                     (Value::String(path), Value::String(data_hex)) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         let validated_path = Self::validate_path(path)?;
                         let data = hex::decode(data_hex)
                             .map_err(|e| RuntimeError::new(format!("Invalid hex data: {}", e)))?;
@@ -433,6 +506,13 @@ impl IOLib {
                 }
                 match (&args[0], &args[1]) {
                     (Value::String(path), Value::String(content)) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         let validated_path = Self::validate_path(path)?;
                         use std::io::Write;
                         let mut file = std::fs::OpenOptions::new()
@@ -460,6 +540,17 @@ impl IOLib {
                 }
                 match (&args[0], &args[1]) {
                     (Value::String(src), Value::String(dst)) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("read".to_string()),
+                                Some(src.as_str()),
+                            )?;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(dst.as_str()),
+                            )?;
+                        }
                         let validated_src = Self::validate_path(src)?;
                         let validated_dst = Self::validate_path(dst)?;
                         fs::copy(&validated_src, &validated_dst)
@@ -479,6 +570,17 @@ impl IOLib {
                 }
                 match (&args[0], &args[1]) {
                     (Value::String(src), Value::String(dst)) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(src.as_str()),
+                            )?;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(dst.as_str()),
+                            )?;
+                        }
                         let validated_src = Self::validate_path(src)?;
                         let validated_dst = Self::validate_path(dst)?;
                         fs::rename(&validated_src, &validated_dst)
@@ -641,17 +743,19 @@ impl IOLib {
                         "temp_file takes no arguments".to_string(),
                     ));
                 }
-                let tmp_dir = env::temp_dir();
-                let nanos = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .subsec_nanos();
-                let pid = std::process::id();
-                let filename = format!("txtcode_tmp_{}_{}", pid, nanos);
-                let tmp_path = tmp_dir.join(&filename);
-                fs::File::create(&tmp_path)
-                    .map_err(|e| RuntimeError::new(format!("Failed to create temp file: {}", e)))?;
-                Ok(Value::String(tmp_path.to_string_lossy().to_string()))
+                // Use tempfile crate for atomic, OS-guaranteed unique temp file (2.7).
+                // This eliminates the TOCTOU window present in the old pid+nanos approach.
+                let tmp = tempfile::NamedTempFile::new().map_err(|e| {
+                    RuntimeError::new(format!("Failed to create temp file: {}", e))
+                })?;
+                // persist() keeps the file alive after the NamedTempFile is dropped.
+                let path = tmp.into_temp_path();
+                let path_str = path.to_string_lossy().to_string();
+                // Keep the file on disk — caller is responsible for deletion.
+                path.keep().map_err(|e| {
+                    RuntimeError::new(format!("Failed to persist temp file: {}", e))
+                })?;
+                Ok(Value::String(path_str))
             }
             "watch_file" => {
                 if args.len() != 1 {
@@ -717,10 +821,23 @@ impl IOLib {
                 }
                 match (&args[0], &args[1]) {
                     (Value::String(target), Value::String(link_path)) => {
+                        // Validate target path to prevent symlink-based path traversal (2.3)
+                        let validated_target = Self::validate_path(target)?;
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(target.as_str()),
+                            )?;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("write".to_string()),
+                                Some(link_path.as_str()),
+                            )?;
+                        }
                         let validated_link = Self::validate_path(link_path)?;
                         #[cfg(unix)]
                         {
-                            std::os::unix::fs::symlink(target, &validated_link)
+                            std::os::unix::fs::symlink(&validated_target, &validated_link)
                                 .map(|_| Value::Null)
                                 .map_err(|e| {
                                     RuntimeError::new(format!("Failed to create symlink: {}", e))
@@ -753,7 +870,8 @@ impl IOLib {
                         ))
                     }
                 };
-                let file = std::fs::File::create(&output_path).map_err(|e| {
+                let validated_output = Self::validate_path(&output_path)?;
+                let file = std::fs::File::create(&validated_output).map_err(|e| {
                     RuntimeError::new(format!("zip_create: cannot create {}: {}", output_path, e))
                 })?;
                 let mut zip_writer = zip::ZipWriter::new(file);
@@ -809,7 +927,7 @@ impl IOLib {
                 zip_writer
                     .finish()
                     .map_err(|e| RuntimeError::new(format!("zip_create: finalize error: {}", e)))?;
-                Ok(Value::String(output_path))
+                Ok(Value::String(validated_output.to_string_lossy().to_string()))
             }
             "zip_extract" => {
                 if args.len() < 2 {
@@ -842,12 +960,15 @@ impl IOLib {
                 std::fs::create_dir_all(&output_dir).map_err(|e| {
                     RuntimeError::new(format!("zip_extract: cannot create output dir: {}", e))
                 })?;
+                let output_dir_path = std::path::Path::new(&output_dir);
                 let count = archive.len();
                 for i in 0..count {
                     let mut entry = archive.by_index(i).map_err(|e| {
                         RuntimeError::new(format!("zip_extract: error reading entry {}: {}", i, e))
                     })?;
-                    let out_path = std::path::Path::new(&output_dir).join(entry.name());
+                    let entry_name = entry.name().to_string();
+                    // Zip-slip prevention: validate entry path against output_dir (0.1)
+                    let out_path = Self::validate_zip_entry_path(output_dir_path, &entry_name)?;
                     if entry.is_dir() {
                         std::fs::create_dir_all(&out_path).map_err(|e| {
                             RuntimeError::new(format!("zip_extract: mkdir error: {}", e))

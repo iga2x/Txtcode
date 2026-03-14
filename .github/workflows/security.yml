@@ -1,0 +1,77 @@
+name: Security Gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run daily at 03:00 UTC to catch new advisories even without code changes.
+    - cron: "0 3 * * *"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ── cargo audit ─────────────────────────────────────────────────────────────
+  audit:
+    name: Dependency Audit (cargo audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        run: cargo audit --deny warnings --color always
+        # Upload SARIF report to GitHub Security tab on failure (advisory mode).
+        # Uncomment when the SARIF output plugin is available:
+        # run: cargo audit --json | cargo-audit-sarif > audit.sarif || true
+
+  # ── cargo deny ──────────────────────────────────────────────────────────────
+  deny:
+    name: License & Duplicate Check (cargo deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Run cargo deny check
+        run: cargo deny check
+
+  # ── Clippy (strict) ─────────────────────────────────────────────────────────
+  clippy:
+    name: Clippy (deny unwrap_used)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run Clippy
+        # Deny unwrap_used across the library (not tests — test code may use unwrap).
+        run: |
+          cargo clippy --lib -- \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -W clippy::pedantic \
+            -A clippy::must_use_candidate \
+            -A clippy::missing_errors_doc \
+            -A clippy::missing_panics_doc \
+            -A clippy::module_name_repetitions \
+            -A clippy::too_many_lines \
+            -A clippy::too_many_arguments \
+            2>&1

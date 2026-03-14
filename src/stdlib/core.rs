@@ -59,9 +59,13 @@ impl CoreLib {
             "input" => {
                 use std::io::{self, Write};
                 print!("> ");
-                io::stdout().flush().unwrap();
+                io::stdout()
+                    .flush()
+                    .map_err(|e| RuntimeError::new(format!("input: flush failed: {}", e)))?;
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                io::stdin()
+                    .read_line(&mut input)
+                    .map_err(|e| RuntimeError::new(format!("input: read failed: {}", e)))?;
                 Ok(Value::String(input.trim().to_string()))
             }
             // Math functions
@@ -309,17 +313,18 @@ impl CoreLib {
                         ))
                     }
                 };
-                let start = match args.get(1).unwrap() {
-                    Value::Integer(i) => *i as usize,
+                let char_count = s.chars().count();
+                let start_i = match args.get(1).unwrap() {
+                    Value::Integer(i) => *i,
                     _ => {
                         return Err(RuntimeError::new(
                             "substring() start must be an integer".to_string(),
                         ))
                     }
                 };
-                let end = if args.len() == 3 {
+                let end_i = if args.len() == 3 {
                     match args.get(2).unwrap() {
-                        Value::Integer(i) => *i as usize,
+                        Value::Integer(i) => *i,
                         _ => {
                             return Err(RuntimeError::new(
                                 "substring() end must be an integer".to_string(),
@@ -327,14 +332,22 @@ impl CoreLib {
                         }
                     }
                 } else {
-                    s.len()
+                    char_count as i64
                 };
-                if start > s.len() || end > s.len() || start > end {
+                if start_i < 0 || end_i < 0 {
+                    return Err(RuntimeError::new(
+                        "substring() indices must be non-negative".to_string(),
+                    ));
+                }
+                let start = start_i as usize;
+                let end = end_i as usize;
+                if start > char_count || end > char_count || start > end {
                     return Err(RuntimeError::new(
                         "substring() indices out of bounds".to_string(),
                     ));
                 }
-                Ok(Value::String(s[start..end].to_string()))
+                let result: String = s.chars().skip(start).take(end - start).collect();
+                Ok(Value::String(result))
             }
             "str_indexOf" | "indexOf" => {
                 if args.len() != 2 {
@@ -610,7 +623,20 @@ impl CoreLib {
                 };
                 let start = if args.len() >= 2 {
                     match args.get(1).unwrap() {
-                        Value::Integer(i) => *i as usize,
+                        Value::Integer(i) => {
+                            if *i < 0 {
+                                let r = arr.len() as i64 + i;
+                                if r < 0 {
+                                    return Err(RuntimeError::new(format!(
+                                        "array_slice() start index {} out of bounds for array of length {}",
+                                        i, arr.len()
+                                    )));
+                                }
+                                r as usize
+                            } else {
+                                *i as usize
+                            }
+                        }
                         _ => {
                             return Err(RuntimeError::new(
                                 "array_slice() start must be an integer".to_string(),
@@ -622,7 +648,20 @@ impl CoreLib {
                 };
                 let end = if args.len() == 3 {
                     match args.get(2).unwrap() {
-                        Value::Integer(i) => *i as usize,
+                        Value::Integer(i) => {
+                            if *i < 0 {
+                                let r = arr.len() as i64 + i;
+                                if r < 0 {
+                                    return Err(RuntimeError::new(format!(
+                                        "array_slice() end index {} out of bounds for array of length {}",
+                                        i, arr.len()
+                                    )));
+                                }
+                                r as usize
+                            } else {
+                                *i as usize
+                            }
+                        }
                         _ => {
                             return Err(RuntimeError::new(
                                 "array_slice() end must be an integer".to_string(),
@@ -903,6 +942,12 @@ impl CoreLib {
                 }
                 match (&args[0], &args[1]) {
                     (Value::Integer(min), Value::Integer(max)) => {
+                        if min > max {
+                            return Err(RuntimeError::new(format!(
+                                "math_random_int: min ({}) must be <= max ({})",
+                                min, max
+                            )));
+                        }
                         use rand::Rng;
                         let mut rng = rand::thread_rng();
                         Ok(Value::Integer(rng.gen_range(*min..=*max)))
@@ -935,7 +980,14 @@ impl CoreLib {
                     }
                 };
                 let width = match &args[1] {
-                    Value::Integer(n) => *n as usize,
+                    Value::Integer(n) => {
+                        if *n < 0 {
+                            return Err(RuntimeError::new(
+                                "str_pad_left width must be non-negative".to_string(),
+                            ));
+                        }
+                        *n as usize
+                    }
                     _ => {
                         return Err(RuntimeError::new(
                             "str_pad_left width must be integer".to_string(),
@@ -973,7 +1025,14 @@ impl CoreLib {
                     }
                 };
                 let width = match &args[1] {
-                    Value::Integer(n) => *n as usize,
+                    Value::Integer(n) => {
+                        if *n < 0 {
+                            return Err(RuntimeError::new(
+                                "str_pad_right width must be non-negative".to_string(),
+                            ));
+                        }
+                        *n as usize
+                    }
                     _ => {
                         return Err(RuntimeError::new(
                             "str_pad_right width must be integer".to_string(),

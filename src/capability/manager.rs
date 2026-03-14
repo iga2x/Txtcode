@@ -46,6 +46,7 @@ pub enum CapabilityEvent {
 }
 
 /// Capability manager - grants, validates, and revokes capability tokens
+#[derive(Clone)]
 pub struct CapabilityManager {
     tokens: HashMap<String, Capability>,
 }

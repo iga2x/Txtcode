@@ -52,11 +52,24 @@ pub fn compile_file(
 
     let opt_level = match optimize {
         "none" => OptimizationLevel::None,
+        "basic" => OptimizationLevel::Basic,
         "aggressive" => {
-            eprintln!("Warning: 'aggressive' optimization not implemented. Using 'basic'.");
-            OptimizationLevel::Basic
+            // Aggressive optimization is planned for v0.7.0. Returning an error
+            // rather than silently falling back ensures the exit code is non-zero
+            // when the requested level was not applied (6.4 fix).
+            return Err(
+                "Optimization level 'aggressive' is not yet implemented. \
+                 Use 'none' or 'basic'. (Planned for v0.7.0)"
+                    .into(),
+            );
         }
-        _ => OptimizationLevel::Basic,
+        other => {
+            return Err(format!(
+                "Unknown optimization level '{}'. Valid options: none, basic",
+                other
+            )
+            .into());
+        }
     };
     let optimizer = Optimizer::new(opt_level);
     optimizer.optimize_ast(&mut program);

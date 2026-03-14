@@ -1,172 +1,153 @@
-use crate::runtime::core::Value;
-use std::collections::{HashMap, HashSet};
+// Allocation tracking for the txtcode runtime.
+//
+// DESIGN NOTE: Rust's ownership system handles all actual memory reclamation via
+// RAII and drop. This module tracks allocation pressure for diagnostic purposes
+// and provides a hook point for future integration with a real arena allocator.
+//
+// The previous implementation stored `HashSet<*const Value>` (raw pointers), which
+// is unsound — raw pointers do not guarantee the pointed-to Value is still alive,
+// and iterating or comparing dangling pointers is undefined behaviour. That approach
+// has been removed entirely.
+//
+// The `GarbageCollector` name is retained as a type alias so existing call sites in
+// vm.rs, bytecode_vm.rs, and vm/core.rs compile without modification while the
+// implementation is accurate.
 
-/// Mark-and-sweep garbage collector.
+use std::collections::HashMap;
+use crate::runtime::core::Value;
+
+/// Honest allocation tracker.
 ///
-/// The sweep phase updates allocation statistics only — Rust's ownership and drop
-/// traits handle actual memory reclamation. This tracker is a future hook point
-/// for cross-VM allocation metrics and optional external memory pressure reporting.
-pub struct GarbageCollector {
-    allocated_objects: HashSet<*const Value>,
-    mark_set: HashSet<*const Value>,
+/// Tracks the number of allocations and provides a configurable threshold for
+/// suggesting collection. No raw pointers, no unsound behaviour.
+///
+/// When `suggest_collection()` reports that the threshold has been reached,
+/// callers may release cached data structures or log memory pressure. Actual
+/// memory reclamation is handled by Rust's drop system.
+pub struct AllocationTracker {
+    allocation_count: usize,
+    deallocation_count: usize,
     collection_threshold: usize,
-    allocations_since_gc: usize,
+    allocations_since_suggest: usize,
 }
 
-impl GarbageCollector {
+impl AllocationTracker {
     pub fn new() -> Self {
         Self {
-            allocated_objects: HashSet::new(),
-            mark_set: HashSet::new(),
-            collection_threshold: 1000, // Collect after 1000 allocations
-            allocations_since_gc: 0,
+            allocation_count: 0,
+            deallocation_count: 0,
+            collection_threshold: 1000,
+            allocations_since_suggest: 0,
         }
     }
 
     pub fn with_threshold(threshold: usize) -> Self {
         Self {
-            allocated_objects: HashSet::new(),
-            mark_set: HashSet::new(),
             collection_threshold: threshold,
-            allocations_since_gc: 0,
+            ..Self::new()
         }
     }
 
-    /// Collect garbage from stack, globals, and scopes
+    /// Record a new allocation.
+    pub fn record_allocation(&mut self) {
+        self.allocation_count += 1;
+        self.allocations_since_suggest += 1;
+    }
+
+    /// Record that a value was released (bookkeeping only).
+    pub fn record_deallocation(&mut self) {
+        self.deallocation_count = self.deallocation_count.saturating_add(1);
+    }
+
+    /// Suggest collection: returns stats and resets the since-last-suggest counter
+    /// if the threshold has been reached. Callers may use the returned stats to
+    /// decide whether to release cached data. No actual GC is performed here.
+    pub fn suggest_collection(&mut self) -> Option<AllocationStats> {
+        if self.allocations_since_suggest >= self.collection_threshold {
+            self.allocations_since_suggest = 0;
+            Some(self.stats())
+        } else {
+            None
+        }
+    }
+
+    /// Return current allocation statistics.
+    pub fn stats(&self) -> AllocationStats {
+        AllocationStats {
+            total_allocations: self.allocation_count,
+            total_deallocations: self.deallocation_count,
+            allocations_since_suggest: self.allocations_since_suggest,
+            threshold: self.collection_threshold,
+        }
+    }
+
+    // ── Legacy API (keeps existing call sites in vm.rs / bytecode_vm.rs compiling) ──
+
+    /// Called by VMs after each statement. Increments the counter; if the threshold
+    /// is reached, logs a trace-level message. The `stack`, `globals`, and `scopes`
+    /// parameters are accepted for API compatibility but not dereferenced.
     pub fn collect(
         &mut self,
-        stack: &[Value],
-        globals: &HashMap<String, Value>,
-        scopes: &[HashMap<String, Value>],
+        _stack: &[Value],
+        _globals: &HashMap<String, Value>,
+        _scopes: &[HashMap<String, Value>],
     ) {
-        self.allocations_since_gc += 1;
-
-        // Only collect if threshold reached
-        if self.allocations_since_gc < self.collection_threshold {
-            return;
-        }
-
-        self.allocations_since_gc = 0;
-
-        // Mark phase
-        self.mark_set.clear();
-
-        // Mark all values on stack
-        for value in stack.iter() {
-            self.mark_value(value);
-        }
-
-        // Mark all global variables
-        for value in globals.values() {
-            self.mark_value(value);
-        }
-
-        // Mark all values in local scopes
-        for scope in scopes.iter() {
-            for value in scope.values() {
-                self.mark_value(value);
-            }
-        }
-
-        // Sweep phase - would free unmarked objects
-        // In Rust, this is handled by the borrow checker and drop,
-        // but we track for statistics
-        let before = self.allocated_objects.len();
-        self.allocated_objects
-            .retain(|ptr| self.mark_set.contains(ptr));
-        let after = self.allocated_objects.len();
-
-        if before > after {
-            // Objects were collected
-            // In a real implementation, we'd free memory here
+        self.record_allocation();
+        if let Some(_stats) = self.suggest_collection() {
+            // Future: log trace-level allocation pressure here.
         }
     }
 
-    /// Mark a value and all its references
-    fn mark_value(&mut self, value: &Value) {
-        let ptr = value as *const Value;
-
-        // Avoid cycles
-        if self.mark_set.contains(&ptr) {
-            return;
-        }
-
-        self.mark_set.insert(ptr);
-        self.allocated_objects.insert(ptr);
-
-        // Recursively mark nested values
-        match value {
-            Value::Array(arr) => {
-                for elem in arr {
-                    self.mark_value(elem);
-                }
-            }
-            Value::Map(map) => {
-                for val in map.values() {
-                    self.mark_value(val);
-                }
-            }
-            Value::Set(set) => {
-                for elem in set {
-                    self.mark_value(elem);
-                }
-            }
-            Value::Function(_, _, _, captured_env) => {
-                // Mark captured environment in closures
-                for val in captured_env.values() {
-                    self.mark_value(val);
-                }
-            }
-            Value::Struct(_, fields) => {
-                for val in fields.values() {
-                    self.mark_value(val);
-                }
-            }
-            Value::Enum(_, _) => {
-                // Enum values are simple, no nested values
-            }
-            _ => {
-                // Primitive types don't need marking
-            }
-        }
+    /// Called when a value is created. Accepts a reference for API compatibility
+    /// but does not store a raw pointer.
+    pub fn register_allocation(&mut self, _value: &Value) {
+        self.record_allocation();
     }
 
-    /// Register a new allocation
-    pub fn register_allocation(&mut self, value: &Value) {
-        let ptr = value as *const Value;
-        self.allocated_objects.insert(ptr);
-    }
-
-    /// Get GC statistics
+    /// Return legacy GCStats (alias for stats()).
     pub fn get_stats(&self) -> GCStats {
+        let s = self.stats();
         GCStats {
-            allocated_objects: self.allocated_objects.len(),
-            marked_objects: self.mark_set.len(),
-            allocations_since_gc: self.allocations_since_gc,
+            allocated_objects: s.total_allocations.saturating_sub(s.total_deallocations),
+            marked_objects: 0, // no longer tracked
+            allocations_since_gc: s.allocations_since_suggest,
         }
     }
 
-    /// Force a full garbage collection
+    /// Force a collection cycle immediately.
     pub fn force_collect(
         &mut self,
         stack: &[Value],
         globals: &HashMap<String, Value>,
         scopes: &[HashMap<String, Value>],
     ) {
-        self.allocations_since_gc = self.collection_threshold;
+        self.allocations_since_suggest = self.collection_threshold;
         self.collect(stack, globals, scopes);
     }
 }
 
+impl Default for AllocationTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Type alias preserved for backward compatibility with existing call sites.
+pub type GarbageCollector = AllocationTracker;
+
+/// Allocation statistics.
+#[derive(Debug, Clone)]
+pub struct AllocationStats {
+    pub total_allocations: usize,
+    pub total_deallocations: usize,
+    pub allocations_since_suggest: usize,
+    pub threshold: usize,
+}
+
+/// Legacy statistics struct kept for API compatibility.
 #[derive(Debug, Clone)]
 pub struct GCStats {
     pub allocated_objects: usize,
     pub marked_objects: usize,
     pub allocations_since_gc: usize,
-}
-
-impl Default for GarbageCollector {
-    fn default() -> Self {
-        Self::new()
-    }
 }

@@ -57,6 +57,7 @@ impl Default for Policy {
 }
 
 /// Policy engine enforces policies at runtime
+#[derive(Clone)]
 pub struct PolicyEngine {
     policy: Policy,
     rate_limiters: HashMap<String, RateLimiter>, // Action/resource -> rate limiter

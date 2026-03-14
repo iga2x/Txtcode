@@ -134,23 +134,36 @@ impl StdLib {
                     "write"
                 };
                 Some(PermissionResource::FileSystem(action.to_string()))
+            } else if name == "csv_write" {
+                // csv_write is a filesystem write — must be gated the same as write_file.
+                let action = "write";
+                Some(PermissionResource::FileSystem(action.to_string()))
             } else if name == "exec"
                 || name == "spawn"
                 || name == "kill"
                 || name == "pipe_exec"
-                || name == "signal_send"
             {
                 // System("exec") matches the AST VM path in function_calls.rs.
                 // PermissionResource::Process is for command whitelisting, not the exec gate.
                 Some(PermissionResource::System("exec".to_string()))
-            } else if name == "getenv" || name == "setenv" {
+            } else if name == "signal_send" {
+                // signal_send targets a process by PID — gated as Process resource.
+                Some(PermissionResource::Process(vec![name.to_string()]))
+            } else if name == "getenv" || name == "setenv" || name == "env_list" {
                 Some(PermissionResource::System("env".to_string()))
+            } else if name == "cpu_count" || name == "memory" || name == "disk_space" {
+                Some(PermissionResource::System("info".to_string()))
             } else if name.starts_with("wifi_") {
                 let action = name.trim_start_matches("wifi_");
                 Some(PermissionResource::WiFi(action.to_string()))
             } else if name.starts_with("ble_") {
                 let action = name.trim_start_matches("ble_");
                 Some(PermissionResource::Bluetooth(action.to_string()))
+            } else if name == "tool_exec" {
+                // tool_exec spawns a named process binary — gate on System("exec").
+                // Individual tool whitelisting (sudo, allowed_actions) is enforced
+                // inside ToolExecutor::execute_tool / check_tool_permission.
+                Some(PermissionResource::System("exec".to_string()))
             } else {
                 None
             };
@@ -347,10 +360,11 @@ impl StdLib {
         } else if name.starts_with("assert") || name.starts_with("test_") {
             TestLib::call_function(name, args)
         } else if name == "tool_exec" || name == "tool_list" || name == "tool_info" {
-            // Tool execution functions
-            // Note: This requires audit trail and AI metadata from VM context
-            // For now, pass None - VM will handle audit logging separately
-            ToolLib::call_function(name, args, effective_permission_checker, None, None)
+            // Tool execution functions.
+            // audit_trail and policy are not accessible here (borrow conflict with executor);
+            // the VM intercepts tool functions before reaching this path for audit/policy wiring.
+            // The degraded path in ToolLib handles the None audit_trail gracefully.
+            ToolLib::call_function(name, args, effective_permission_checker, None, None, None)
         } else if name == "grant_capability"
             || name == "use_capability"
             || name == "revoke_capability"

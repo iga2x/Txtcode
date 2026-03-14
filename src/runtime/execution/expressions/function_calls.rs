@@ -30,6 +30,8 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         || name == "is_file"
         || name == "is_dir"
         || name == "list_dir"
+        || name == "read_lines"
+        || name == "watch_file"
     {
         if let Some(path) = args.first().and_then(|v| match v {
             Value::String(p) => Some(p.as_str()),
@@ -49,9 +51,9 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         || name == "copy_file"
         || name == "move_file"
         || name == "temp_file"
-        || name == "watch_file"
         || name == "symlink_create"
         || name == "mkdir"
+        || name == "csv_write"
         || name == "delete"
         || name == "rmdir"
     {
@@ -75,6 +77,9 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
     // Network connections
     if name == "http_get"
         || name == "http_post"
+        || name == "http_put"
+        || name == "http_delete"
+        || name == "http_patch"
         || name == "tcp_connect"
         || name == "udp_send"
         || name == "resolve"
@@ -116,28 +121,51 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
     }
 
     // System environment access
-    if name == "getenv" || name == "setenv" {
+    if name == "getenv" || name == "setenv" || name == "env_list" {
         vm.check_rate_limit(name)?;
         vm.check_permission_with_audit(&PermissionResource::System("env".to_string()), None)?;
     }
 
-    // WiFi operations
-    if name.starts_with("wifi_") {
-        let action = name.trim_start_matches("wifi_");
+    // System info (read-only; requires explicit permission)
+    if name == "cpu_count" || name == "memory" || name == "disk_space" {
+        vm.check_rate_limit(name)?;
+        vm.check_permission_with_audit(&PermissionResource::System("info".to_string()), None)?;
+    }
+
+    // Process signals
+    if name == "signal_send" {
         vm.check_rate_limit(name)?;
         vm.check_permission_with_audit(
-            &PermissionResource::WiFi(action.to_string()),
+            &PermissionResource::Process(vec![name.to_string()]),
             None,
         )?;
     }
 
-    // Bluetooth/BLE operations
+    // WiFi operations — scope is the interface name (first arg, if a string)
+    if name.starts_with("wifi_") {
+        let action = name.trim_start_matches("wifi_");
+        let iface = args.first().and_then(|v| match v {
+            Value::String(s) => Some(s.as_str()),
+            _ => None,
+        });
+        vm.check_rate_limit(name)?;
+        vm.check_permission_with_audit(
+            &PermissionResource::WiFi(action.to_string()),
+            iface,
+        )?;
+    }
+
+    // Bluetooth/BLE operations — scope is the device name (first arg, if a string)
     if name.starts_with("ble_") {
         let action = name.trim_start_matches("ble_");
+        let device = args.first().and_then(|v| match v {
+            Value::String(s) => Some(s.as_str()),
+            _ => None,
+        });
         vm.check_rate_limit(name)?;
         vm.check_permission_with_audit(
             &PermissionResource::Bluetooth(action.to_string()),
-            None,
+            device,
         )?;
     }
 

@@ -376,6 +376,64 @@ pub fn self_update() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // Download and verify signature + SHA-256 checksum before replacing the binary (0.8)
+    let sig_url = format!(
+        "https://github.com/iga2x/Txtcode/releases/download/v{}/{}.sig",
+        latest_version, filename
+    );
+    let sha256_url = format!(
+        "https://github.com/iga2x/Txtcode/releases/download/v{}/sha256sums",
+        latest_version
+    );
+
+    let binary_bytes = fs::read(&tmp).map_err(|e| format!("Failed to read downloaded binary: {}", e))?;
+
+    // Verify Ed25519 signature
+    print!("Verifying binary signature... ");
+    io::stdout().flush()?;
+    let sig_tmp = std::env::temp_dir().join(format!("{}.sig", filename));
+    if download_file(&sig_url, &sig_tmp).is_ok() {
+        match fs::read(&sig_tmp) {
+            Ok(sig_bytes) => {
+                if let Err(e) = crate::security::update_verifier::verify_update_binary(&binary_bytes, &sig_bytes) {
+                    let _ = fs::remove_file(&tmp);
+                    let _ = fs::remove_file(&sig_tmp);
+                    return Err(format!("Signature verification failed: {}", e).into());
+                }
+                println!("OK");
+            }
+            Err(e) => {
+                println!("WARNING: Could not read .sig file: {}", e);
+            }
+        }
+        let _ = fs::remove_file(&sig_tmp);
+    } else {
+        println!("WARNING: .sig file not available for this release. Skipping Ed25519 verification.");
+    }
+
+    // Verify SHA-256 checksum
+    print!("Verifying SHA-256 checksum... ");
+    io::stdout().flush()?;
+    let sha256_tmp = std::env::temp_dir().join(format!("sha256sums_{}", latest_version));
+    if download_file(&sha256_url, &sha256_tmp).is_ok() {
+        match fs::read_to_string(&sha256_tmp) {
+            Ok(sums_content) => {
+                if let Err(e) = crate::security::update_verifier::verify_sha256(&sums_content, &filename, &binary_bytes) {
+                    let _ = fs::remove_file(&tmp);
+                    let _ = fs::remove_file(&sha256_tmp);
+                    return Err(format!("Checksum verification failed: {}", e).into());
+                }
+                println!("OK");
+            }
+            Err(e) => {
+                println!("WARNING: Could not read sha256sums: {}", e);
+            }
+        }
+        let _ = fs::remove_file(&sha256_tmp);
+    } else {
+        println!("WARNING: sha256sums not available for this release. Skipping hash verification.");
+    }
+
     // Make executable on Unix
     #[cfg(unix)]
     {

@@ -68,6 +68,9 @@ zip = "2.1"
 quick-xml = "0.31"
 serde_yaml = "0.9"
 
+# Safe temporary file creation (prevents TOCTOU races in temp_file())
+tempfile = "3"
+
 # Password hashing
 bcrypt = "0.15"
 
@@ -79,11 +82,21 @@ rsa = { version = "0.9", features = ["sha2"] }
 libc = "0.2"
 
 [features]
-# Legacy feature names kept for backwards compatibility (now no-ops — all included by default)
+# Real feature flags (Phase 3 — replaces legacy no-op flags)
+default = ["stdlib-full", "net"]
+stdlib-full = []           # zip, quick-xml, serde_yaml (currently always included)
+net = []                   # HTTP/TCP networking (currently always included)
+bytecode = []              # Bytecode VM (experimental; bincode always present for now)
+async = []                 # Async runtime (placeholder; tokio currently always linked)
+crypto-advanced = []       # RSA + bcrypt (currently always included)
+pentest = []               # WiFi/BLE capabilities (requires explicit opt-in)
+
+# Legacy feature names — kept to avoid breaking external build scripts.
+# They are now aliases for features that no longer gate their named dependency.
 zip-support = []
 xml-support = []
 yaml-support = []
-full-stdlib = []
+full-stdlib = ["stdlib-full"]
 
 [dev-dependencies]
 criterion = "0.5"

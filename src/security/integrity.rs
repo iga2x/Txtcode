@@ -1,3 +1,4 @@
+use ring::hmac;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
@@ -31,13 +32,19 @@ impl IntegritySystem {
         calculated == expected_checksum
     }
 
-    /// Sign code with a key
+    /// Sign code with a key using HMAC-SHA256.
+    ///
+    /// The payload fed to HMAC is `data || version_bytes` — the key is supplied
+    /// as the HMAC key, not concatenated into the payload.  This is the standard
+    /// construction and prevents length-extension attacks against the old
+    /// `SHA-256(data || key || version)` scheme.
     pub fn sign(&mut self, identifier: String, data: &[u8], key: &[u8]) -> Vec<u8> {
-        let mut hasher = Sha256::new();
-        hasher.update(data);
-        hasher.update(key);
-        hasher.update(self.version.as_bytes());
-        let signature = hasher.finalize().to_vec();
+        let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, key);
+        let mut ctx = hmac::Context::with_key(&hmac_key);
+        ctx.update(data);
+        ctx.update(self.version.as_bytes());
+        let tag = ctx.sign();
+        let signature = tag.as_ref().to_vec();
 
         self.signatures
             .insert(identifier.clone(), signature.clone());
@@ -47,16 +54,15 @@ impl IntegritySystem {
         signature
     }
 
-    /// Verify signature
+    /// Verify signature using HMAC-SHA256 constant-time comparison.
     pub fn verify_signature(&self, identifier: &str, data: &[u8], key: &[u8]) -> bool {
-        if let Some(expected_signature) = self.signatures.get(identifier) {
-            let mut hasher = Sha256::new();
-            hasher.update(data);
-            hasher.update(key);
-            hasher.update(self.version.as_bytes());
-            let calculated = hasher.finalize().to_vec();
-
-            calculated == *expected_signature
+        if let Some(expected_tag) = self.signatures.get(identifier) {
+            let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, key);
+            // Build payload as data || version (matches sign() order)
+            let mut payload = data.to_vec();
+            payload.extend_from_slice(self.version.as_bytes());
+            // ring performs constant-time comparison internally
+            hmac::verify(&hmac_key, &payload, expected_tag).is_ok()
         } else {
             false
         }

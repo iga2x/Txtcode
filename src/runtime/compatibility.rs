@@ -4,7 +4,7 @@ use crate::tools::logger::log_warn;
 use std::collections::HashMap;
 
 /// Version information for compatibility tracking
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
@@ -32,9 +32,11 @@ impl Version {
         })
     }
 
-    /// Current runtime version
+    /// Current runtime version — always matches the Cargo package version (6.1 fix).
     pub fn current() -> Self {
-        Self::new(0, 2, 0)
+        // Parse CARGO_PKG_VERSION at compile time so this is always accurate.
+        let ver = env!("CARGO_PKG_VERSION");
+        Self::from_string(ver).unwrap_or(Self::new(0, 4, 0))
     }
 
     /// Check if this version is compatible with another

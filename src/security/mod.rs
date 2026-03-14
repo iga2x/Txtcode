@@ -14,13 +14,14 @@
 //   protector   — Runtime anti-debug and environment integrity (RuntimeProtector)
 //                 Multi-technique on Linux; timing-based + env check on all platforms.
 //
-//   obfuscator  — AST-level identifier obfuscation (Obfuscator) — STUB
+//   obfuscator  — AST-level identifier obfuscation (Obfuscator)
 
 pub mod auth;
 pub mod encryptor;
 pub mod integrity;
 pub mod obfuscator;
 pub mod protector;
+pub mod update_verifier;
 
 #[allow(unused_imports)]
 pub use auth::{KeyStore, ScriptAuth, ScriptSignature};

@@ -250,6 +250,155 @@ impl MigrationFramework {
     }
 }
 
+// ---------------------------------------------------------------------------
+// MigrationRegistry — extensible, version-ordered migration pass architecture
+// ---------------------------------------------------------------------------
+
+/// Error type for migration passes.
+#[derive(Debug)]
+pub struct MigrationError(pub String);
+
+impl std::fmt::Display for MigrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<MigrationError> for RuntimeError {
+    fn from(e: MigrationError) -> Self {
+        RuntimeError::new(e.0)
+    }
+}
+
+/// A single migration transformation applied to a Program AST.
+///
+/// Implement this trait for each version-to-version migration step.
+/// Passes are applied in version order by `MigrationRegistry::apply`.
+pub trait MigrationPass: Send + Sync {
+    /// A human-readable name for this pass (used in reports).
+    fn name(&self) -> &str;
+
+    /// Apply the migration transformation to `program`.
+    /// Return the (potentially modified) program on success.
+    fn apply(&self, program: Program) -> Result<Program, MigrationError>;
+}
+
+/// Registry of migration passes, each associated with a version range `(from, to)`.
+///
+/// Passes are stored in insertion order and applied in the order that their
+/// version ranges are traversed (ascending). A pass is applied when
+/// `source_version <= from` and `to <= target_version`.
+///
+/// # Example
+/// ```text
+/// let mut registry = MigrationRegistry::new();
+/// registry.register(Version::new(0,2,0), Version::new(0,3,0), MyPass02To03);
+/// registry.register(Version::new(0,3,0), Version::new(0,4,0), MyPass03To04);
+/// let (migrated, applied) = registry.apply(program, &from_ver, &to_ver)?;
+/// ```
+pub struct MigrationRegistry {
+    passes: Vec<(Version, Version, Box<dyn MigrationPass>)>,
+}
+
+impl Default for MigrationRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MigrationRegistry {
+    /// Create an empty registry.
+    pub fn new() -> Self {
+        Self { passes: Vec::new() }
+    }
+
+    /// Register a migration pass for the range `[from_ver, to_ver)`.
+    ///
+    /// Passes are applied when `source_version <= from_ver` and
+    /// `to_ver <= target_version` — i.e., the pass bridges a version gap
+    /// that falls within the requested migration window.
+    pub fn register<P: MigrationPass + 'static>(
+        &mut self,
+        from_ver: Version,
+        to_ver: Version,
+        pass: P,
+    ) {
+        self.passes.push((from_ver, to_ver, Box::new(pass)));
+    }
+
+    /// Apply all registered passes whose version range falls within
+    /// `[source_version, target_version]`, in version-ascending order.
+    ///
+    /// Returns the transformed `Program` and a list of pass names that ran.
+    pub fn apply(
+        &self,
+        mut program: Program,
+        source_version: &Version,
+        target_version: &Version,
+    ) -> Result<(Program, Vec<String>), MigrationError> {
+        // Collect applicable passes (those whose range is within the migration window).
+        let mut applicable: Vec<&(Version, Version, Box<dyn MigrationPass>)> = self
+            .passes
+            .iter()
+            .filter(|(from, to, _)| from >= source_version && to <= target_version)
+            .collect();
+
+        // Sort by the `from` version so passes run in ascending version order.
+        applicable.sort_by(|(a_from, _, _), (b_from, _, _)| a_from.cmp(b_from));
+
+        let mut applied = Vec::new();
+        for (_, _, pass) in applicable {
+            program = pass.apply(program)?;
+            applied.push(pass.name().to_string());
+        }
+
+        Ok((program, applied))
+    }
+
+    /// Number of registered passes.
+    pub fn len(&self) -> usize {
+        self.passes.len()
+    }
+
+    /// True when no passes are registered.
+    pub fn is_empty(&self) -> bool {
+        self.passes.is_empty()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Built-in no-op migration passes for v0.2→v0.3 and v0.3→v0.4.
+// These document that no structural AST changes were needed for those hops.
+// When a real transformation is required, replace the pass body.
+// ---------------------------------------------------------------------------
+
+struct NoOpPass(&'static str);
+
+impl MigrationPass for NoOpPass {
+    fn name(&self) -> &str {
+        self.0
+    }
+    fn apply(&self, program: Program) -> Result<Program, MigrationError> {
+        Ok(program)
+    }
+}
+
+/// Build a `MigrationRegistry` pre-populated with all known passes.
+pub fn default_registry() -> MigrationRegistry {
+    let mut r = MigrationRegistry::new();
+    r.register(
+        Version::new(0, 2, 0),
+        Version::new(0, 3, 0),
+        NoOpPass("v0.2→v0.3: no structural AST changes"),
+    );
+    r.register(
+        Version::new(0, 3, 0),
+        Version::new(0, 4, 0),
+        NoOpPass("v0.3→v0.4: no structural AST changes"),
+    );
+    r
+}
+
 /// Runtime version detector - detects code version from source/file metadata
 pub struct VersionDetector;
 

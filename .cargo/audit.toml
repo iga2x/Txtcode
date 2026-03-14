@@ -1,0 +1,23 @@
+# .cargo/audit.toml — cargo-audit configuration
+# Managed by: Phase 7.3 CI security gates
+#
+# Usage: cargo audit --config .cargo/audit.toml
+#
+# Add RUSTSEC-XXXX-YYYY entries to [[advisories.ignore]] only when:
+#   1. The advisory does not affect our usage pattern (document exactly why).
+#   2. A fix is not yet available and the team has reviewed the risk.
+#   3. The ignore entry has a comment with the expected fix date or release.
+
+[advisories]
+# Currently empty — no known false positives.
+# Example:
+# ignore = ["RUSTSEC-2023-0001"]  # Not affected: we don't use the vulnerable code path
+
+[output]
+# Show all findings, not just warnings.
+deny = ["warnings"]
+
+[database]
+# Automatically fetch the advisory database (requires network access).
+fetch = true
+stale = "deny"

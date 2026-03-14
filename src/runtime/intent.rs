@@ -67,6 +67,7 @@ impl std::fmt::Display for IntentViolationError {
 impl std::error::Error for IntentViolationError {}
 
 /// Intent checker - enforces intent declarations at runtime
+#[derive(Clone)]
 pub struct IntentChecker {
     function_intents: HashMap<String, IntentDeclaration>,
     module_intent: Option<IntentDeclaration>,

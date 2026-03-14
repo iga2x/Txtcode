@@ -299,6 +299,23 @@ jobs:
           sha256sum "$BARE_EXE" > "${BARE_EXE}.sha256"
 
       # ═══════════════════════════════════════════════════════════════════════
+      # Sign bare binaries with Ed25519 (Phase 7.1)
+      # SIGNING_KEY_HEX must be set as a GitHub Actions repository secret.
+      # If the secret is absent the step is skipped (e.g., fork builds).
+      # ═══════════════════════════════════════════════════════════════════════
+      - name: Sign bare binary (Linux)
+        if: runner.os == 'Linux' && env.SIGNING_KEY_HEX != ''
+        env:
+          SIGNING_KEY_HEX: ${{ secrets.SIGNING_KEY_HEX }}
+        run: bash scripts/sign_release.sh "${{ env.BARE_BIN }}"
+
+      - name: Sign bare binary (macOS)
+        if: runner.os == 'macOS' && env.SIGNING_KEY_HEX != ''
+        env:
+          SIGNING_KEY_HEX: ${{ secrets.SIGNING_KEY_HEX }}
+        run: bash scripts/sign_release.sh "${{ env.BARE_BIN }}"
+
+      # ═══════════════════════════════════════════════════════════════════════
       # Upload all produced packages to the GitHub Release
       # ═══════════════════════════════════════════════════════════════════════
       - name: Upload Linux packages
@@ -312,6 +329,7 @@ jobs:
             ${{ env.DEB_PKG }}.sha256
             ${{ env.BARE_BIN }}
             ${{ env.BARE_BIN }}.sha256
+            ${{ env.BARE_BIN }}.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -324,6 +342,7 @@ jobs:
             ${{ env.TAR_PKG }}.sha256
             ${{ env.BARE_BIN }}
             ${{ env.BARE_BIN }}.sha256
+            ${{ env.BARE_BIN }}.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

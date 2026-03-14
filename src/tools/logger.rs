@@ -135,14 +135,14 @@ static GLOBAL_LOGGER: Mutex<Option<Logger>> = Mutex::new(None);
 /// Initialize the global logger
 pub fn init_logger(name: &str) -> Result<(), String> {
     let logger = Logger::new(name)?;
-    let mut global = GLOBAL_LOGGER.lock().unwrap();
+    let mut global = GLOBAL_LOGGER.lock().unwrap_or_else(|e| e.into_inner());
     *global = Some(logger);
     Ok(())
 }
 
 /// Log a debug message using the global logger
 pub fn log_debug(message: &str) {
-    let mut global = GLOBAL_LOGGER.lock().unwrap();
+    let mut global = GLOBAL_LOGGER.lock().unwrap_or_else(|e| e.into_inner());
     if global.is_none() {
         if let Ok(logger) = Logger::new("txtcode") {
             *global = Some(logger);
@@ -157,7 +157,7 @@ pub fn log_debug(message: &str) {
 
 /// Log an info message using the global logger
 pub fn log_info(message: &str) {
-    let mut global = GLOBAL_LOGGER.lock().unwrap();
+    let mut global = GLOBAL_LOGGER.lock().unwrap_or_else(|e| e.into_inner());
     if global.is_none() {
         if let Ok(logger) = Logger::new("txtcode") {
             *global = Some(logger);
@@ -172,7 +172,7 @@ pub fn log_info(message: &str) {
 
 /// Log a warning message using the global logger
 pub fn log_warn(message: &str) {
-    let mut global = GLOBAL_LOGGER.lock().unwrap();
+    let mut global = GLOBAL_LOGGER.lock().unwrap_or_else(|e| e.into_inner());
     if global.is_none() {
         if let Ok(logger) = Logger::new("txtcode") {
             *global = Some(logger);
@@ -187,7 +187,7 @@ pub fn log_warn(message: &str) {
 
 /// Log an error message using the global logger
 pub fn log_error(message: &str) {
-    let mut global = GLOBAL_LOGGER.lock().unwrap();
+    let mut global = GLOBAL_LOGGER.lock().unwrap_or_else(|e| e.into_inner());
     if global.is_none() {
         if let Ok(logger) = Logger::new("txtcode") {
             *global = Some(logger);

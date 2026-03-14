@@ -1,0 +1,17 @@
+# clippy.toml — project-wide Clippy configuration
+# Applied by: cargo clippy (reads this file automatically)
+# CI enforcement: .github/workflows/security.yml
+
+# Maximum cognitive complexity per function (Clippy default is 25).
+cognitive-complexity-threshold = 30
+
+# Maximum number of lines per function.
+too-many-lines-threshold = 150
+
+# Too-many-arguments threshold (Clippy default is 7).
+too-many-arguments-threshold = 10
+
+# Allow large error types in this project — RuntimeError carries ControlFlowSignal
+# which is intentionally large (see src/lib.rs #![allow(clippy::result_large_err)]).
+# Clippy 1.76+ reads this from clippy.toml:
+# result-large-err-threshold = 512

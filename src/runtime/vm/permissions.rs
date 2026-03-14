@@ -77,11 +77,12 @@ impl VirtualMachine {
         }
 
         // 2. CHECK CAPABILITY TOKEN (if active in current scope)
-        if let Some(token_id) = &self.active_capability {
+        // Clone to release the shared borrow before any &mut self call below.
+        if let Some(token_id) = self.active_capability.clone() {
             let action = self.get_action_from_resource(resource);
             match self
                 .capability_manager
-                .check(token_id, resource, &action, scope)
+                .check(&token_id, resource, &action, scope)
             {
                 Ok(()) => {
                     // Explicit denies always win, even over a valid capability token.
@@ -102,7 +103,11 @@ impl VirtualMachine {
                             self.create_error(format!("Permission error: {}", deny_err))
                         );
                     }
-                    // Capability valid and no explicit deny — log and allow
+                    // Capability valid and no explicit deny — still apply rate limiting (2.4).
+                    // Rate limits must apply regardless of how access is granted.
+                    let cap_action_str = format!("capability.check.{}", action);
+                    self.check_rate_limit(&cap_action_str)?;
+                    // Log and allow
                     let _ = self.audit_trail.log_action(
                         format!("capability.used.{}", action),
                         scope.unwrap_or("").to_string(),
@@ -161,15 +166,18 @@ impl VirtualMachine {
         &self.permission_manager
     }
 
-    /// Get action string from PermissionResource (helper for capabilities)
+    /// Get action string from PermissionResource (helper for capabilities and intent checks).
+    /// Uses the same namespaced format as the Bytecode VM and the intent check in
+    /// check_permission_with_audit so that capability tokens and intent declarations
+    /// registered via either VM use the same action namespace: "fs.read", "net.connect", etc.
     pub(super) fn get_action_from_resource(&self, resource: &PermissionResource) -> String {
         match resource {
-            PermissionResource::FileSystem(action) => action.clone(),
-            PermissionResource::Network(action) => action.clone(),
-            PermissionResource::System(action) => action.clone(),
-            PermissionResource::Process(_) => "exec".to_string(),
-            PermissionResource::WiFi(action) => action.clone(),
-            PermissionResource::Bluetooth(action) => action.clone(),
+            PermissionResource::FileSystem(action) => format!("fs.{}", action),
+            PermissionResource::Network(action) => format!("net.{}", action),
+            PermissionResource::System(action) => format!("sys.{}", action),
+            PermissionResource::Process(_) => "process.exec".to_string(),
+            PermissionResource::WiFi(action) => format!("wifi.{}", action),
+            PermissionResource::Bluetooth(action) => format!("ble.{}", action),
         }
     }
 }

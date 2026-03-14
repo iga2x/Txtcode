@@ -386,7 +386,15 @@ impl BytecodeCompiler {
                 instructions[exit_patch] = Instruction::JumpIfFalse(end_idx);
 
                 // Patch break jumps
-                let ctx = self.loop_context.pop().unwrap();
+                let ctx = match self.loop_context.pop() {
+                    Some(c) => c,
+                    None => {
+                        // Should never happen — validator catches break/continue outside loops.
+                        // Emit nothing and return to avoid a panic in case the AST is malformed.
+                        eprintln!("Internal compiler error: loop context stack underflow (break/continue outside loop)");
+                        return;
+                    }
+                };
                 for bp in ctx.break_patches {
                     instructions[bp] = Instruction::Jump(end_idx);
                 }
@@ -418,7 +426,15 @@ impl BytecodeCompiler {
 
                 let end_idx = instructions.len();
 
-                let ctx = self.loop_context.pop().unwrap();
+                let ctx = match self.loop_context.pop() {
+                    Some(c) => c,
+                    None => {
+                        // Should never happen — validator catches break/continue outside loops.
+                        // Emit nothing and return to avoid a panic in case the AST is malformed.
+                        eprintln!("Internal compiler error: loop context stack underflow (break/continue outside loop)");
+                        return;
+                    }
+                };
                 for bp in ctx.break_patches {
                     instructions[bp] = Instruction::Jump(end_idx);
                 }
@@ -462,7 +478,15 @@ impl BytecodeCompiler {
                 // Patch ForSetup placeholder
                 instructions[setup_idx] = Instruction::ForSetup(variable.clone(), end_idx);
 
-                let ctx = self.loop_context.pop().unwrap();
+                let ctx = match self.loop_context.pop() {
+                    Some(c) => c,
+                    None => {
+                        // Should never happen — validator catches break/continue outside loops.
+                        // Emit nothing and return to avoid a panic in case the AST is malformed.
+                        eprintln!("Internal compiler error: loop context stack underflow (break/continue outside loop)");
+                        return;
+                    }
+                };
                 // Patch break: emit ForCleanup before each break jump
                 for bp in ctx.break_patches {
                     // bp is the ForCleanup instruction; bp+1 is the Jump placeholder
@@ -519,7 +543,15 @@ impl BytecodeCompiler {
                 let end_idx = instructions.len();
                 instructions[exit_patch] = Instruction::JumpIfFalse(end_idx);
 
-                let ctx = self.loop_context.pop().unwrap();
+                let ctx = match self.loop_context.pop() {
+                    Some(c) => c,
+                    None => {
+                        // Should never happen — validator catches break/continue outside loops.
+                        // Emit nothing and return to avoid a panic in case the AST is malformed.
+                        eprintln!("Internal compiler error: loop context stack underflow (break/continue outside loop)");
+                        return;
+                    }
+                };
                 for bp in ctx.break_patches {
                     instructions[bp] = Instruction::Jump(end_idx);
                 }

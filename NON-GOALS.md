@@ -42,6 +42,8 @@ The built-in obfuscation and encryption features exist to:
 - Protect legitimate intellectual property in compiled programs
 - Prevent casual reverse engineering of authorized tools
 
+> **Note:** AST identifier obfuscation is a planned no-op stub in v0.4 — `Obfuscator::obfuscate()` returns the program unchanged and provides no IP protection. See [docs/security-features.md](docs/security-features.md) for current status.
+
 They are **not** intended to help evade antivirus detection or hide malicious code.
 
 ---
