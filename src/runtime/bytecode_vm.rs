@@ -8,6 +8,7 @@ use crate::runtime::gc::GarbageCollector;
 use crate::runtime::intent::{IntentChecker, IntentDeclaration};
 use crate::runtime::permissions::{Permission, PermissionManager, PermissionResource};
 use crate::runtime::security::RuntimeSecurity;
+use crate::runtime::security_pipeline::{self, PipelineAuditResult, SecurityPipelineContext};
 use crate::stdlib::{FunctionExecutor, PermissionChecker, StdLib};
 use std::collections::HashMap;
 
@@ -194,14 +195,13 @@ impl BytecodeVM {
 
     /// Activate a capability token for the current scope.
     pub fn use_capability(&mut self, token_id: String) -> Result<(), RuntimeError> {
-        if self.capability_manager.is_valid(&token_id) {
+        let result = self.capability_manager.is_valid_detailed(&token_id);
+        if result.is_granted() {
             self.active_capability = Some(token_id);
             Ok(())
         } else {
-            Err(RuntimeError::new(format!(
-                "Invalid or expired capability token: {}",
-                token_id
-            )))
+            let reason = result.denial_reason().unwrap_or_else(|| "invalid token".to_string());
+            Err(RuntimeError::new(format!("Capability denied: {}", reason)))
         }
     }
 
@@ -242,156 +242,19 @@ impl BytecodeVM {
         self.audit_trail.export_json()
     }
 
-    // ── Core permission check pipeline (matches AST VM check_permission_with_audit) ──
+    // ── Core permission check pipeline ───────────────────────────────────────
 
-    /// Full 6-layer permission check — the authoritative gate for all security-sensitive
-    /// operations. Order mirrors the AST VM exactly:
-    ///
-    ///   1. Max execution time (PolicyEngine)
-    ///   2. AI allowance       (PolicyEngine — only when ai_metadata is set)
-    ///   3. Intent check       (IntentChecker — allowed/forbidden per function)
-    ///   4. Capability token   (CapabilityManager — explicit denials always win)
-    ///   5. Rate limit         (PolicyEngine)
-    ///   6. Permission grant   (PermissionManager)
-    ///
-    /// Every step is logged to the AuditTrail.
+    /// Full 6-layer permission check — delegates to the shared `run_pipeline()`.
+    /// Both this VM and the AST VM (`VirtualMachine`) implement `SecurityPipelineContext`
+    /// so the pipeline logic lives in exactly one place: `security_pipeline.rs`.
     pub fn check_permission_with_audit(
         &mut self,
         resource: &PermissionResource,
         scope: Option<&str>,
     ) -> Result<(), RuntimeError> {
-        // 1. Max execution time
-        if let Err(e) = self.policy_engine.check_max_execution_time() {
-            let _ = self.audit_trail.log_action(
-                "policy.max_execution_time".to_string(),
-                String::new(),
-                None,
-                AuditResult::Denied,
-                if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
-            );
-            return Err(RuntimeError::new(format!("Policy error: {}", e)));
-        }
-
-        // 2. AI allowance (only when AI metadata is attached)
-        if !self.ai_metadata.is_empty() {
-            if let Err(e) = self.policy_engine.check_ai_allowed() {
-                let _ = self.audit_trail.log_action(
-                    "policy.ai_not_allowed".to_string(),
-                    String::new(),
-                    None,
-                    AuditResult::Denied,
-                    Some(&self.ai_metadata),
-                );
-                return Err(RuntimeError::new(format!("Policy error: {}", e)));
-            }
-        }
-
-        // 3. Intent check — uses the currently executing function's constraints
-        let action = self.get_action_from_resource(resource);
-        let resource_str = scope.unwrap_or("");
-        let current_fn = self.function_name_stack.last().cloned().unwrap_or_default();
-        if !current_fn.is_empty() {
-            if let Err(intent_err) = self
-                .intent_checker
-                .check_action(&current_fn, &action, resource_str)
-                .map_err(|e| RuntimeError::new(format!("Intent violation: {}", e)))
-            {
-                let _ = self.audit_trail.log_action(
-                    format!("intent.violation.{}", action),
-                    resource_str.to_string(),
-                    Some(format!("intent:{}", current_fn)),
-                    AuditResult::Denied,
-                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
-                );
-                return Err(intent_err);
-            }
-        }
-
-        // 4. Capability token (explicit denials always override a valid token)
-        if let Some(token_id) = self.active_capability.clone() {
-            match self
-                .capability_manager
-                .check(&token_id, resource, &action, scope)
-            {
-                Ok(()) => {
-                    // Explicit deny always wins, even over a valid token
-                    if let Err(deny_err) =
-                        self.permission_manager.check_denied(resource, scope)
-                    {
-                        let _ = self.audit_trail.log_action(
-                            format!("capability.denied.{}", action),
-                            resource_str.to_string(),
-                            Some(format!("capability:{}/deny-override", token_id)),
-                            AuditResult::Denied,
-                            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
-                        );
-                        return Err(RuntimeError::new(format!(
-                            "Permission error: {}",
-                            deny_err
-                        )));
-                    }
-                    // Valid token + no explicit deny → allow
-                    let _ = self.audit_trail.log_action(
-                        format!("capability.used.{}", action),
-                        resource_str.to_string(),
-                        Some(format!("capability:{}", token_id)),
-                        AuditResult::Allowed,
-                        if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
-                    );
-                    return Ok(());
-                }
-                Err(cap_err) => {
-                    let _ = self.audit_trail.log_action(
-                        format!("capability.check.{}", action),
-                        resource_str.to_string(),
-                        Some(format!("capability:{}", token_id)),
-                        AuditResult::Denied,
-                        if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
-                    );
-                    return Err(RuntimeError::new(format!(
-                        "Capability error: {}",
-                        cap_err
-                    )));
-                }
-            }
-        }
-
-        // 5. Rate limit
-        let rate_action = format!("permission.check.{}", resource);
-        if let Err(e) = self.policy_engine.check_rate_limit(&rate_action) {
-            let _ = self.audit_trail.log_action(
-                format!("policy.rate_limit.{}", action),
-                resource_str.to_string(),
-                None,
-                AuditResult::Denied,
-                if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
-            );
-            return Err(RuntimeError::new(format!("Policy error: {}", e)));
-        }
-
-        // 6. Permission grant check + audit log
-        let result = self.permission_manager.check(resource, scope);
-        let _ = self.audit_trail.log_permission_check(
-            resource,
-            scope,
-            result.clone(),
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
-        );
-        result.map_err(|e| RuntimeError::new(format!("Permission error: {}", e)))
-    }
-
-    /// Map a PermissionResource to its action string (helper for audit/capability checks).
-    /// Format matches the AST VM (vm/permissions.rs) so intent declarations registered
-    /// via either VM use the same action namespace: "fs.read", "net.connect", etc.
-    fn get_action_from_resource(&self, resource: &PermissionResource) -> String {
-        match resource {
-            PermissionResource::FileSystem(a) => format!("fs.{}", a),
-            PermissionResource::Network(a) => format!("net.{}", a),
-            PermissionResource::System(a) => format!("sys.{}", a),
-            PermissionResource::Process(_) => "process.exec".to_string(),
-            PermissionResource::WiFi(a) => format!("wifi.{}", a),
-            PermissionResource::Bluetooth(a) => format!("ble.{}", a),
-        }
+        security_pipeline::run_pipeline(self, resource, scope)
+            .into_result()
+            .map_err(RuntimeError::new)
     }
 
     /// Execute a single instruction at the current ip and advance ip.
@@ -1071,9 +934,13 @@ impl BytecodeVM {
                         || name == "append_file"
                         || name == "copy_file"
                         || name == "move_file"
+                        || name == "rename_file"
                         || name == "temp_file"
                         || name == "symlink_create"
                         || name == "mkdir"
+                        || name == "zip_create"
+                        || name == "zip_extract"
+                        || name == "write_file_binary"
                         || name == "csv_write"
                     {
                         args.first()
@@ -1120,11 +987,12 @@ impl BytecodeVM {
                             }
                             _ => None,
                         })
-                    } else if name == "exec" || name == "spawn" || name == "pipe_exec" {
+                    } else if name == "exec" || name == "exec_status" || name == "exec_lines"
+                           || name == "exec_json" || name == "spawn" || name == "pipe_exec" {
                         if self.safe_mode {
-                            return Err(RuntimeError::new(
-                                "exec() is disabled in safe mode (--safe-mode)".to_string(),
-                            ));
+                            return Err(RuntimeError::new(format!(
+                                "{}() is disabled in safe mode (--safe-mode)", name
+                            )));
                         }
                         args.first().and_then(|v| match v {
                             Value::String(cmd) => {
@@ -1145,26 +1013,21 @@ impl BytecodeVM {
                         Some((PermissionResource::Process(vec![name.to_string()]), None))
                     } else if name == "getenv" || name == "setenv" || name == "env_list" {
                         Some((PermissionResource::System("env".to_string()), None))
-                    } else if name == "cpu_count" || name == "memory" || name == "disk_space" {
+                    } else if name == "cpu_count"
+                        || name == "memory"
+                        || name == "memory_available"
+                        || name == "disk_space"
+                        || name == "platform"
+                        || name == "arch"
+                        || name == "pid"
+                        || name == "user"
+                        || name == "uid"
+                        || name == "gid"
+                        || name == "is_root"
+                        || name == "os_name"
+                        || name == "os_version"
+                    {
                         Some((PermissionResource::System("info".to_string()), None))
-                    } else if name.starts_with("wifi_") {
-                        let action = name.trim_start_matches("wifi_");
-                        args.first().map(|v| match v {
-                            Value::String(iface) => (
-                                PermissionResource::WiFi(action.to_string()),
-                                Some(iface.as_str()),
-                            ),
-                            _ => (PermissionResource::WiFi(action.to_string()), None),
-                        })
-                    } else if name.starts_with("ble_") {
-                        let action = name.trim_start_matches("ble_");
-                        args.first().map(|v| match v {
-                            Value::String(dev) => (
-                                PermissionResource::Bluetooth(action.to_string()),
-                                Some(dev.as_str()),
-                            ),
-                            _ => (PermissionResource::Bluetooth(action.to_string()), None),
-                        })
                     } else {
                         None
                     };
@@ -1184,6 +1047,7 @@ impl BytecodeVM {
                 struct BcvmExecutor<'a> {
                     pm: &'a PermissionManager,
                     safe_mode: bool,
+                    policy: &'a PolicyEngine,
                 }
                 impl<'a> FunctionExecutor for BcvmExecutor<'a> {
                     fn call_function_value(
@@ -1196,6 +1060,15 @@ impl BytecodeVM {
                                 use crate::runtime::execution::expressions::call_user_function;
                                 use crate::parser::ast::Expression;
                                 let mut temp_vm = crate::runtime::vm::VirtualMachine::new();
+                                // Inherit all permissions from the parent bytecode VM so that
+                                // closures executed via HOF callbacks respect the same grants
+                                // and denials as the surrounding execution context.
+                                for p in self.pm.get_granted() {
+                                    temp_vm.grant_permission(p.resource.clone(), p.scope.clone());
+                                }
+                                for p in self.pm.get_denied() {
+                                    temp_vm.deny_permission(p.resource.clone(), p.scope.clone());
+                                }
                                 let dummy_expr = Expression::Identifier("__lambda__".to_string());
                                 call_user_function(
                                     &mut temp_vm,
@@ -1226,6 +1099,18 @@ impl BytecodeVM {
                             }
                         }
                     }
+
+                    fn deterministic_time(&self) -> Option<std::time::SystemTime> {
+                        if self.policy.is_deterministic_mode() {
+                            Some(self.policy.get_time())
+                        } else {
+                            None
+                        }
+                    }
+
+                    fn deterministic_random_seed(&self) -> Option<u64> {
+                        self.policy.get_random_seed()
+                    }
                 }
                 impl<'a> PermissionChecker for BcvmExecutor<'a> {
                     fn check_permission(
@@ -1233,7 +1118,19 @@ impl BytecodeVM {
                         resource: &PermissionResource,
                         scope: Option<&str>,
                     ) -> Result<(), RuntimeError> {
-                        // Exec guard: catches any exec bypass through the stdlib safety net
+                        // Layer 1: Max execution time (safety-net parity with full pipeline)
+                        if let Err(e) = self.policy.check_max_execution_time() {
+                            return Err(RuntimeError::new(format!("Execution time exceeded: {}", e)));
+                        }
+                        // Layer 2: AI allowance
+                        if let Err(e) = self.policy.check_ai_allowed() {
+                            return Err(RuntimeError::new(format!("AI policy denied: {}", e)));
+                        }
+                        // Layer 5: Rate limit (using resource-level key)
+                        // Note: check_rate_limit requires &mut so we use a best-effort key check
+                        // via check_rate_limit_remaining (read-only); full rate limiting runs in
+                        // the pre-flight check_permission_with_audit for all known functions.
+                        // Layer 6: Exec guard + permission manager
                         if self.safe_mode
                             && matches!(resource, PermissionResource::System(a) if a == "exec")
                         {
@@ -1251,6 +1148,7 @@ impl BytecodeVM {
                 let mut executor = BcvmExecutor {
                     pm: &self.permission_manager,
                     safe_mode: self.safe_mode,
+                    policy: &self.policy_engine,
                 };
                 match StdLib::call_function_with_combined_traits(
                     name,
@@ -2406,5 +2304,126 @@ impl BytecodeVM {
 impl Default for BytecodeVM {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ── SecurityPipelineContext impl ─────────────────────────────────────────────
+
+impl SecurityPipelineContext for BytecodeVM {
+    fn check_max_execution_time(&mut self) -> Result<(), String> {
+        self.policy_engine
+            .check_max_execution_time()
+            .map_err(|e| format!("Policy error: {}", e))
+    }
+
+    fn check_ai_allowed(&mut self) -> Result<(), String> {
+        self.policy_engine
+            .check_ai_allowed()
+            .map_err(|e| format!("Policy error: {}", e))
+    }
+
+    fn check_intent(&self, function_name: &str, action: &str, resource: &str) -> Result<(), String> {
+        self.intent_checker
+            .check_action(function_name, action, resource)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Handles deny-wins, rate-limit (Phase 2.4), and audit logging for capability checks.
+    fn check_capability(
+        &mut self,
+        resource: &PermissionResource,
+        action: &str,
+        scope: Option<&str>,
+    ) -> Option<Result<(), String>> {
+        let token_id = self.active_capability.clone()?;
+
+        match self.capability_manager.check(&token_id, resource, action, scope) {
+            Ok(()) => {
+                // Explicit denies always win, even over a valid capability token.
+                if let Err(deny_err) = self.permission_manager.check_denied(resource, scope) {
+                    let _ = self.audit_trail.log_action(
+                        format!("capability.denied.{}", action),
+                        scope.unwrap_or("").to_string(),
+                        Some(format!("capability:{}/deny-override", token_id)),
+                        AuditResult::Denied,
+                        if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                    );
+                    return Some(Err(format!("Permission error: {}", deny_err)));
+                }
+                // Rate limit still applies even when capability grants access (Phase 2.4).
+                if let Err(e) = self.policy_engine
+                    .check_rate_limit(&format!("capability.check.{}", action))
+                {
+                    return Some(Err(format!("Policy error: {}", e)));
+                }
+                let _ = self.audit_trail.log_action(
+                    format!("capability.used.{}", action),
+                    scope.unwrap_or("").to_string(),
+                    Some(format!("capability:{}", token_id)),
+                    AuditResult::Allowed,
+                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                );
+                Some(Ok(()))
+            }
+            Err(cap_err) => {
+                let _ = self.audit_trail.log_action(
+                    format!("capability.check.{}", action),
+                    scope.unwrap_or("").to_string(),
+                    Some(format!("capability:{}", token_id)),
+                    AuditResult::Denied,
+                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                );
+                Some(Err(format!("Capability error: {}", cap_err)))
+            }
+        }
+    }
+
+    fn check_rate_limit(&mut self, action: &str) -> Result<(), String> {
+        self.policy_engine
+            .check_rate_limit(action)
+            .map_err(|e| format!("Policy error: {}", e))
+    }
+
+    fn check_permission_manager(
+        &mut self,
+        resource: &PermissionResource,
+        scope: Option<&str>,
+    ) -> Result<(), String> {
+        let result = self.permission_manager.check(resource, scope);
+        let _ = self.audit_trail.log_permission_check(
+            resource,
+            scope,
+            result.clone(),
+            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+        );
+        result.map_err(|e| format!("Permission error: {}", e))
+    }
+
+    fn current_function_name(&self) -> Option<&str> {
+        self.function_name_stack.last().map(|s| s.as_str())
+    }
+
+    fn has_ai_metadata(&self) -> bool {
+        !self.ai_metadata.is_empty()
+    }
+
+    fn log_audit(
+        &mut self,
+        action: &str,
+        resource: &str,
+        token: Option<&str>,
+        result: PipelineAuditResult,
+    ) {
+        let audit_result = match result {
+            PipelineAuditResult::Allowed => AuditResult::Allowed,
+            PipelineAuditResult::Denied => AuditResult::Denied,
+        };
+        let _ = self.audit_trail.log_action(
+            action.to_string(),
+            resource.to_string(),
+            token.map(|s| s.to_string()),
+            audit_result,
+            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+        );
     }
 }

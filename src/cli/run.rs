@@ -10,7 +10,6 @@
 use crate::config::Config;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
-use crate::runtime::bytecode_vm::BytecodeVM;
 use crate::runtime::permissions::PermissionResource;
 use crate::runtime::vm::VirtualMachine;
 use crate::tools::logger;
@@ -19,12 +18,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
+#[cfg(feature = "bytecode")]
+use crate::runtime::bytecode_vm::BytecodeVM;
+
 // ── Bytecode execution ────────────────────────────────────────────────────────
 
 /// Execute a pre-compiled `.txtc` bytecode file.
 ///
 /// The Bytecode VM runs the full 6-layer security pipeline (intent, capability,
 /// rate limit, permission, audit trail, runtime security) identical to the AST VM.
+#[cfg(feature = "bytecode")]
 fn run_compiled_file(
     file: &PathBuf,
     safe_mode: bool,
@@ -99,10 +102,9 @@ fn parse_permission_string(s: &str) -> Option<PermissionResource> {
     PermissionResource::from_string(s).ok()
 }
 
-/// Load the active env's allow/deny permission lists and apply them to the VM.
-/// Called by run_file and start_repl so that project-level env.toml is enforced.
-/// Same as `apply_env_permissions` but for the Bytecode VM.
-/// Both VMs have identical grant/deny APIs; a shared trait is not yet available.
+/// Load the active env's allow/deny permission lists and apply them to the Bytecode VM.
+/// Called by run_file so that project-level env.toml is enforced.
+#[cfg(feature = "bytecode")]
 fn apply_env_permissions_bytecode(vm: &mut BytecodeVM) {
     if let Some((_env_dir, _name, cfg)) = Config::load_active_env() {
         for perm_str in &cfg.permissions.allow {
@@ -170,7 +172,7 @@ pub fn run_file(
     debug: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], None)
+    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], None, false)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -183,6 +185,7 @@ fn run_file_inner(
     allow_fs: &[String],
     allow_net: &[String],
     cancel_flag: Option<Arc<AtomicBool>>,
+    strict_types: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     logger::log_info(&format!("Running file: {}", file.display()));
 
@@ -204,8 +207,17 @@ fn run_file_inner(
             "tc" => {} // source file — continue to AST VM path below
             "txtc" => {
                 // Pre-compiled bytecode — route to Bytecode VM and return early.
-                logger::log_info(&format!("Running compiled bytecode: {}", file.display()));
-                return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net, cancel_flag);
+                #[cfg(feature = "bytecode")]
+                {
+                    logger::log_info(&format!("Running compiled bytecode: {}", file.display()));
+                    return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net, cancel_flag);
+                }
+                #[cfg(not(feature = "bytecode"))]
+                return Err(
+                    "Running pre-compiled .txtc files requires the 'bytecode' feature. \
+                     Rebuild with: cargo build --features bytecode"
+                        .into(),
+                );
             }
             "txt" => {
                 return Err(format!(
@@ -270,6 +282,7 @@ fn run_file_inner(
 
     let mut vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
     vm.set_exec_allowed(exec_allowed);
+    vm.set_strict_types(strict_types);
 
     // Attach cancellation flag so timeout can stop execution mid-run.
     if let Some(flag) = cancel_flag {
@@ -298,12 +311,13 @@ pub fn run_file_with_allowlists(
     verbose: bool,
     allow_fs: &[String],
     allow_net: &[String],
+    strict_types: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if allow_fs.is_empty() && allow_net.is_empty() {
-        return run_file(file, safe_mode, allow_exec, debug, verbose);
+        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], None, strict_types);
     }
     run_file_inner(
-        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, None,
+        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, None, strict_types,
     )
 }
 
@@ -336,6 +350,7 @@ pub fn run_file_with_timeout(
     timeout_str: &str,
     allow_fs: &[String],
     allow_net: &[String],
+    strict_types: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let duration = parse_duration(timeout_str).ok_or_else(|| {
         format!(
@@ -362,6 +377,7 @@ pub fn run_file_with_timeout(
             &file, safe_mode, allow_exec, debug, verbose,
             &allow_fs, &allow_net,
             Some(cancel_flag_worker),
+            strict_types,
         )
         .map_err(|e| e.to_string());
         let _ = tx.send(result);
@@ -404,7 +420,7 @@ pub fn run_file_watch(
 
     let mut prev_mtime = get_mtime(file);
     let _ = run_file_with_allowlists(
-        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net,
+        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, false,
     );
 
     loop {
@@ -418,9 +434,50 @@ pub fn run_file_watch(
         if changed {
             println!("\n── file changed, re-running ──\n");
             let _ = run_file_with_allowlists(
-                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net,
+                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, false,
             );
             prev_mtime = cur;
+        }
+    }
+}
+
+// ── Permissions report ────────────────────────────────────────────────────────
+
+/// Scan the AST for all privileged stdlib calls and print a permissions report.
+/// With `json=true`, emits a JSON object; otherwise a human-readable table.
+/// Called by `txtcode run --permissions-report` before execution.
+pub fn print_permissions_report(program: &crate::parser::ast::Program, json: bool) {
+    use crate::validator::RestrictionChecker;
+
+    // Re-use the validator's privileged-call collector.
+    let calls = RestrictionChecker::collect_privileged_calls_pub(&program.statements);
+
+    // Deduplicate and map each call to its required permission.
+    let mut seen = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for call in &calls {
+        if let Some(perm) = RestrictionChecker::required_capability_pub(call) {
+            seen.entry(perm.to_string())
+                .or_default()
+                .push(call.clone());
+        }
+    }
+
+    if json {
+        let entries: Vec<String> = seen.iter().map(|(perm, fns)| {
+            let fn_list = fns.iter().map(|f| format!("\"{}\"", f)).collect::<Vec<_>>().join(", ");
+            format!("  \"{}\": [{}]", perm, fn_list)
+        }).collect();
+        println!("{{\n{}\n}}", entries.join(",\n"));
+    } else {
+        if seen.is_empty() {
+            println!("No privileged permissions required.");
+            return;
+        }
+        println!("Permissions required by this script:");
+        println!("{:<20} {}", "Permission", "Functions");
+        println!("{}", "-".repeat(60));
+        for (perm, fns) in &seen {
+            println!("{:<20} {}", perm, fns.join(", "));
         }
     }
 }

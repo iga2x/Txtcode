@@ -48,6 +48,7 @@ impl CoreLib {
                         Value::Struct(_, _) => "struct",
                         Value::Enum(_, _) => "enum",
                         Value::Result(_, _) => "result",
+                        Value::Future(_) => "future",
                     };
                     Ok(Value::String(type_name.to_string()))
                 } else {
@@ -949,8 +950,15 @@ impl CoreLib {
                             )));
                         }
                         use rand::Rng;
-                        let mut rng = rand::thread_rng();
-                        Ok(Value::Integer(rng.gen_range(*min..=*max)))
+                        let seed = executor.as_ref().and_then(|e| e.deterministic_random_seed());
+                        if let Some(s) = seed {
+                            use rand::{SeedableRng, rngs::StdRng};
+                            let mut rng = StdRng::seed_from_u64(s);
+                            Ok(Value::Integer(rng.gen_range(*min..=*max)))
+                        } else {
+                            let mut rng = rand::thread_rng();
+                            Ok(Value::Integer(rng.gen_range(*min..=*max)))
+                        }
                     }
                     _ => Err(RuntimeError::new(
                         "math_random_int requires integer arguments".to_string(),
@@ -960,8 +968,15 @@ impl CoreLib {
 
             "math_random_float" => {
                 use rand::Rng;
-                let mut rng = rand::thread_rng();
-                Ok(Value::Float(rng.gen::<f64>()))
+                let seed = executor.as_ref().and_then(|e| e.deterministic_random_seed());
+                if let Some(s) = seed {
+                    use rand::{SeedableRng, rngs::StdRng};
+                    let mut rng = StdRng::seed_from_u64(s);
+                    Ok(Value::Float(rng.gen::<f64>()))
+                } else {
+                    let mut rng = rand::thread_rng();
+                    Ok(Value::Float(rng.gen::<f64>()))
+                }
             }
 
             // String padding and formatting
@@ -1492,12 +1507,21 @@ impl CoreLib {
                 }
             }
 
-            "xml_parse" => {
+            // xml_decode is the canonical name; xml_parse is kept as a legacy alias.
+            "xml_decode" | "xml_parse" => {
+                #[cfg(not(feature = "stdlib-full"))]
+                return Err(RuntimeError::new(
+                    "xml_decode requires the 'stdlib-full' feature. \
+                     Rebuild with: cargo build --features stdlib-full"
+                        .to_string(),
+                ));
+                #[cfg(feature = "stdlib-full")]
                 if args.len() != 1 {
                     return Err(RuntimeError::new(
-                        "xml_parse requires 1 argument (str)".to_string(),
+                        "xml_decode requires 1 argument (str)".to_string(),
                     ));
                 }
+                #[cfg(feature = "stdlib-full")]
                 match &args[0] {
                     Value::String(s) => {
                         use quick_xml::events::Event;
@@ -1568,7 +1592,7 @@ impl CoreLib {
                                 Ok(Event::Eof) => break,
                                 Err(e) => {
                                     return Err(RuntimeError::new(format!(
-                                        "xml_parse error: {}",
+                                        "xml_decode error: {}",
                                         e
                                     )))
                                 }
@@ -1578,87 +1602,112 @@ impl CoreLib {
                         }
                         Ok(root.unwrap_or(Value::Null))
                     }
-                    _ => Err(RuntimeError::new("xml_parse requires a string".to_string())),
+                    _ => Err(RuntimeError::new("xml_decode requires a string".to_string())),
                 }
             }
 
             "yaml_encode" => {
-                if args.len() != 1 {
-                    return Err(RuntimeError::new(
-                        "yaml_encode requires 1 argument".to_string(),
-                    ));
-                }
-                fn value_to_yaml(v: &Value) -> serde_yaml::Value {
-                    match v {
-                        Value::Null => serde_yaml::Value::Null,
-                        Value::Boolean(b) => serde_yaml::Value::Bool(*b),
-                        Value::Integer(n) => serde_yaml::Value::Number((*n).into()),
-                        Value::Float(f) => serde_yaml::Value::Number(serde_yaml::Number::from(*f)),
-                        Value::String(s) => serde_yaml::Value::String(s.clone()),
-                        Value::Array(arr) => {
-                            serde_yaml::Value::Sequence(arr.iter().map(value_to_yaml).collect())
-                        }
-                        Value::Map(map) => {
-                            let mut m = serde_yaml::Mapping::new();
-                            for (k, v) in map {
-                                m.insert(serde_yaml::Value::String(k.clone()), value_to_yaml(v));
-                            }
-                            serde_yaml::Value::Mapping(m)
-                        }
-                        other => serde_yaml::Value::String(other.to_string()),
+                #[cfg(not(feature = "stdlib-full"))]
+                return Err(RuntimeError::new(
+                    "yaml_encode requires the 'stdlib-full' feature. \
+                     Rebuild with: cargo build --features stdlib-full"
+                        .to_string(),
+                ));
+                #[cfg(feature = "stdlib-full")]
+                {
+                    if args.len() != 1 {
+                        return Err(RuntimeError::new(
+                            "yaml_encode requires 1 argument".to_string(),
+                        ));
                     }
+                    fn value_to_yaml(v: &Value) -> serde_yaml::Value {
+                        match v {
+                            Value::Null => serde_yaml::Value::Null,
+                            Value::Boolean(b) => serde_yaml::Value::Bool(*b),
+                            Value::Integer(n) => serde_yaml::Value::Number((*n).into()),
+                            Value::Float(f) => {
+                                serde_yaml::Value::Number(serde_yaml::Number::from(*f))
+                            }
+                            Value::String(s) => serde_yaml::Value::String(s.clone()),
+                            Value::Array(arr) => serde_yaml::Value::Sequence(
+                                arr.iter().map(value_to_yaml).collect(),
+                            ),
+                            Value::Map(map) => {
+                                let mut m = serde_yaml::Mapping::new();
+                                for (k, v) in map {
+                                    m.insert(
+                                        serde_yaml::Value::String(k.clone()),
+                                        value_to_yaml(v),
+                                    );
+                                }
+                                serde_yaml::Value::Mapping(m)
+                            }
+                            other => serde_yaml::Value::String(other.to_string()),
+                        }
+                    }
+                    let yaml_val = value_to_yaml(&args[0]);
+                    serde_yaml::to_string(&yaml_val)
+                        .map(Value::String)
+                        .map_err(|e| RuntimeError::new(format!("yaml_encode error: {}", e)))
                 }
-                let yaml_val = value_to_yaml(&args[0]);
-                serde_yaml::to_string(&yaml_val)
-                    .map(Value::String)
-                    .map_err(|e| RuntimeError::new(format!("yaml_encode error: {}", e)))
             }
             "yaml_decode" => {
-                if args.len() != 1 {
-                    return Err(RuntimeError::new(
-                        "yaml_decode requires 1 argument (str)".to_string(),
-                    ));
-                }
-                match &args[0] {
-                    Value::String(s) => {
-                        fn yaml_to_value(y: serde_yaml::Value) -> Value {
-                            match y {
-                                serde_yaml::Value::Null => Value::Null,
-                                serde_yaml::Value::Bool(b) => Value::Boolean(b),
-                                serde_yaml::Value::Number(n) => {
-                                    if let Some(i) = n.as_i64() {
-                                        Value::Integer(i)
-                                    } else if let Some(f) = n.as_f64() {
-                                        Value::Float(f)
-                                    } else {
-                                        Value::String(n.to_string())
-                                    }
-                                }
-                                serde_yaml::Value::String(s) => Value::String(s),
-                                serde_yaml::Value::Sequence(seq) => {
-                                    Value::Array(seq.into_iter().map(yaml_to_value).collect())
-                                }
-                                serde_yaml::Value::Mapping(map) => {
-                                    let mut m = std::collections::HashMap::new();
-                                    for (k, v) in map {
-                                        let key = match k {
-                                            serde_yaml::Value::String(s) => s,
-                                            other => format!("{:?}", other),
-                                        };
-                                        m.insert(key, yaml_to_value(v));
-                                    }
-                                    Value::Map(m)
-                                }
-                                serde_yaml::Value::Tagged(t) => yaml_to_value(t.value),
-                            }
-                        }
-                        let yaml_val: serde_yaml::Value = serde_yaml::from_str(s)
-                            .map_err(|e| RuntimeError::new(format!("yaml_decode error: {}", e)))?;
-                        Ok(yaml_to_value(yaml_val))
+                #[cfg(not(feature = "stdlib-full"))]
+                return Err(RuntimeError::new(
+                    "yaml_decode requires the 'stdlib-full' feature. \
+                     Rebuild with: cargo build --features stdlib-full"
+                        .to_string(),
+                ));
+                #[cfg(feature = "stdlib-full")]
+                {
+                    if args.len() != 1 {
+                        return Err(RuntimeError::new(
+                            "yaml_decode requires 1 argument (str)".to_string(),
+                        ));
                     }
-                    _ => Err(RuntimeError::new(
-                        "yaml_decode requires a string argument".to_string(),
-                    )),
+                    match &args[0] {
+                        Value::String(s) => {
+                            fn yaml_to_value(y: serde_yaml::Value) -> Value {
+                                match y {
+                                    serde_yaml::Value::Null => Value::Null,
+                                    serde_yaml::Value::Bool(b) => Value::Boolean(b),
+                                    serde_yaml::Value::Number(n) => {
+                                        if let Some(i) = n.as_i64() {
+                                            Value::Integer(i)
+                                        } else if let Some(f) = n.as_f64() {
+                                            Value::Float(f)
+                                        } else {
+                                            Value::String(n.to_string())
+                                        }
+                                    }
+                                    serde_yaml::Value::String(s) => Value::String(s),
+                                    serde_yaml::Value::Sequence(seq) => {
+                                        Value::Array(seq.into_iter().map(yaml_to_value).collect())
+                                    }
+                                    serde_yaml::Value::Mapping(map) => {
+                                        let mut m = std::collections::HashMap::new();
+                                        for (k, v) in map {
+                                            let key = match k {
+                                                serde_yaml::Value::String(s) => s,
+                                                other => format!("{:?}", other),
+                                            };
+                                            m.insert(key, yaml_to_value(v));
+                                        }
+                                        Value::Map(m)
+                                    }
+                                    serde_yaml::Value::Tagged(t) => yaml_to_value(t.value),
+                                }
+                            }
+                            let yaml_val: serde_yaml::Value = serde_yaml::from_str(s)
+                                .map_err(|e| {
+                                    RuntimeError::new(format!("yaml_decode error: {}", e))
+                                })?;
+                            Ok(yaml_to_value(yaml_val))
+                        }
+                        _ => Err(RuntimeError::new(
+                            "yaml_decode requires a string argument".to_string(),
+                        )),
+                    }
                 }
             }
 
@@ -1692,6 +1741,384 @@ impl CoreLib {
                 Some(_) => Ok(Value::Boolean(true)),
                 None => Err(RuntimeError::new("bool() requires one argument".to_string())),
             },
+            // ── str_format(template, arg0, arg1, ...) ────────────────────────
+            // Supports `{}` (sequential) and `{N}` (positional) placeholders.
+            "str_format" | "format" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::new(
+                        "str_format requires at least one argument (template)".to_string(),
+                    ));
+                }
+                let template = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "str_format: template (arg 1) must be a string".to_string(),
+                        ))
+                    }
+                };
+                let fmt_args: Vec<String> = args[1..].iter().map(|v| v.to_string()).collect();
+                let mut result = String::new();
+                let mut chars = template.chars().peekable();
+                let mut seq_idx = 0usize;
+                while let Some(c) = chars.next() {
+                    if c == '{' {
+                        match chars.peek() {
+                            Some('}') => {
+                                chars.next();
+                                let s = fmt_args.get(seq_idx).map(|s| s.as_str()).unwrap_or("");
+                                result.push_str(s);
+                                seq_idx += 1;
+                            }
+                            Some(&d) if d.is_ascii_digit() => {
+                                let mut num_str = String::new();
+                                while chars.peek().map_or(false, |c| c.is_ascii_digit()) {
+                                    num_str.push(chars.next().unwrap());
+                                }
+                                if chars.peek() == Some(&'}') {
+                                    chars.next();
+                                    let idx: usize = num_str.parse().unwrap_or(0);
+                                    let s = fmt_args.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                    result.push_str(s);
+                                } else {
+                                    result.push('{');
+                                    result.push_str(&num_str);
+                                }
+                            }
+                            _ => result.push(c),
+                        }
+                    } else {
+                        result.push(c);
+                    }
+                }
+                Ok(Value::String(result))
+            }
+
+            // ── str_repeat(s, n) ──────────────────────────────────────────────
+            "str_repeat" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "str_repeat requires 2 arguments (str, count)".to_string(),
+                    ));
+                }
+                let s = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "str_repeat: first argument must be a string".to_string(),
+                        ))
+                    }
+                };
+                let n = match &args[1] {
+                    Value::Integer(i) => *i,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "str_repeat: second argument must be an integer".to_string(),
+                        ))
+                    }
+                };
+                if n < 0 {
+                    return Err(RuntimeError::new(
+                        "str_repeat: count must be non-negative".to_string(),
+                    ));
+                }
+                Ok(Value::String(s.repeat(n as usize)))
+            }
+
+            // ── str_contains(s, substr) ───────────────────────────────────────
+            "str_contains" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "str_contains requires 2 arguments (str, substr)".to_string(),
+                    ));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(sub)) => {
+                        Ok(Value::Boolean(s.contains(sub.as_str())))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "str_contains requires string arguments".to_string(),
+                    )),
+                }
+            }
+
+            // ── str_chars(s) — split into single-character array ──────────────
+            "str_chars" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "str_chars requires 1 argument (str)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::String(s) => Ok(Value::Array(
+                        s.chars().map(|c| Value::String(c.to_string())).collect(),
+                    )),
+                    _ => Err(RuntimeError::new(
+                        "str_chars requires a string argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── str_reverse(s) ────────────────────────────────────────────────
+            "str_reverse" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "str_reverse requires 1 argument (str)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::String(s) => Ok(Value::String(s.chars().rev().collect())),
+                    _ => Err(RuntimeError::new(
+                        "str_reverse requires a string argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── str_center(s, width, pad_char?) ───────────────────────────────
+            "str_center" => {
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(RuntimeError::new(
+                        "str_center requires 2-3 arguments (str, width, pad_char?)".to_string(),
+                    ));
+                }
+                let s = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "str_center: first argument must be a string".to_string(),
+                        ))
+                    }
+                };
+                let width = match &args[1] {
+                    Value::Integer(i) => *i as usize,
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "str_center: width must be an integer".to_string(),
+                        ))
+                    }
+                };
+                let pad_char = if args.len() == 3 {
+                    match &args[2] {
+                        Value::String(p) if !p.is_empty() => {
+                            p.chars().next().unwrap()
+                        }
+                        _ => ' ',
+                    }
+                } else {
+                    ' '
+                };
+                let len = s.chars().count();
+                if len >= width {
+                    return Ok(Value::String(s));
+                }
+                let total_pad = width - len;
+                let left_pad = total_pad / 2;
+                let right_pad = total_pad - left_pad;
+                let result = format!(
+                    "{}{}{}",
+                    pad_char.to_string().repeat(left_pad),
+                    s,
+                    pad_char.to_string().repeat(right_pad)
+                );
+                Ok(Value::String(result))
+            }
+
+            // ── array_sum(arr) ────────────────────────────────────────────────
+            "array_sum" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "array_sum requires 1 argument (array)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::Array(arr) => {
+                        let mut int_sum: i64 = 0;
+                        let mut float_sum: f64 = 0.0;
+                        let mut has_float = false;
+                        for v in arr {
+                            match v {
+                                Value::Integer(i) => {
+                                    int_sum = int_sum.checked_add(*i).ok_or_else(|| {
+                                        RuntimeError::new("array_sum: integer overflow".to_string())
+                                    })?;
+                                }
+                                Value::Float(f) => {
+                                    float_sum += f;
+                                    has_float = true;
+                                }
+                                _ => {
+                                    return Err(RuntimeError::new(
+                                        "array_sum: all elements must be numeric".to_string(),
+                                    ))
+                                }
+                            }
+                        }
+                        if has_float {
+                            Ok(Value::Float(int_sum as f64 + float_sum))
+                        } else {
+                            Ok(Value::Integer(int_sum))
+                        }
+                    }
+                    _ => Err(RuntimeError::new(
+                        "array_sum requires an array argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── array_flatten(arr) — one level deep ───────────────────────────
+            "array_flatten" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "array_flatten requires 1 argument (array)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::Array(arr) => {
+                        let mut result = Vec::new();
+                        for v in arr {
+                            match v {
+                                Value::Array(inner) => result.extend(inner.iter().cloned()),
+                                other => result.push(other.clone()),
+                            }
+                        }
+                        Ok(Value::Array(result))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "array_flatten requires an array argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── array_enumerate(arr) → [[0,v0],[1,v1],...] ───────────────────
+            "array_enumerate" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "array_enumerate requires 1 argument (array)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::Array(arr) => Ok(Value::Array(
+                        arr.iter()
+                            .enumerate()
+                            .map(|(i, v)| Value::Array(vec![Value::Integer(i as i64), v.clone()]))
+                            .collect(),
+                    )),
+                    _ => Err(RuntimeError::new(
+                        "array_enumerate requires an array argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── array_zip(arr1, arr2) → [[a0,b0],[a1,b1],...] ────────────────
+            "array_zip" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "array_zip requires 2 arguments (arr1, arr2)".to_string(),
+                    ));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::Array(a), Value::Array(b)) => {
+                        let pairs: Vec<Value> = a
+                            .iter()
+                            .zip(b.iter())
+                            .map(|(av, bv)| Value::Array(vec![av.clone(), bv.clone()]))
+                            .collect();
+                        Ok(Value::Array(pairs))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "array_zip requires two array arguments".to_string(),
+                    )),
+                }
+            }
+
+            // ── array_contains(arr, val) ──────────────────────────────────────
+            "array_contains" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "array_contains requires 2 arguments (array, value)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::Array(arr) => Ok(Value::Boolean(arr.contains(&args[1]))),
+                    _ => Err(RuntimeError::new(
+                        "array_contains requires an array as first argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── array_push(arr, val) — returns new array ──────────────────────
+            "array_push" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "array_push requires 2 arguments (array, value)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::Array(arr) => {
+                        let mut new_arr = arr.clone();
+                        new_arr.push(args[1].clone());
+                        Ok(Value::Array(new_arr))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "array_push requires an array as first argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── array_pop(arr) — returns [new_arr, last_element] ─────────────
+            "array_pop" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "array_pop requires 1 argument (array)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::Array(arr) if arr.is_empty() => Err(RuntimeError::new(
+                        "array_pop: cannot pop from empty array".to_string(),
+                    )),
+                    Value::Array(arr) => {
+                        let mut new_arr = arr.clone();
+                        let last = new_arr.pop().unwrap();
+                        Ok(Value::Array(vec![Value::Array(new_arr), last]))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "array_pop requires an array argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── array_head(arr) — first element ──────────────────────────────
+            "array_head" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "array_head requires 1 argument (array)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::Array(arr) if arr.is_empty() => Ok(Value::Null),
+                    Value::Array(arr) => Ok(arr[0].clone()),
+                    _ => Err(RuntimeError::new(
+                        "array_head requires an array argument".to_string(),
+                    )),
+                }
+            }
+
+            // ── array_tail(arr) — all but first ──────────────────────────────
+            "array_tail" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "array_tail requires 1 argument (array)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::Array(arr) if arr.is_empty() => Ok(Value::Array(vec![])),
+                    Value::Array(arr) => Ok(Value::Array(arr[1..].to_vec())),
+                    _ => Err(RuntimeError::new(
+                        "array_tail requires an array argument".to_string(),
+                    )),
+                }
+            }
+
             _ => Err(RuntimeError::new(format!(
                 "Unknown core function: {}",
                 name

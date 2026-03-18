@@ -454,7 +454,7 @@ impl Lexer {
                 if self.source[self.position..].starts_with("\"\"\"") {
                     self.read_multiline_string()?
                 } else {
-                    self.read_string(ch)?
+                    self.read_string(ch, false)?
                 }
             }
             '\'' => {
@@ -470,11 +470,10 @@ impl Lexer {
                     self.advance(); // consume 'r'
                     self.read_raw_string()?
                 } else if ch == 'f' && (self.peek() == Some('"') || self.peek() == Some('\'')) {
-                    // f-string prefix: f"..." or f'...' — consume 'f' and read as normal string
-                    // The string reader already marks strings with { } as InterpolatedString
+                    // f-string prefix: f"..." or f'...' — only f-strings allow {expr} interpolation
                     self.advance(); // consume 'f'
                     let quote = self.source[self.position..].chars().next().unwrap_or('"');
-                    self.read_string(quote)?
+                    self.read_string(quote, true)?
                 } else {
                     self.read_identifier()?
                 }
@@ -631,7 +630,7 @@ impl Lexer {
                     .unwrap_or(true)
             {
                 // Not a char literal, treat as string
-                return self.read_string(quote);
+                return self.read_string(quote, false);
             }
             self.advance(); // Skip closing quote
 
@@ -643,7 +642,7 @@ impl Lexer {
         }
     }
 
-    fn read_string(&mut self, quote: char) -> Result<Token, String> {
+    fn read_string(&mut self, quote: char, is_f_string: bool) -> Result<Token, String> {
         let start_line = self.line;
         let start_col = self.column;
         self.advance(); // Skip opening quote
@@ -661,8 +660,8 @@ impl Lexer {
                 self.advance(); // Skip closing quote
                 found_closing_quote = true;
                 break;
-            } else if ch == '{' {
-                // Check if it's an interpolation (not escaped)
+            } else if ch == '{' && is_f_string {
+                // Interpolation is only active in f-strings (f"...")
                 if self.position > 0 {
                     let prev_remaining = &self.source[self.position - 1..];
                     if let Some(prev_ch) = prev_remaining.chars().next() {

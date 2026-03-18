@@ -1,10 +1,12 @@
 pub mod capabilities;
 pub mod core;
 pub mod crypto;
+pub mod ffi;
 pub mod function_executor;
 pub mod io;
 pub mod json;
 pub mod log;
+#[cfg(feature = "net")]
 pub mod net;
 pub mod path;
 pub mod permission_checker;
@@ -18,10 +20,12 @@ pub mod url;
 pub use capabilities::{CapabilityExecutor, CapabilityLib};
 pub use core::CoreLib;
 pub use crypto::CryptoLib;
+pub use ffi::FfiLib;
 pub use function_executor::FunctionExecutor;
 pub use io::IOLib;
 pub use json::JsonLib;
 pub use log::LogLib;
+#[cfg(feature = "net")]
 pub use net::NetLib;
 pub use path::PathLib;
 pub use permission_checker::PermissionChecker;
@@ -86,6 +90,9 @@ impl StdLib {
     /// Permission checking is done inline here (immutable borrow) before the mutable call,
     /// which avoids the Rust borrow-checker conflict between `&dyn PermissionChecker` and
     /// `&mut E` pointing at the same value.
+    ///
+    /// The function → resource mapping is delegated to [`crate::runtime::permission_map`],
+    /// the single source of truth shared with the AST VM's expression evaluator.
     pub fn call_function_with_combined_traits<E>(
         name: &str,
         args: &[crate::runtime::Value],
@@ -95,80 +102,15 @@ impl StdLib {
     where
         E: FunctionExecutor + PermissionChecker,
     {
-        use crate::runtime::permissions::PermissionResource;
-
-        // Determine if this call touches a permission-gated resource and check upfront
-        // using an immutable reborrow of executor (before the mutable call below).
+        // Upfront permission check using an immutable reborrow of the executor.
+        // Extract the real scope from args (same logic as AST VM's function_calls.rs)
+        // so the check is scope-aware rather than passing None for all calls.
         if let Some(ref exec) = executor {
-            let resource = if name.starts_with("http")
-                || name.starts_with("tcp")
-                || name == "udp_send"
-                || name == "resolve"
+            if let Some(resource) =
+                crate::runtime::permission_map::map_function_to_permission(name)
             {
-                Some(PermissionResource::Network("connect".to_string()))
-            } else if name.starts_with("read")
-                || name.starts_with("write")
-                || name.starts_with("file")
-                || name.starts_with("list")
-                || name == "is_file"
-                || name == "is_dir"
-                || name == "mkdir"
-                || name == "rmdir"
-                || name == "delete"
-                || name == "append_file"
-                || name == "copy_file"
-                || name == "move_file"
-                || name == "temp_file"
-                || name == "watch_file"
-                || name == "symlink_create"
-            {
-                let action = if name.starts_with("read")
-                    || name.starts_with("list")
-                    || name == "is_file"
-                    || name == "is_dir"
-                {
-                    "read"
-                } else if name == "delete" || name == "rmdir" {
-                    "delete"
-                } else {
-                    "write"
-                };
-                Some(PermissionResource::FileSystem(action.to_string()))
-            } else if name == "csv_write" {
-                // csv_write is a filesystem write — must be gated the same as write_file.
-                let action = "write";
-                Some(PermissionResource::FileSystem(action.to_string()))
-            } else if name == "exec"
-                || name == "spawn"
-                || name == "kill"
-                || name == "pipe_exec"
-            {
-                // System("exec") matches the AST VM path in function_calls.rs.
-                // PermissionResource::Process is for command whitelisting, not the exec gate.
-                Some(PermissionResource::System("exec".to_string()))
-            } else if name == "signal_send" {
-                // signal_send targets a process by PID — gated as Process resource.
-                Some(PermissionResource::Process(vec![name.to_string()]))
-            } else if name == "getenv" || name == "setenv" || name == "env_list" {
-                Some(PermissionResource::System("env".to_string()))
-            } else if name == "cpu_count" || name == "memory" || name == "disk_space" {
-                Some(PermissionResource::System("info".to_string()))
-            } else if name.starts_with("wifi_") {
-                let action = name.trim_start_matches("wifi_");
-                Some(PermissionResource::WiFi(action.to_string()))
-            } else if name.starts_with("ble_") {
-                let action = name.trim_start_matches("ble_");
-                Some(PermissionResource::Bluetooth(action.to_string()))
-            } else if name == "tool_exec" {
-                // tool_exec spawns a named process binary — gate on System("exec").
-                // Individual tool whitelisting (sudo, allowed_actions) is enforced
-                // inside ToolExecutor::execute_tool / check_tool_permission.
-                Some(PermissionResource::System("exec".to_string()))
-            } else {
-                None
-            };
-            if let Some(res) = resource {
-                exec.check_permission(&res, None)?;
+                let scope = crate::runtime::permission_map::extract_permission_scope(&resource, args);
+                exec.check_permission(&resource, scope.as_deref())?;
             }
         }
 
@@ -192,6 +134,10 @@ impl StdLib {
         permission_checker: Option<&dyn PermissionChecker>,
     ) -> Result<crate::runtime::Value, crate::runtime::RuntimeError> {
         let effective_permission_checker = permission_checker;
+
+        // Extract deterministic overrides from the executor (if present)
+        let time_override = executor.as_ref().and_then(|e| e.deterministic_time());
+        let seed_override = executor.as_ref().and_then(|e| e.deterministic_random_seed());
 
         // Route to appropriate library
         if name.starts_with("str_")
@@ -248,13 +194,15 @@ impl StdLib {
             || name == "html_escape"
             || name.starts_with("toml_")
             || name.starts_with("csv_")
+            || name == "xml_decode"
             || name == "xml_parse"
             || name.starts_with("yaml_")
             || name == "math_random_float"
+            || name == "format"
         {
             CoreLib::call_function(name, args, executor)
         } else if name.starts_with("sha")
-            || name.starts_with("random")
+            || name.starts_with("crypto_random")
             || name == "encrypt"
             || name == "decrypt"
             || name == "md5"
@@ -272,13 +220,20 @@ impl StdLib {
             || name == "rsa_sign"
             || name == "rsa_verify"
         {
-            CryptoLib::call_function(name, args)
+            CryptoLib::call_function(name, args, seed_override)
         } else if name.starts_with("http")
             || name.starts_with("tcp")
             || name == "udp_send"
             || name == "resolve"
         {
-            NetLib::call_function(name, args, effective_permission_checker)
+            #[cfg(feature = "net")]
+            return NetLib::call_function(name, args, effective_permission_checker);
+            #[cfg(not(feature = "net"))]
+            return Err(crate::runtime::RuntimeError::new(format!(
+                "Network function '{}' requires the 'net' feature. \
+                 Rebuild with: cargo build --features net",
+                name
+            )))
         } else if name.starts_with("read")
             || name.starts_with("write")
             || name.starts_with("file")
@@ -304,6 +259,9 @@ impl StdLib {
             || name == "platform"
             || name == "arch"
             || name == "exec"
+            || name == "exec_status"
+            || name == "exec_lines"
+            || name == "exec_json"
             || name == "exit"
             || name == "args"
             || name == "cwd"
@@ -320,20 +278,14 @@ impl StdLib {
         {
             SysLib::call_function(name, args, exec_allowed, effective_permission_checker)
         } else if name == "now" || (name == "sleep" && args.len() == 1) {
-            TimeLib::call_function(name, args)
+            TimeLib::call_function(name, args, time_override)
         } else if name.starts_with("json_") {
             JsonLib::call_function(name, args)
         } else if name.starts_with("regex_") {
             RegexLib::call_function(name, args)
         } else if name.starts_with("path_") {
             PathLib::call_function(name, args)
-        } else if name.starts_with("log_")
-            || name == "log"
-            || name == "debug"
-            || name == "info"
-            || name == "warn"
-            || name == "error"
-        {
+        } else if name.starts_with("log_") || name == "log" {
             LogLib::call_function(name, args)
         } else if name.starts_with("url_")
             || name.starts_with("encode_uri")
@@ -345,7 +297,7 @@ impl StdLib {
             || name == "parse_time"
             || name == "time_parse"
         {
-            TimeLib::call_function(name, args)
+            TimeLib::call_function(name, args, time_override)
         } else if name == "chdir"
             || name == "pid"
             || name == "user"
@@ -374,7 +326,16 @@ impl StdLib {
             // This is handled by the VM directly calling the capability methods
             // For now, return an error indicating these functions need VM integration
             Err(crate::runtime::RuntimeError::new(format!(
-                "Capability function '{}' requires VM executor. Use grant_capability() etc. from VM context.", 
+                "Capability function '{}' requires VM executor. Use grant_capability() etc. from VM context.",
+                name
+            )))
+        } else if name == "ffi_load" || name == "ffi_call" || name == "ffi_close" {
+            #[cfg(feature = "ffi")]
+            return FfiLib::call_function(name, args);
+            #[cfg(not(feature = "ffi"))]
+            return Err(crate::runtime::RuntimeError::new(format!(
+                "FFI function '{}' requires the 'ffi' feature. \
+                 Rebuild with: cargo build --features ffi",
                 name
             )))
         } else {

@@ -22,7 +22,7 @@ const STDLIB_NAMES: &[&str] = &[
     "concat", "split", "join", "replace", "trim", "substring", "indexOf",
     "startsWith", "endsWith", "toUpper", "toLower", "set",
     "ok", "err", "is_ok", "is_err", "unwrap", "unwrap_or",
-    "base32_encode", "base32_decode", "html_escape", "xml_parse",
+    "base32_encode", "base32_decode", "html_escape", "xml_decode", "xml_parse",
     "math_random_float",
     // math
     "sin", "cos", "tan", "sqrt", "log", "pow", "abs", "floor", "ceil", "round",
@@ -31,7 +31,7 @@ const STDLIB_NAMES: &[&str] = &[
     "base64_encode", "base64_decode", "hmac_sha256", "uuid_v4",
     "secure_compare", "pbkdf2", "bcrypt_hash", "bcrypt_verify",
     "ed25519_sign", "ed25519_verify", "rsa_generate", "rsa_sign", "rsa_verify",
-    "random", "random_int", "random_bytes",
+    "crypto_random_int", "crypto_random_bytes", "crypto_random_float",
     // net
     "http_get", "http_post", "http_put", "http_delete", "http_patch",
     "http_head", "http_options", "http_request",
@@ -43,30 +43,34 @@ const STDLIB_NAMES: &[&str] = &[
     "move_file", "rename_file", "temp_file", "watch_file",
     "read_lines", "symlink_create", "zip_create", "zip_extract",
     // sys
-    "getenv", "setenv", "platform", "arch", "exec", "exit", "args",
+    "getenv", "setenv", "platform", "arch",
+    "exec", "exec_status", "exec_lines", "exec_json", "exit", "args",
     "cwd", "chdir", "env_list", "signal_send", "pipe_exec", "which",
     "is_root", "cpu_count", "memory_available", "disk_space", "os_name",
     "os_version", "pid", "user", "home", "uid", "gid", "spawn", "kill",
     "wait", "sleep",
     // time
     "now", "format_time", "time_format", "parse_time", "time_parse",
-    // json
-    "json_parse", "json_stringify", "json_format",
+    // json — canonical names; legacy aliases kept for backward compat
+    "json_encode", "json_decode", "json_parse", "json_stringify", "json_format",
     // regex
     "regex_match", "regex_find_all", "regex_replace", "regex_split",
     // path
     "path_join", "path_dirname", "path_basename", "path_extension",
     "path_absolute", "path_exists", "path_is_absolute",
-    // log
+    // log — canonical names only (bare debug/info/warn/error removed in v0.4.1)
     "log", "log_debug", "log_info", "log_warn", "log_error",
-    "debug", "info", "warn", "error",
     // url
     "url_parse", "url_build", "encode_uri", "decode_uri",
     "encode_uri_component", "decode_uri_component",
     // tools
     "tool_exec", "tool_list", "tool_info",
+    // ffi
+    "ffi_load", "ffi_call", "ffi_close",
     // capabilities
     "grant_capability", "use_capability", "clear_capability", "revoke_capability",
+    // str_format alias
+    "format",
     // to_ conversions
     "to_string", "to_int", "to_float", "to_bool", "to_array",
     // str_ / math_ / array_ / set_ prefixed — handled by prefix check in should_mangle
@@ -76,7 +80,7 @@ const STDLIB_NAMES: &[&str] = &[
 const STDLIB_PREFIXES: &[&str] = &[
     "str_", "math_", "array_", "set_", "to_", "json_", "regex_", "path_",
     "log_", "url_", "http", "tcp", "csv_", "toml_", "yaml_", "assert",
-    "test_",
+    "test_", "ffi_",
 ];
 
 fn is_stdlib(name: &str) -> bool {

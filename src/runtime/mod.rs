@@ -2,6 +2,7 @@
 // trace: removed in Phase 4.2 — never connected to any VM; unsound raw-pointer graph.
 // Both will be redesigned as proper subsystems when actually needed.
 pub mod audit;
+#[cfg(feature = "bytecode")]
 pub mod bytecode_vm;
 pub mod compatibility;
 pub mod security_pipeline;
@@ -14,6 +15,7 @@ pub mod migration;
 pub mod module;
 pub mod module_metadata;
 pub mod operators;
+pub mod permission_map;
 pub mod permissions;
 pub mod security;
 pub mod tools;
@@ -27,6 +29,7 @@ pub mod capabilities {
     pub use crate::capability::*;
 }
 
+#[cfg(feature = "bytecode")]
 #[allow(unused_imports)]
 pub use bytecode_vm::*;
 #[allow(unused_imports)]

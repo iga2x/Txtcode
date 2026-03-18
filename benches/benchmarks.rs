@@ -1,5 +1,4 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use txtcode::compiler::bytecode::BytecodeCompiler;
 use txtcode::lexer::Lexer;
 use txtcode::parser::Parser;
 
@@ -62,9 +61,29 @@ fn bench_parser(c: &mut Criterion) {
     });
 }
 
-fn bench_compile(c: &mut Criterion) {
-    let source = COMPLEX_PROGRAM.to_string();
+fn bench_ast_vm(c: &mut Criterion) {
+    use txtcode::runtime::vm::VirtualMachine;
 
+    // Pre-parse once; bench only VM execution
+    let source = LOOP_PROGRAM.to_string();
+    let mut lexer = Lexer::new(source.clone());
+    let tokens = lexer.tokenize().expect("lex failed");
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().expect("parse failed");
+
+    c.bench_function("vm/ast_loop", |b| {
+        b.iter(|| {
+            let mut vm = VirtualMachine::new();
+            black_box(vm.interpret(black_box(&program)).ok())
+        })
+    });
+}
+
+#[cfg(feature = "bytecode")]
+fn bench_compile(c: &mut Criterion) {
+    use txtcode::compiler::bytecode::BytecodeCompiler;
+
+    let source = COMPLEX_PROGRAM.to_string();
     c.bench_function("compile/lex+parse+bytecode", |b| {
         b.iter(|| {
             let mut lexer = Lexer::new(black_box(source.clone()));
@@ -77,7 +96,11 @@ fn bench_compile(c: &mut Criterion) {
     });
 }
 
-fn bench_vm_interpret(c: &mut Criterion) {
+#[cfg(feature = "bytecode")]
+fn bench_vm_bytecode(c: &mut Criterion) {
+    use txtcode::compiler::bytecode::BytecodeCompiler;
+    use txtcode::runtime::bytecode_vm::BytecodeVM;
+
     let source = LOOP_PROGRAM.to_string();
     let mut lexer = Lexer::new(source.clone());
     let tokens = lexer.tokenize().expect("lex failed");
@@ -88,18 +111,23 @@ fn bench_vm_interpret(c: &mut Criterion) {
 
     c.bench_function("vm/bytecode_loop", |b| {
         b.iter(|| {
-            use txtcode::runtime::bytecode_vm::BytecodeVM;
             let mut vm = BytecodeVM::new();
             black_box(vm.execute(&bytecode).ok())
         })
     });
 }
 
+#[cfg(feature = "bytecode")]
 criterion_group!(
     benches,
     bench_lexer,
     bench_parser,
+    bench_ast_vm,
     bench_compile,
-    bench_vm_interpret
+    bench_vm_bytecode,
 );
+
+#[cfg(not(feature = "bytecode"))]
+criterion_group!(benches, bench_lexer, bench_parser, bench_ast_vm,);
+
 criterion_main!(benches);

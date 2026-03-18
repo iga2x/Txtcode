@@ -1,5 +1,88 @@
 use crate::parser::ast::{Parameter, Statement};
 use std::collections::HashMap;
+use std::sync::{Arc, Condvar, Mutex};
+
+// ---------------------------------------------------------------------------
+// FutureHandle — backing type for Value::Future
+// ---------------------------------------------------------------------------
+
+/// Shared result cell for an async task.
+type FutureInner = Arc<(Mutex<Option<Result<Value, String>>>, Condvar)>;
+
+/// A handle to an asynchronously executing NPL task.
+///
+/// Created by calling an `async`-defined function without `await`.
+/// Resolved by `await`-ing the handle, which blocks the calling thread
+/// until the spawned task finishes and stores its result.
+pub struct FutureHandle {
+    inner: FutureInner,
+}
+
+impl FutureHandle {
+    /// Create a `(FutureHandle, FutureSender)` pair — the handle is placed in
+    /// the parent scope as a `Value::Future`; the sender is moved into the
+    /// spawned thread so it can deliver the result.
+    pub fn pending() -> (Self, FutureSender) {
+        let inner: FutureInner = Arc::new((Mutex::new(None), Condvar::new()));
+        (
+            FutureHandle { inner: Arc::clone(&inner) },
+            FutureSender { inner },
+        )
+    }
+
+    /// Block until the async task completes, then return its result.
+    pub fn resolve(self) -> Result<Value, String> {
+        let (lock, cvar) = &*self.inner;
+        let guard = lock.lock().unwrap();
+        // Wait until the result is Some(…).
+        let guard = cvar.wait_while(guard, |r| r.is_none()).unwrap();
+        guard.as_ref().unwrap().clone()
+    }
+}
+
+impl Clone for FutureHandle {
+    fn clone(&self) -> Self {
+        FutureHandle { inner: Arc::clone(&self.inner) }
+    }
+}
+
+impl PartialEq for FutureHandle {
+    /// Futures are identity values — two handles are never equal.
+    fn eq(&self, _: &Self) -> bool { false }
+}
+
+impl std::fmt::Debug for FutureHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<future>")
+    }
+}
+
+/// Sender side of a future — held exclusively by the spawned thread.
+///
+/// Dropping `FutureSender` without calling `send` would leave the future
+/// pending forever, so `send` should always be called (even on error).
+pub struct FutureSender {
+    inner: FutureInner,
+}
+
+impl FutureSender {
+    /// Deliver the task result and wake any thread blocked in `FutureHandle::resolve`.
+    pub fn send(self, result: Result<Value, String>) {
+        let (lock, cvar) = &*self.inner;
+        *lock.lock().unwrap() = Some(result);
+        cvar.notify_one();
+    }
+}
+
+// SAFETY: FutureHandle / FutureSender wrap Arc<(Mutex<…>, Condvar)> — both
+// types are Send + Sync through the standard library's guarantees.
+unsafe impl Send for FutureHandle {}
+unsafe impl Sync for FutureHandle {}
+unsafe impl Send for FutureSender {}
+
+// ---------------------------------------------------------------------------
+// Value enum
+// ---------------------------------------------------------------------------
 
 /// Runtime value representation
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +105,9 @@ pub enum Value {
     Struct(String, HashMap<String, Value>),
     Enum(String, String),     // enum_name, variant_name
     Result(bool, Box<Value>), // true = Ok(inner), false = Err(inner)
+    /// An asynchronously executing task.  Created by calling an `async` function;
+    /// resolved by `await`-ing it to block until the task completes.
+    Future(FutureHandle),
 }
 
 impl std::fmt::Display for Value {
@@ -38,7 +124,9 @@ impl std::fmt::Display for Value {
                 write!(f, "[{}]", items.join(", "))
             }
             Value::Map(map) => {
-                let items: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
+                pairs.sort_by_key(|(k, _)| k.as_str());
+                let items: Vec<String> = pairs.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "{{{}}}", items.join(", "))
             }
             Value::Set(set) => {
@@ -47,13 +135,13 @@ impl std::fmt::Display for Value {
             }
             Value::Function(name, _, _, _) => write!(f, "<function {}>", name),
             Value::Struct(name, fields) => {
-                let field_strs: Vec<String> = fields
-                    .iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
-                    .collect();
+                let mut pairs: Vec<(&String, &Value)> = fields.iter().collect();
+                pairs.sort_by_key(|(k, _)| k.as_str());
+                let field_strs: Vec<String> = pairs.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "{}({})", name, field_strs.join(", "))
             }
             Value::Enum(name, variant) => write!(f, "{}.{}", name, variant),
+            Value::Future(_) => write!(f, "<future>"),
             Value::Result(ok, inner) => {
                 if *ok {
                     write!(f, "Ok({})", inner)
@@ -70,5 +158,25 @@ impl Value {
     #[allow(dead_code)]
     pub fn set_contains(set: &[Value], value: &Value) -> bool {
         set.iter().any(|v| v == value)
+    }
+
+    /// Return a human-readable type name for error messages.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Integer(_) => "int",
+            Value::Float(_) => "float",
+            Value::String(_) => "string",
+            Value::Char(_) => "char",
+            Value::Boolean(_) => "bool",
+            Value::Null => "null",
+            Value::Array(_) => "array",
+            Value::Map(_) => "map",
+            Value::Set(_) => "set",
+            Value::Function(_, _, _, _) => "function",
+            Value::Struct(_, _) => "struct",
+            Value::Enum(_, _) => "enum",
+            Value::Result(_, _) => "result",
+            Value::Future(_) => "future",
+        }
     }
 }

@@ -81,8 +81,11 @@ pub trait SecurityPipelineContext {
     fn check_rate_limit(&mut self, action: &str) -> Result<(), String>;
 
     /// Layer 6: Check the permission manager.
+    ///
+    /// Implementations should also log the outcome to their audit trail here,
+    /// since only the impl has access to the token/metadata needed for a rich log entry.
     fn check_permission_manager(
-        &self,
+        &mut self,
         resource: &PermissionResource,
         scope: Option<&str>,
     ) -> Result<(), String>;
@@ -140,60 +143,27 @@ pub fn run_pipeline(
         }
     }
 
-    // Layer 4: Capability token
+    // Layer 4: Capability token.
+    // The impl handles deny-wins, rate-limit (Phase 2.4 fix), and audit logging internally.
+    // A returned error message is already fully formatted by the impl.
     if let Some(cap_result) = ctx.check_capability(resource, &action, scope) {
-        match cap_result {
-            Ok(()) => {
-                // Layer 5 (rate limit) still applies even when capability grants access (2.4 fix)
-                if let Err(e) = ctx.check_rate_limit(&format!("capability.check.{}", action)) {
-                    return PipelineResult::Denied(format!("Rate limit exceeded: {}", e));
-                }
-                ctx.log_audit(
-                    &format!("capability.used.{}", action),
-                    resource_str,
-                    None,
-                    PipelineAuditResult::Allowed,
-                );
-                return PipelineResult::Allowed;
-            }
-            Err(e) => {
-                ctx.log_audit(
-                    &format!("capability.check.{}", action),
-                    resource_str,
-                    None,
-                    PipelineAuditResult::Denied,
-                );
-                return PipelineResult::Denied(format!("Capability denied: {}", e));
-            }
-        }
+        return match cap_result {
+            Ok(()) => PipelineResult::Allowed,
+            Err(e) => PipelineResult::Denied(e),
+        };
     }
 
-    // Layer 5: Rate limit (standard path, no capability token)
+    // Layer 5: Rate limit (standard path — no active capability token).
     let rate_key = format!("permission.check.{}", resource);
     if let Err(e) = ctx.check_rate_limit(&rate_key) {
-        return PipelineResult::Denied(format!("Rate limit exceeded: {}", e));
+        return PipelineResult::Denied(e);
     }
 
-    // Layer 6: Permission manager
+    // Layer 6: Permission manager.
+    // The impl handles audit logging internally.
     match ctx.check_permission_manager(resource, scope) {
-        Ok(()) => {
-            ctx.log_audit(
-                &format!("permission.{}", action),
-                resource_str,
-                None,
-                PipelineAuditResult::Allowed,
-            );
-            PipelineResult::Allowed
-        }
-        Err(e) => {
-            ctx.log_audit(
-                &format!("permission.{}", action),
-                resource_str,
-                None,
-                PipelineAuditResult::Denied,
-            );
-            PipelineResult::Denied(format!("Permission denied: {}", e))
-        }
+        Ok(()) => PipelineResult::Allowed,
+        Err(e) => PipelineResult::Denied(e),
     }
 }
 
@@ -205,7 +175,5 @@ pub fn action_from_resource(resource: &PermissionResource) -> String {
         PermissionResource::Network(action) => format!("net.{}", action),
         PermissionResource::System(action) => format!("sys.{}", action),
         PermissionResource::Process(_) => "process.exec".to_string(),
-        PermissionResource::WiFi(action) => format!("wifi.{}", action),
-        PermissionResource::Bluetooth(action) => format!("ble.{}", action),
     }
 }

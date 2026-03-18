@@ -5,8 +5,6 @@ pub enum PermissionResource {
     Network(String),      // "connect", "listen"
     Process(Vec<String>), // Whitelist of allowed commands
     System(String),       // "exec", "env"
-    WiFi(String),         // "scan", "capture", "deauth", "inject"
-    Bluetooth(String),    // "scan", "connect", "fuzz", "read", "write"
 }
 
 impl PermissionResource {
@@ -27,9 +25,12 @@ impl PermissionResource {
             "net" | "network" => Ok(PermissionResource::Network(action.to_string())),
             "sys" | "system" => Ok(PermissionResource::System(action.to_string())),
             "process" | "proc" => Ok(PermissionResource::Process(vec![action.to_string()])),
-            "wifi" => Ok(PermissionResource::WiFi(action.to_string())),
-            "ble" | "bluetooth" => Ok(PermissionResource::Bluetooth(action.to_string())),
-            _ => Err(format!("Unknown resource type: '{}'", prefix)),
+            "wifi" | "ble" | "bluetooth" => Err(format!(
+                "Permission resource '{}' is not supported. \
+                 WiFi/Bluetooth capabilities were removed in v0.4.1.",
+                prefix
+            )),
+            _ => Err(format!("Unknown resource type: '{}'. Valid: fs, net, sys, process.", prefix)),
         }
     }
 }
@@ -41,8 +42,6 @@ impl std::fmt::Display for PermissionResource {
             PermissionResource::Network(action) => write!(f, "net.{}", action),
             PermissionResource::System(action) => write!(f, "sys.{}", action),
             PermissionResource::Process(cmds) => write!(f, "process:[{}]", cmds.join(",")),
-            PermissionResource::WiFi(action) => write!(f, "wifi.{}", action),
-            PermissionResource::Bluetooth(action) => write!(f, "ble.{}", action),
         }
     }
 }
@@ -127,8 +126,6 @@ impl PermissionManager {
                 // Check if all commands in cmd are in allowed list
                 cmd.iter().all(|c| allowed.contains(c))
             }
-            (PermissionResource::WiFi(a), PermissionResource::WiFi(b)) => a == b,
-            (PermissionResource::Bluetooth(a), PermissionResource::Bluetooth(b)) => a == b,
             _ => false,
         }
     }
@@ -179,18 +176,27 @@ impl Default for PermissionManager {
     }
 }
 
+/// Maximum number of recursive steps in glob matching.
+/// Prevents exponential backtracking DoS with patterns like `*a*a*a*a*a`.
+const GLOB_FUEL_LIMIT: usize = 100_000;
+
 /// Glob scope matching shared by both `PermissionManager` and `CapabilityManager`.
 ///
 /// Supports any number of `*` wildcards. Each `*` matches zero or more characters.
 /// Examples: `/tmp/*`, `*.example.com`, `/var/*/log`, `/a/*/b/*`.
 ///
-/// Uses byte-level recursion with memoisation via early termination; safe for the
-/// short path/hostname patterns used in permission scopes.
+/// Fuel-limited to prevent exponential backtracking DoS. Returns `false` (deny)
+/// when the fuel limit is reached — permission-safe conservatism.
 pub(crate) fn glob_scope_matches(pattern: &str, value: &str) -> bool {
-    glob_bytes(pattern.as_bytes(), value.as_bytes())
+    let mut fuel = GLOB_FUEL_LIMIT;
+    glob_bytes(pattern.as_bytes(), value.as_bytes(), &mut fuel)
 }
 
-fn glob_bytes(pat: &[u8], val: &[u8]) -> bool {
+fn glob_bytes(pat: &[u8], val: &[u8], fuel: &mut usize) -> bool {
+    if *fuel == 0 {
+        return false; // fuel exhausted → deny (safe conservatism)
+    }
+    *fuel -= 1;
     match (pat.split_first(), val.split_first()) {
         // Both exhausted — match
         (None, None) => true,
@@ -199,13 +205,15 @@ fn glob_bytes(pat: &[u8], val: &[u8]) -> bool {
         // Wildcard: try consuming zero chars (advance pattern only)
         // or one char from value (advance value only)
         (Some((&b'*', pat_rest)), _) => {
-            glob_bytes(pat_rest, val)
-                || (!val.is_empty() && glob_bytes(pat, &val[1..]))
+            glob_bytes(pat_rest, val, fuel)
+                || (!val.is_empty() && glob_bytes(pat, &val[1..], fuel))
         }
         // Value exhausted but pattern has non-wildcard chars remaining — no match
         (Some(_), None) => false,
         // Literal match: both heads equal — advance both
-        (Some((p, pat_rest)), Some((v, val_rest))) if p == v => glob_bytes(pat_rest, val_rest),
+        (Some((p, pat_rest)), Some((v, val_rest))) if p == v => {
+            glob_bytes(pat_rest, val_rest, fuel)
+        }
         // Mismatch
         _ => false,
     }

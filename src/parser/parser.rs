@@ -3,10 +3,16 @@ use crate::lexer::token::Token;
 use crate::parser::ast::*;
 use crate::parser::utils::token_span_to_ast_span;
 
+/// Maximum nesting depth for recursive expression/statement parsing.
+/// Prevents stack overflow from deeply nested source code.
+const MAX_PARSE_DEPTH: usize = 256;
+
 /// Parser for Txt-code AST generation
 pub struct Parser {
     pub(crate) tokens: Vec<Token>,
     pub(crate) position: usize,
+    /// Recursion depth counter — guards against stack overflow on pathological inputs.
+    pub(crate) parse_depth: usize,
 }
 
 impl Parser {
@@ -14,6 +20,7 @@ impl Parser {
         Self {
             tokens,
             position: 0,
+            parse_depth: 0,
         }
     }
 
@@ -237,7 +244,18 @@ impl Parser {
     }
 
     pub(crate) fn parse_expression(&mut self) -> Result<Expression, String> {
-        crate::parser::expressions::operators::parse_expression(self)
+        self.parse_depth += 1;
+        if self.parse_depth > MAX_PARSE_DEPTH {
+            self.parse_depth -= 1;
+            return Err(format!(
+                "Parse error: expression nesting depth exceeds maximum ({}) — \
+                 simplify deeply nested expressions",
+                MAX_PARSE_DEPTH
+            ));
+        }
+        let result = crate::parser::expressions::operators::parse_expression(self);
+        self.parse_depth -= 1;
+        result
     }
 
     pub(crate) fn parse_pattern(&mut self) -> Result<Pattern, String> {

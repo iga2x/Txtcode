@@ -1,4 +1,4 @@
-# Txt-code Programming Language v0.4.0
+# Txt-code Programming Language v0.4.1
 
 **Txt-code** © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.
 

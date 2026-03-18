@@ -388,51 +388,54 @@ pub fn self_update() -> Result<(), Box<dyn std::error::Error>> {
 
     let binary_bytes = fs::read(&tmp).map_err(|e| format!("Failed to read downloaded binary: {}", e))?;
 
-    // Verify Ed25519 signature
+    // Verify Ed25519 signature — mandatory, never skipped
     print!("Verifying binary signature... ");
     io::stdout().flush()?;
     let sig_tmp = std::env::temp_dir().join(format!("{}.sig", filename));
-    if download_file(&sig_url, &sig_tmp).is_ok() {
-        match fs::read(&sig_tmp) {
-            Ok(sig_bytes) => {
-                if let Err(e) = crate::security::update_verifier::verify_update_binary(&binary_bytes, &sig_bytes) {
-                    let _ = fs::remove_file(&tmp);
-                    let _ = fs::remove_file(&sig_tmp);
-                    return Err(format!("Signature verification failed: {}", e).into());
-                }
-                println!("OK");
-            }
-            Err(e) => {
-                println!("WARNING: Could not read .sig file: {}", e);
-            }
-        }
-        let _ = fs::remove_file(&sig_tmp);
-    } else {
-        println!("WARNING: .sig file not available for this release. Skipping Ed25519 verification.");
+    if let Err(e) = download_file(&sig_url, &sig_tmp) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!(
+            "Could not download signature file for v{}: {}. \
+             Update aborted — refusing to install unsigned binary. \
+             Download manually from: https://github.com/iga2x/Txtcode/releases",
+            latest_version, e
+        ).into());
     }
+    let sig_bytes = fs::read(&sig_tmp).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        let _ = fs::remove_file(&sig_tmp);
+        format!("Could not read signature file: {}", e)
+    })?;
+    let _ = fs::remove_file(&sig_tmp);
+    if let Err(e) = crate::security::update_verifier::verify_update_binary(&binary_bytes, &sig_bytes) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("Signature verification failed: {}", e).into());
+    }
+    println!("OK");
 
-    // Verify SHA-256 checksum
+    // Verify SHA-256 checksum — mandatory, never skipped
     print!("Verifying SHA-256 checksum... ");
     io::stdout().flush()?;
     let sha256_tmp = std::env::temp_dir().join(format!("sha256sums_{}", latest_version));
-    if download_file(&sha256_url, &sha256_tmp).is_ok() {
-        match fs::read_to_string(&sha256_tmp) {
-            Ok(sums_content) => {
-                if let Err(e) = crate::security::update_verifier::verify_sha256(&sums_content, &filename, &binary_bytes) {
-                    let _ = fs::remove_file(&tmp);
-                    let _ = fs::remove_file(&sha256_tmp);
-                    return Err(format!("Checksum verification failed: {}", e).into());
-                }
-                println!("OK");
-            }
-            Err(e) => {
-                println!("WARNING: Could not read sha256sums: {}", e);
-            }
-        }
-        let _ = fs::remove_file(&sha256_tmp);
-    } else {
-        println!("WARNING: sha256sums not available for this release. Skipping hash verification.");
+    if let Err(e) = download_file(&sha256_url, &sha256_tmp) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!(
+            "Could not download sha256sums for v{}: {}. \
+             Update aborted — refusing to install unverified binary.",
+            latest_version, e
+        ).into());
     }
+    let sums_content = fs::read_to_string(&sha256_tmp).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        let _ = fs::remove_file(&sha256_tmp);
+        format!("Could not read sha256sums: {}", e)
+    })?;
+    let _ = fs::remove_file(&sha256_tmp);
+    if let Err(e) = crate::security::update_verifier::verify_sha256(&sums_content, &filename, &binary_bytes) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("Checksum verification failed: {}", e).into());
+    }
+    println!("OK");
 
     // Make executable on Unix
     #[cfg(unix)]
@@ -477,21 +480,33 @@ fn detect_platform_label() -> Result<String, Box<dyn std::error::Error>> {
 }
 
 fn download_file(url: &str, dest: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Write as IoWrite;
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
-        .build()?;
-
-    let resp = client.get(url).send()?;
-    if !resp.status().is_success() {
-        return Err(format!("server returned HTTP {}", resp.status()).into());
+    #[cfg(not(feature = "net"))]
+    {
+        let _ = (url, dest);
+        return Err(
+            "Downloading updates requires the 'net' feature. \
+             Rebuild with: cargo build --features net"
+                .into(),
+        );
     }
+    #[cfg(feature = "net")]
+    {
+        use std::io::Write as IoWrite;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
+            .build()?;
 
-    let bytes = resp.bytes()?;
-    let mut file = fs::File::create(dest)?;
-    file.write_all(&bytes)?;
-    Ok(())
+        let resp = client.get(url).send()?;
+        if !resp.status().is_success() {
+            return Err(format!("server returned HTTP {}", resp.status()).into());
+        }
+
+        let bytes = resp.bytes()?;
+        let mut file = fs::File::create(dest)?;
+        file.write_all(&bytes)?;
+        Ok(())
+    }
 }
 
 #[cfg(unix)]
@@ -533,26 +548,36 @@ fn apply_update_deferred(
 }
 
 fn fetch_latest_version() -> Result<String, Box<dyn std::error::Error>> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
-        .build()?;
+    #[cfg(not(feature = "net"))]
+    return Err(
+        "Checking for updates requires the 'net' feature. \
+         Rebuild with: cargo build --features net"
+            .into(),
+    );
 
-    let resp = client
-        .get("https://api.github.com/repos/iga2x/Txtcode/releases/latest")
-        .send()?;
+    #[cfg(feature = "net")]
+    {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
+            .build()?;
 
-    let json: serde_json::Value = resp.json()?;
-    let tag = json["tag_name"]
-        .as_str()
-        .unwrap_or("")
-        .trim_start_matches('v')
-        .to_string();
+        let resp = client
+            .get("https://api.github.com/repos/iga2x/Txtcode/releases/latest")
+            .send()?;
 
-    if tag.is_empty() {
-        Err("No release tag found".into())
-    } else {
-        Ok(tag)
+        let json: serde_json::Value = resp.json()?;
+        let tag = json["tag_name"]
+            .as_str()
+            .unwrap_or("")
+            .trim_start_matches('v')
+            .to_string();
+
+        if tag.is_empty() {
+            Err("No release tag found".into())
+        } else {
+            Ok(tag)
+        }
     }
 }
 

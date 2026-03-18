@@ -3,6 +3,10 @@ use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::operators::OperatorRegistry;
 
+/// Maximum number of iterations for `repeat → N` loops.
+/// Prevents runaway loops from freezing the process.
+const MAX_REPEAT_COUNT: i64 = 10_000_000;
+
 /// Control flow execution (if, while, for, match, try)
 pub struct ControlFlowExecutor;
 
@@ -358,6 +362,12 @@ impl ControlFlowExecutor {
             Value::Integer(i) => i,
             _ => return Err(RuntimeError::new("Repeat requires an integer".to_string())),
         };
+        if n > MAX_REPEAT_COUNT {
+            return Err(RuntimeError::new(format!(
+                "repeat count {} exceeds maximum allowed iterations ({})",
+                n, MAX_REPEAT_COUNT
+            )));
+        }
         'outer: for _ in 0..n {
             for stmt in body {
                 match vm.execute_statement(stmt) {

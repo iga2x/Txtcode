@@ -1,13 +1,28 @@
 //! `txtcode debug` — interactive bytecode debugger.
 
+#[cfg(not(feature = "bytecode"))]
+pub fn start_debug_repl(_file: &std::path::PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    Err("The 'debug' command requires the 'bytecode' feature. \
+         Rebuild with: cargo build --features bytecode"
+        .into())
+}
+
+#[cfg(feature = "bytecode")]
 use crate::compiler::bytecode::BytecodeCompiler;
+#[cfg(feature = "bytecode")]
 use crate::lexer::Lexer;
+#[cfg(feature = "bytecode")]
 use crate::parser::Parser;
+#[cfg(feature = "bytecode")]
 use crate::tools::debugger::Debugger;
+#[cfg(feature = "bytecode")]
 use crate::validator::Validator;
+#[cfg(feature = "bytecode")]
 use std::fs;
+#[cfg(feature = "bytecode")]
 use std::path::PathBuf;
 
+#[cfg(feature = "bytecode")]
 pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     use rustyline::DefaultEditor;
 

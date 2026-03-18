@@ -49,6 +49,12 @@ pub enum ErrorCode {
     E0032,
     /// Import / module error.
     E0040,
+    /// Struct field type mismatch at construction or assignment.
+    E0016,
+    /// Async/await used without --experimental flag.
+    E0051,
+    /// Experimental feature disabled.
+    E0052,
     /// Cryptographic operation failed.
     E0050,
 }
@@ -71,6 +77,9 @@ impl ErrorCode {
             Self::E0031 => "E0031",
             Self::E0032 => "E0032",
             Self::E0040 => "E0040",
+            Self::E0016 => "E0016",
+            Self::E0051 => "E0051",
+            Self::E0052 => "E0052",
             Self::E0050 => "E0050",
         }
     }
@@ -88,6 +97,12 @@ impl ErrorCode {
             Self::E0004
         } else if lower.contains("undefined") || lower.contains("not defined") {
             Self::E0010
+        } else if lower.contains("struct field") && (lower.contains("type") || lower.contains("expected")) {
+            Self::E0016
+        } else if lower.contains("async") && (lower.contains("experimental") || lower.contains("not supported")) {
+            Self::E0051
+        } else if lower.contains("experimental") && lower.contains("disabled") {
+            Self::E0052
         } else if lower.contains("type") && (lower.contains("mismatch") || lower.contains("expected")) {
             Self::E0011
         } else if lower.contains("division by zero") || lower.contains("divide by zero") {

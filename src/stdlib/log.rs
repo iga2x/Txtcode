@@ -37,10 +37,13 @@ impl LogLib {
     /// Call a logging library function
     pub fn call_function(name: &str, args: &[Value]) -> Result<Value, RuntimeError> {
         let level = match name {
-            "log_debug" | "debug" => LogLevel::Debug,
-            "log_info" | "info" => LogLevel::Info,
-            "log_warn" | "warn" => LogLevel::Warn,
-            "log_error" | "error" => LogLevel::Error,
+            // Canonical names: log_debug, log_info, log_warn, log_error
+            // Bare aliases (debug/info/warn/error) were removed in v0.4.1 to avoid
+            // collision with user-defined variables and the stdlib error-result functions.
+            "log_debug" => LogLevel::Debug,
+            "log_info" => LogLevel::Info,
+            "log_warn" => LogLevel::Warn,
+            "log_error" => LogLevel::Error,
             "log" => {
                 // log(level, message) - explicit level
                 if args.len() != 2 {

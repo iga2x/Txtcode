@@ -5,11 +5,16 @@ use chrono::{DateTime, Local, TimeZone};
 pub struct TimeLib;
 
 impl TimeLib {
-    pub fn call_function(name: &str, args: &[Value]) -> Result<Value, RuntimeError> {
+    pub fn call_function(
+        name: &str,
+        args: &[Value],
+        time_override: Option<std::time::SystemTime>,
+    ) -> Result<Value, RuntimeError> {
         match name {
             "now" => {
                 use std::time::{SystemTime, UNIX_EPOCH};
-                match SystemTime::now().duration_since(UNIX_EPOCH) {
+                let t = time_override.unwrap_or_else(SystemTime::now);
+                match t.duration_since(UNIX_EPOCH) {
                     Ok(duration) => Ok(Value::Integer(duration.as_secs() as i64)),
                     Err(_) => Err(RuntimeError::new("Failed to get current time".to_string())),
                 }

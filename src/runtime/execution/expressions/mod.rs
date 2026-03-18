@@ -66,6 +66,7 @@ pub trait ExpressionVM {
     fn debug(&self) -> bool;
     fn verbose(&self) -> bool;
     fn exec_allowed(&self) -> Option<bool>;
+    fn strict_types(&self) -> bool;
     fn execute_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError>;
     fn extract_free_variables(body: &Expression, param_names: &HashSet<String>) -> HashSet<String>;
     fn capture_environment(&self, var_names: &HashSet<String>) -> HashMap<String, Value>;
@@ -80,6 +81,56 @@ pub trait ExpressionVM {
 
     // StdLib calls need a FunctionExecutor
     fn call_stdlib_function(&mut self, name: &str, args: &[Value]) -> Result<Value, RuntimeError>;
+
+    /// True if the function `name` was declared with the `async` keyword.
+    /// Default: false (VM implementations override to provide real async dispatch).
+    fn is_async_function(&self, _name: &str) -> bool { false }
+
+    /// Snapshot the global scope for use in a spawned async thread.
+    /// Default: empty map (synchronous fallback, no async spawning).
+    fn globals_snapshot(&self) -> HashMap<String, Value> { HashMap::new() }
+
+    /// Whether `exec` is allowed in this VM context.
+    fn exec_allowed_bool(&self) -> bool { true }
+
+    /// Attempt to spawn `name` as an async task.
+    ///
+    /// Returns `Some(Ok(Value::Future(…)))` when the function is async and a
+    /// thread was spawned.  Returns `None` when the function is synchronous
+    /// (caller should fall through to the normal `call_user_function` path).
+    ///
+    /// The default implementation always returns `None` (no async support).
+    /// `VirtualMachine` overrides this to provide real thread-based async.
+    fn maybe_spawn_async(
+        &mut self,
+        _name: &str,
+        _params: Vec<crate::parser::ast::Parameter>,
+        _body: Vec<Statement>,
+        _captured_env: HashMap<String, Value>,
+        _args: Vec<Value>,
+    ) -> Option<Result<Value, RuntimeError>> {
+        None
+    }
+}
+
+/// Check whether a runtime Value is compatible with the declared Type.
+/// Returns true if assignment is valid (same type, or widening conversions).
+fn type_matches(value: &Value, expected: &Type) -> bool {
+    match (value, expected) {
+        (Value::Integer(_), Type::Int) => true,
+        (Value::Integer(_), Type::Float) => true, // int widens to float
+        (Value::Float(_), Type::Float) => true,
+        (Value::String(_), Type::String) => true,
+        (Value::Char(_), Type::Char) => true,
+        (Value::Char(_), Type::String) => true, // char widens to string
+        (Value::Boolean(_), Type::Bool) => true,
+        (Value::Array(_), Type::Array(_)) => true,
+        (Value::Map(_), Type::Map(_)) => true,
+        (Value::Null, _) => true, // null is always accepted (nullable semantics)
+        (_, Type::Identifier(_)) => true, // user-defined type — checked by name at struct level
+        (_, Type::Generic(_)) => true,    // generic param — unchecked at runtime
+        _ => false,
+    }
 }
 
 /// Expression evaluator - handles all expression types
@@ -150,10 +201,18 @@ impl ExpressionEvaluator {
                 }
             }
             Expression::Await { expression, .. } => {
-                // Evaluate the expression (should be a Future or async function call)
-                let future_value = Self::evaluate(vm, expression)?;
-                // For now, just return the value (async support will be added later)
-                Ok(future_value)
+                let val = Self::evaluate(vm, expression)?;
+                match val {
+                    Value::Future(handle) => {
+                        // Block until the spawned thread delivers its result.
+                        handle.resolve().map_err(|e| vm.create_error(e))
+                    }
+                    other => {
+                        // `await` on a non-future is a transparent no-op —
+                        // consistent with JavaScript's `await nonPromise` semantics.
+                        Ok(other)
+                    }
+                }
             }
             Expression::InterpolatedString { segments, .. } => {
                 use crate::parser::ast::InterpolatedSegment;
@@ -205,16 +264,52 @@ impl ExpressionEvaluator {
             Expression::StructLiteral { name, fields, .. } => {
                 // Look up struct definition
                 let struct_def = vm.struct_defs().get(name).cloned();
+                let strict = vm.strict_types();
                 let mut field_map = HashMap::new();
                 for (field_name, field_expr) in fields {
                     let val = Self::evaluate(vm, field_expr)?;
                     field_map.insert(field_name.clone(), val);
                 }
-                // Validate fields if struct def exists
+                // Validate fields against struct definition
                 if let Some(def) = &struct_def {
-                    for (def_field, _) in def {
-                        if !field_map.contains_key(def_field) {
-                            field_map.insert(def_field.clone(), Value::Null);
+                    // Fill missing fields with Null; check type of provided fields.
+                    for (def_field, expected_type) in def {
+                        match field_map.get(def_field) {
+                            None => {
+                                field_map.insert(def_field.clone(), Value::Null);
+                            }
+                            Some(val) => {
+                                if !type_matches(val, expected_type) {
+                                    let msg = format!(
+                                        "Struct field type mismatch: '{}.{}' expected {:?}, got {}",
+                                        name, def_field, expected_type,
+                                        val.type_name()
+                                    );
+                                    if strict {
+                                        return Err(RuntimeError::new(msg)
+                                            .with_code(crate::runtime::errors::ErrorCode::E0016));
+                                    }
+                                    // Advisory (non-strict): surface as a warning but continue
+                                    eprintln!("[WARNING] {}", msg);
+                                }
+                            }
+                        }
+                    }
+                    // Unknown fields — those present in field_map but not in def
+                    let def_names: std::collections::HashSet<&String> =
+                        def.iter().map(|(n, _)| n).collect();
+                    for key in field_map.keys() {
+                        if !def_names.contains(key) {
+                            let msg = format!(
+                                "Struct '{}' has no field '{}'. Known fields: {}",
+                                name, key,
+                                def.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")
+                            );
+                            if strict {
+                                return Err(RuntimeError::new(msg)
+                                    .with_code(crate::runtime::errors::ErrorCode::E0016));
+                            }
+                            eprintln!("[WARNING] {}", msg);
                         }
                     }
                 }

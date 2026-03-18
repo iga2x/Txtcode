@@ -4,7 +4,7 @@ use super::ExpressionVM;
 use crate::parser::ast::{Expression, Span, Statement};
 use crate::runtime::core::{CallFrame, Value};
 use crate::runtime::errors::RuntimeError;
-use crate::runtime::permissions::PermissionResource;
+use crate::runtime::permission_map;
 use crate::tools::logger::{log_debug, log_warn};
 use std::collections::HashMap;
 
@@ -19,154 +19,16 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         .map(|arg| super::ExpressionEvaluator::evaluate(vm, arg))
         .collect::<Result<_, _>>()?;
 
-    // Single canonical permission gate: intent → capability → rate-limit → permission → audit
-    // Every privileged stdlib call passes through check_permission_with_audit, which internally
-    // enforces the full pipeline. Scope (path/hostname/cmd) is extracted here so the audit log
-    // and capability scope-matching receive the real resource value.
-
-    // Filesystem reads
-    if name == "read_file"
-        || name == "file_exists"
-        || name == "is_file"
-        || name == "is_dir"
-        || name == "list_dir"
-        || name == "read_lines"
-        || name == "watch_file"
-    {
-        if let Some(path) = args.first().and_then(|v| match v {
-            Value::String(p) => Some(p.as_str()),
-            _ => None,
-        }) {
-            vm.check_rate_limit(name)?;
-            vm.check_permission_with_audit(
-                &PermissionResource::FileSystem("read".to_string()),
-                Some(path),
-            )?;
-        }
-    }
-
-    // Filesystem writes / deletes
-    if name == "write_file"
-        || name == "append_file"
-        || name == "copy_file"
-        || name == "move_file"
-        || name == "temp_file"
-        || name == "symlink_create"
-        || name == "mkdir"
-        || name == "csv_write"
-        || name == "delete"
-        || name == "rmdir"
-    {
-        if let Some(path) = args.first().and_then(|v| match v {
-            Value::String(p) => Some(p.as_str()),
-            _ => None,
-        }) {
-            vm.check_rate_limit(name)?;
-            let action = if name == "delete" || name == "rmdir" {
-                "delete"
-            } else {
-                "write"
-            };
-            vm.check_permission_with_audit(
-                &PermissionResource::FileSystem(action.to_string()),
-                Some(path),
-            )?;
-        }
-    }
-
-    // Network connections
-    if name == "http_get"
-        || name == "http_post"
-        || name == "http_put"
-        || name == "http_delete"
-        || name == "http_patch"
-        || name == "tcp_connect"
-        || name == "udp_send"
-        || name == "resolve"
-    {
-        let hostname_opt = args.first().and_then(|v| match v {
-            Value::String(url) => Some(
-                url.split("//")
-                    .nth(1)
-                    .and_then(|s| s.split('/').next())
-                    .and_then(|s| s.split(':').next())
-                    .unwrap_or(url.as_str()),
-            ),
-            _ => None,
-        });
-        if let Some(hostname) = hostname_opt {
-            vm.check_rate_limit(name)?;
-            if !hostname.is_empty() {
-                vm.check_permission_with_audit(
-                    &PermissionResource::Network("connect".to_string()),
-                    Some(hostname),
-                )?;
-            }
-        }
-    }
-
-    // Process execution
-    if name == "exec" || name == "spawn" || name == "pipe_exec" {
-        let cmd_opt = args.first().and_then(|v| match v {
-            Value::String(cmd) => cmd.split_whitespace().next().map(|s| s.to_string()),
-            _ => None,
-        });
-        if let Some(cmd) = cmd_opt {
-            vm.check_rate_limit(name)?;
-            vm.check_permission_with_audit(
-                &PermissionResource::System("exec".to_string()),
-                Some(&cmd),
-            )?;
-        }
-    }
-
-    // System environment access
-    if name == "getenv" || name == "setenv" || name == "env_list" {
+    // Single canonical permission gate: intent → capability → rate-limit → permission → audit.
+    // The resource type and scope are determined by the central permission map so that adding a
+    // new privileged function requires a change in exactly one place.
+    // When scope cannot be extracted (missing or non-string first argument) we pass None —
+    // the permission manager will only allow the call if a scope-less grant exists.
+    // We do NOT skip the check: an unresolvable scope should produce a denial, not a bypass.
+    if let Some(resource) = permission_map::map_function_to_permission(name) {
+        let scope = permission_map::extract_permission_scope(&resource, &args);
         vm.check_rate_limit(name)?;
-        vm.check_permission_with_audit(&PermissionResource::System("env".to_string()), None)?;
-    }
-
-    // System info (read-only; requires explicit permission)
-    if name == "cpu_count" || name == "memory" || name == "disk_space" {
-        vm.check_rate_limit(name)?;
-        vm.check_permission_with_audit(&PermissionResource::System("info".to_string()), None)?;
-    }
-
-    // Process signals
-    if name == "signal_send" {
-        vm.check_rate_limit(name)?;
-        vm.check_permission_with_audit(
-            &PermissionResource::Process(vec![name.to_string()]),
-            None,
-        )?;
-    }
-
-    // WiFi operations — scope is the interface name (first arg, if a string)
-    if name.starts_with("wifi_") {
-        let action = name.trim_start_matches("wifi_");
-        let iface = args.first().and_then(|v| match v {
-            Value::String(s) => Some(s.as_str()),
-            _ => None,
-        });
-        vm.check_rate_limit(name)?;
-        vm.check_permission_with_audit(
-            &PermissionResource::WiFi(action.to_string()),
-            iface,
-        )?;
-    }
-
-    // Bluetooth/BLE operations — scope is the device name (first arg, if a string)
-    if name.starts_with("ble_") {
-        let action = name.trim_start_matches("ble_");
-        let device = args.first().and_then(|v| match v {
-            Value::String(s) => Some(s.as_str()),
-            _ => None,
-        });
-        vm.check_rate_limit(name)?;
-        vm.check_permission_with_audit(
-            &PermissionResource::Bluetooth(action.to_string()),
-            device,
-        )?;
+        vm.check_permission_with_audit(&resource, scope.as_deref())?;
     }
 
     // Handle capability functions directly (before stdlib)
@@ -242,6 +104,10 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
 
     // Try user-defined function
     if let Some(Value::Function(_, params, body, captured_env)) = vm.get_variable(name) {
+        // If the function was declared `async`, spawn a thread and return a Future.
+        if let Some(future_result) = vm.maybe_spawn_async(name, params.clone(), body.clone(), captured_env.clone(), args.clone()) {
+            return future_result;
+        }
         return call_user_function(vm, name, &params, &body, &captured_env, &args, expr);
     }
 
@@ -459,6 +325,36 @@ fn call_string_method(
                 Ok(Value::String(format!("{}{}", s, pad_str)))
             }
         }
+        "center" => {
+            let width = args
+                .first()
+                .and_then(|v| match v {
+                    Value::Integer(i) => Some(*i as usize),
+                    _ => None,
+                })
+                .unwrap_or(0);
+            let pad_ch = args
+                .get(1)
+                .and_then(|v| match v {
+                    Value::String(p) => p.chars().next(),
+                    _ => None,
+                })
+                .unwrap_or(' ');
+            let current_len = s.chars().count();
+            if current_len >= width {
+                Ok(Value::String(s.to_string()))
+            } else {
+                let total_pad = width - current_len;
+                let left_pad = total_pad / 2;
+                let right_pad = total_pad - left_pad;
+                Ok(Value::String(format!(
+                    "{}{}{}",
+                    std::iter::repeat(pad_ch).take(left_pad).collect::<String>(),
+                    s,
+                    std::iter::repeat(pad_ch).take(right_pad).collect::<String>()
+                )))
+            }
+        }
         _ => Err(RuntimeError::new(format!(
             "String has no method '{}'",
             method
@@ -564,6 +460,51 @@ fn call_array_method(
             }
             Ok(Value::Array(result))
         }
+        "sum" => {
+            let mut int_sum: i64 = 0;
+            let mut has_float = false;
+            let mut float_sum: f64 = 0.0;
+            for item in arr {
+                match item {
+                    Value::Integer(n) => {
+                        int_sum = int_sum.checked_add(*n).unwrap_or(i64::MAX);
+                        float_sum += *n as f64;
+                    }
+                    Value::Float(f) => {
+                        has_float = true;
+                        float_sum += f;
+                    }
+                    _ => {}
+                }
+            }
+            if has_float {
+                Ok(Value::Float(float_sum))
+            } else {
+                Ok(Value::Integer(int_sum))
+            }
+        }
+        "enumerate" => {
+            let result: Vec<Value> = arr
+                .iter()
+                .enumerate()
+                .map(|(i, v)| Value::Array(vec![Value::Integer(i as i64), v.clone()]))
+                .collect();
+            Ok(Value::Array(result))
+        }
+        "zip" => {
+            let other = match args.first() {
+                Some(Value::Array(a)) => a.clone(),
+                _ => return Err(RuntimeError::new("zip requires an array argument".to_string())),
+            };
+            let result: Vec<Value> = arr
+                .iter()
+                .zip(other.iter())
+                .map(|(a, b)| Value::Array(vec![a.clone(), b.clone()]))
+                .collect();
+            Ok(Value::Array(result))
+        }
+        "head" => Ok(arr.first().cloned().unwrap_or(Value::Null)),
+        "tail" => Ok(Value::Array(arr.get(1..).unwrap_or(&[]).to_vec())),
         _ => Err(RuntimeError::new(format!(
             "Array has no method '{}'",
             method
@@ -581,16 +522,20 @@ fn call_map_method(
         "len" | "length" | "size" => Ok(Value::Integer(map.len() as i64)),
         "isEmpty" => Ok(Value::Boolean(map.is_empty())),
         "keys" => {
-            let keys: Vec<Value> = map.keys().map(|k| Value::String(k.clone())).collect();
-            Ok(Value::Array(keys))
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            Ok(Value::Array(keys.into_iter().map(|k| Value::String(k.clone())).collect()))
         }
         "values" => {
-            let vals: Vec<Value> = map.values().cloned().collect();
-            Ok(Value::Array(vals))
+            let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
+            pairs.sort_by_key(|(k, _)| k.as_str());
+            Ok(Value::Array(pairs.into_iter().map(|(_, v)| v.clone()).collect()))
         }
         "entries" | "items" => {
-            let entries: Vec<Value> = map
-                .iter()
+            let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
+            pairs.sort_by_key(|(k, _)| k.as_str());
+            let entries: Vec<Value> = pairs
+                .into_iter()
                 .map(|(k, v)| Value::Array(vec![Value::String(k.clone()), v.clone()]))
                 .collect();
             Ok(Value::Array(entries))

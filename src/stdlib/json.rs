@@ -135,6 +135,7 @@ impl JsonLib {
                     format!("{{\"err\":{}}}", inner_str)
                 }
             }
+            Value::Future(_) => "null".to_string(),
         };
 
         // If the result is already a JSON string (starts with "), return it as-is

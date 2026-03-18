@@ -1,6 +1,8 @@
 use super::VirtualMachine;
+use crate::runtime::audit::AuditResult;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
+use crate::runtime::permissions::PermissionResource;
 use crate::tools::logger::log_debug;
 use std::collections::HashMap;
 
@@ -25,6 +27,22 @@ impl VirtualMachine {
         // Check for circular imports
         self.module_resolver
             .check_circular_import(&module_path, &self.import_stack)?;
+
+        // S1: Permission check before reading module file
+        let perm_result = self.check_permission_with_audit(
+            &PermissionResource::FileSystem("read".to_string()),
+            Some(module_path.to_string_lossy().as_ref()),
+        );
+        if let Err(ref e) = perm_result {
+            let _ = self.audit_trail.log_action(
+                "module.import".to_string(),
+                module_path.to_string_lossy().to_string(),
+                None,
+                AuditResult::Denied,
+                if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            );
+            return Err(self.create_error(format!("Module import denied: {}", e)));
+        }
 
         // Add to import stack
         self.import_stack.push(module_path.clone());
@@ -83,6 +101,15 @@ impl VirtualMachine {
                 }
             }
         }
+
+        // S4: Log successful module import to audit trail
+        let _ = self.audit_trail.log_action(
+            "module.import".to_string(),
+            module_path.to_string_lossy().to_string(),
+            None,
+            AuditResult::Allowed,
+            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+        );
 
         // Pop module scope
         self.pop_scope();

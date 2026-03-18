@@ -21,20 +21,14 @@ The `PermissionResource` type identifies what is being accessed.
 | `fs.write` | Write, append, copy, move, create dirs | `/tmp/*` |
 | `fs.delete` | Delete files and directories | `/tmp/*` |
 | `net.connect` | Outbound HTTP, TCP, UDP, DNS | `*.example.com` |
-| `sys.exec` | `exec()`, `spawn()`, `pipe_exec()`, `kill()`, `signal_send()` | — |
-| `sys.env` | `getenv()`, `setenv()` | — |
-| `wifi.scan` | Passive interface enumeration and probe responses | — |
-| `wifi.capture` | Raw frame capture via monitor mode | — |
-| `wifi.deauth` | Deauthentication frame injection (requires auth) | — |
-| `wifi.inject` | Arbitrary packet injection (requires auth) | — |
-| `ble.scan` | BLE advertisement scanning / device discovery | — |
-| `ble.connect` | GATT connection to a remote BLE device | — |
-| `ble.fuzz` | Malformed PDU injection (requires auth) | — |
-| `ble.read` | Read GATT characteristic values | — |
-| `ble.write` | Write GATT characteristic values | — |
+| `sys.exec` | `exec()`, `exec_json()`, `exec_lines()`, `exec_status()`, `spawn()`, `pipe_exec()`, `kill()`, `signal_send()` | — |
+| `sys.env` | `getenv()`, `setenv()`, `env_list()` | — |
+| `sys.info` | `cpu_count()`, `memory_available()`, `disk_space()` | — |
 
-Aliases: `filesystem` = `fs`, `network` = `net`, `system` = `sys`,
-`bluetooth` = `ble`, `proc` = `process`.
+Aliases: `filesystem` = `fs`, `network` = `net`, `system` = `sys`, `proc` = `process`.
+
+> **Removed in v0.4.1**: `wifi.*` and `ble.*` permission resources have been removed.
+> Attempting to use `wifi.*` or `ble.*` strings now returns a clear error.
 
 ---
 
@@ -51,18 +45,27 @@ txtcode run probe.tc --allow-net=api.example.com
 
 # Deny all privileged access — safest mode
 txtcode run untrusted.tc --sandbox
+
+# Print all permissions the script would request, then exit (no execution)
+txtcode run untrusted.tc --permissions-report
+
+# Permissions report as JSON (for CI / tooling)
+txtcode run untrusted.tc --permissions-report --json
 ```
 
 `--sandbox` is equivalent to denying all resources. Individual `--allow-*`
 flags still apply on top.
+
+`--permissions-report` is a read-only inspection mode: the script is parsed
+but never executed. It prints each permission string and the function calls
+that would request it.
 
 ### In a script
 
 ```txtcode
 grant_permission("fs.read",    "/tmp/*")      # scoped to /tmp subtree
 grant_permission("net.connect", "*.corp.lan") # scoped to corp.lan domain
-grant_permission("wifi.scan",  null)          # no scope restriction
-grant_permission("ble.scan",   null)
+grant_permission("sys.exec",   null)          # allow all exec calls
 ```
 
 Grants added in a script are cumulative. A `deny_permission` call overrides
@@ -76,7 +79,7 @@ deny_permission("sys.exec", null)   # no exec, even if previously granted
 
 ```toml
 [permissions]
-granted = ["fs.read:/data/*", "net.connect:*.api.io", "wifi.scan"]
+granted = ["fs.read:/data/*", "net.connect:*.api.io", "sys.info"]
 denied  = ["sys.exec", "fs.delete"]
 ```
 
@@ -138,7 +141,7 @@ before any other statements:
 define → scan_ports → (host: string) → array
   intent   → "TCP reachability probe only"
   allowed  → ["net.connect"]
-  forbidden → ["sys.exec", "fs.write", "wifi.inject", "ble.fuzz"]
+  forbidden → ["sys.exec", "fs.write"]
 
   store → open_ports → []
   for → port in [22, 80, 443, 3389, 8080]
@@ -168,14 +171,14 @@ is **caught by the validator** — the script exits before any code runs.
 Every permission check is logged regardless of outcome.
 
 ```
-[2026-03-13 14:23:01.847ms] wifi.scan      scope=""           ALLOWED  capability:tok-001
-[2026-03-13 14:23:01.851ms] net.connect    scope="10.0.0.1"   DENIED   Permission not granted: net.connect
-[2026-03-13 14:23:01.853ms] security.startup level=full platform=linux secure=true
+[2026-03-18 10:12:01.847ms] fs.read        scope="/var/log/*"  ALLOWED  permission:grant
+[2026-03-18 10:12:01.851ms] net.connect    scope="10.0.0.1"    DENIED   Permission not granted: net.connect
+[2026-03-18 10:12:01.853ms] security.startup level=full platform=linux secure=true
 ```
 
 Each entry includes:
 - Monotonic nanosecond timestamp
-- Action category (`wifi.scan`, `fs.read`, etc.)
+- Action category (`fs.read`, `net.connect`, `sys.exec`, etc.)
 - Scope value (path, hostname, etc.)
 - Result: `Allowed` or `Denied`
 - Source: `capability:<id>`, permission grant, or intent violation
@@ -184,8 +187,8 @@ Each entry includes:
 
 ## 7. Permission Check Order
 
-When `wifi_scan()` (or any privileged call) is invoked, the runtime runs
-these steps in order:
+When a privileged call (e.g. `exec_json()`, `read_file()`, `http_get()`) is invoked,
+the runtime runs these steps in order:
 
 1. **Max execution time** — if exceeded, fail immediately.
 2. **Intent check** — if the enclosing function has an `intent` or `allowed`
@@ -202,12 +205,17 @@ these steps in order:
 
 | Situation | Error text |
 |---|---|
-| No grant for the resource | `Permission not granted: wifi.scan` |
+| No grant for the resource | `Permission not granted: fs.read` |
 | Resource explicitly denied | `Permission denied: sys.exec` |
 | Forbidden capability called | `Function 'fn' forbids 'sys.exec' but its body calls 'exec'` |
-| Capability token revoked | `Capability error: token revoked` |
+| Capability token not found | `Capability denied: capability token not found` |
+| Capability token revoked | `Capability denied: capability token 'cap_abc' has been revoked` |
+| Capability token expired | `Capability denied: capability token 'cap_abc' has expired` |
+| Unknown resource string | `Permission resource 'wifi.scan' is not supported. WiFi/Bluetooth capabilities were removed in v0.4.1.` |
 | Intent violation | `intent.violation.net.connect` (audit trail; not a hard error) |
 | Rate limit exceeded | `Rate limit exceeded for net.connect: 100 per 3600s` |
+| Struct field type mismatch | `Struct field type mismatch: 'Point.x' expected Int, got string` (E0016) |
+| Async without experimental | `[WARNING] async function 'fn': executes synchronously (E0051)` |
 
 ---
 

@@ -12,12 +12,23 @@ lazy_static::lazy_static! {
 pub struct SysLib;
 
 impl SysLib {
+    /// Call a system library function.
+    ///
+    /// `permission_checker`: Must be `Some(checker)` in all VM-dispatched calls.
+    /// Pass `None` only in trusted internal Rust contexts (unit tests, tool executors
+    /// that perform their own permission checks upstream).
     pub fn call_function(
         name: &str,
         args: &[Value],
         exec_allowed: bool,
         permission_checker: Option<&dyn crate::stdlib::permission_checker::PermissionChecker>,
     ) -> Result<Value, RuntimeError> {
+        #[cfg(debug_assertions)]
+        if permission_checker.is_none() {
+            crate::tools::logger::log_warn(&format!(
+                "stdlib internal: '{}' called without permission_checker — trusted path only", name
+            ));
+        }
         match name {
             "getenv" => {
                 if let Some(Value::String(key)) = args.first() {
@@ -58,8 +69,20 @@ impl SysLib {
                     ))
                 }
             }
-            "platform" => Ok(Value::String(std::env::consts::OS.to_string())),
-            "arch" => Ok(Value::String(std::env::consts::ARCH.to_string())),
+            "platform" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
+                Ok(Value::String(std::env::consts::OS.to_string()))
+            }
+            "arch" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
+                Ok(Value::String(std::env::consts::ARCH.to_string()))
+            }
             "exec" => {
                 if !exec_allowed {
                     return Err(RuntimeError::new(
@@ -158,8 +181,18 @@ impl SysLib {
                     )),
                 }
             }
-            "pid" => Ok(Value::Integer(std::process::id() as i64)),
+            "pid" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
+                Ok(Value::Integer(std::process::id() as i64))
+            }
             "user" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
                 #[cfg(unix)]
                 {
                     use std::ffi::CStr;
@@ -190,6 +223,10 @@ impl SysLib {
                 )),
             },
             "uid" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
                 #[cfg(unix)]
                 {
                     unsafe { Ok(Value::Integer(libc::getuid() as i64)) }
@@ -200,6 +237,10 @@ impl SysLib {
                 }
             }
             "gid" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
                 #[cfg(unix)]
                 {
                     unsafe { Ok(Value::Integer(libc::getgid() as i64)) }
@@ -571,6 +612,10 @@ impl SysLib {
                 Ok(Value::Null)
             }
             "is_root" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
                 #[cfg(unix)]
                 {
                     unsafe { Ok(Value::Boolean(libc::getuid() == 0)) }
@@ -581,12 +626,20 @@ impl SysLib {
                 }
             }
             "cpu_count" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
                 let count = std::thread::available_parallelism()
                     .map(|n| n.get() as i64)
                     .unwrap_or(1);
                 Ok(Value::Integer(count))
             }
             "memory_available" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
                 #[cfg(target_os = "linux")]
                 {
                     match std::fs::read_to_string("/proc/meminfo") {
@@ -612,6 +665,10 @@ impl SysLib {
                 }
             }
             "disk_space" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
                 let path = if args.is_empty() {
                     ".".to_string()
                 } else {
@@ -657,8 +714,18 @@ impl SysLib {
                     ))
                 }
             }
-            "os_name" => Ok(Value::String(std::env::consts::OS.to_string())),
+            "os_name" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
+                Ok(Value::String(std::env::consts::OS.to_string()))
+            }
             "os_version" => {
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
+                }
                 // Read kernel/OS version from files — no external process spawn needed (2.1).
                 #[cfg(target_os = "linux")]
                 {
@@ -705,7 +772,115 @@ impl SysLib {
                     Ok(Value::String(std::env::consts::OS.to_string()))
                 }
             }
+            // ── Subprocess IPC helpers ──────────────────────────────────────────
+            //
+            // exec_status(cmd)  → integer exit code (0 = success)
+            // exec_lines(cmd)   → array of stdout lines (stderr discarded)
+            // exec_json(cmd)    → stdout parsed as JSON → Value
+            //
+            // All three share the same permission as exec(): sys.exec.
+            // None of them invoke a shell — the command is split on whitespace
+            // and passed directly to the OS, preventing shell injection.
+
+            "exec_status" => {
+                if !exec_allowed {
+                    return Err(RuntimeError::new(
+                        "exec_status() is disabled in safe mode".to_string(),
+                    ));
+                }
+                let cmd_str = match args.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err(RuntimeError::new("exec_status() requires a string argument".to_string())),
+                };
+                let parts: Vec<&str> = cmd_str.split_whitespace().collect();
+                let (exe, rest) = parts.split_first().ok_or_else(|| {
+                    RuntimeError::new("exec_status() requires a non-empty command".to_string())
+                })?;
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("exec".to_string()), Some(exe))?;
+                }
+                let status = Command::new(exe).args(rest).status()
+                    .map_err(|e| RuntimeError::new(format!("exec_status() failed: {}", e)))?;
+                Ok(Value::Integer(status.code().unwrap_or(-1) as i64))
+            }
+
+            "exec_lines" => {
+                if !exec_allowed {
+                    return Err(RuntimeError::new(
+                        "exec_lines() is disabled in safe mode".to_string(),
+                    ));
+                }
+                let cmd_str = match args.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err(RuntimeError::new("exec_lines() requires a string argument".to_string())),
+                };
+                let parts: Vec<&str> = cmd_str.split_whitespace().collect();
+                let (exe, rest) = parts.split_first().ok_or_else(|| {
+                    RuntimeError::new("exec_lines() requires a non-empty command".to_string())
+                })?;
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("exec".to_string()), Some(exe))?;
+                }
+                let output = Command::new(exe).args(rest).output()
+                    .map_err(|e| RuntimeError::new(format!("exec_lines() failed: {}", e)))?;
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let lines: Vec<Value> = stdout
+                    .lines()
+                    .map(|l| Value::String(l.to_string()))
+                    .collect();
+                Ok(Value::Array(lines))
+            }
+
+            "exec_json" => {
+                if !exec_allowed {
+                    return Err(RuntimeError::new(
+                        "exec_json() is disabled in safe mode".to_string(),
+                    ));
+                }
+                let cmd_str = match args.first() {
+                    Some(Value::String(s)) => s.clone(),
+                    _ => return Err(RuntimeError::new("exec_json() requires a string argument".to_string())),
+                };
+                let parts: Vec<&str> = cmd_str.split_whitespace().collect();
+                let (exe, rest) = parts.split_first().ok_or_else(|| {
+                    RuntimeError::new("exec_json() requires a non-empty command".to_string())
+                })?;
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("exec".to_string()), Some(exe))?;
+                }
+                let output = Command::new(exe).args(rest).output()
+                    .map_err(|e| RuntimeError::new(format!("exec_json() failed: {}", e)))?;
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let json_val: serde_json::Value = serde_json::from_str(stdout.trim())
+                    .map_err(|e| RuntimeError::new(format!("exec_json() stdout is not valid JSON: {}", e)))?;
+                Ok(json_to_value(&json_val))
+            }
+
             _ => Err(RuntimeError::new(format!("Unknown sys function: {}", name))),
+        }
+    }
+}
+
+/// Recursively convert a serde_json::Value into a runtime Value.
+fn json_to_value(j: &serde_json::Value) -> Value {
+    match j {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Boolean(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Integer(i)
+            } else {
+                Value::Float(n.as_f64().unwrap_or(0.0))
+            }
+        }
+        serde_json::Value::String(s) => Value::String(s.clone()),
+        serde_json::Value::Array(arr) => Value::Array(arr.iter().map(json_to_value).collect()),
+        serde_json::Value::Object(obj) => {
+            let map = obj.iter().map(|(k, v)| (k.clone(), json_to_value(v))).collect();
+            Value::Map(map)
         }
     }
 }

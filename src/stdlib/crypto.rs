@@ -8,8 +8,9 @@ use sha2::{Digest, Sha256, Sha512};
 pub struct CryptoLib;
 
 impl CryptoLib {
-    /// Call a crypto library function
-    pub fn call_function(name: &str, args: &[Value]) -> Result<Value, RuntimeError> {
+    /// Call a crypto library function.
+    /// `seed_override`: when `Some(s)`, seeded PRNG is used instead of OS entropy (deterministic mode).
+    pub fn call_function(name: &str, args: &[Value], seed_override: Option<u64>) -> Result<Value, RuntimeError> {
         match name {
             "sha256" => {
                 if args.len() != 1 {
@@ -39,17 +40,19 @@ impl CryptoLib {
                     _ => Err(RuntimeError::new("sha512 requires a string".to_string())),
                 }
             }
-            "random_bytes" => {
+            // crypto_random_bytes: cryptographically secure random bytes via OS entropy (ring).
+            // Use this when security matters. For non-secure use, use math_random_int / math_random_float.
+            "crypto_random_bytes" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::new(
-                        "random_bytes requires 1 argument".to_string(),
+                        "crypto_random_bytes requires 1 argument (size: int)".to_string(),
                     ));
                 }
                 match &args[0] {
                     Value::Integer(n) => {
                         if *n < 0 || *n > 1024 {
                             return Err(RuntimeError::new(
-                                "random_bytes size must be between 0 and 1024".to_string(),
+                                "crypto_random_bytes size must be between 0 and 1024".to_string(),
                             ));
                         }
                         let mut bytes = vec![0u8; *n as usize];
@@ -60,25 +63,32 @@ impl CryptoLib {
                         Ok(Value::String(hex::encode(bytes)))
                     }
                     _ => Err(RuntimeError::new(
-                        "random_bytes requires an integer".to_string(),
+                        "crypto_random_bytes requires an integer".to_string(),
                     )),
                 }
             }
-            "random_int" => {
+            // crypto_random_int: cryptographically seeded integer in [min, max].
+            // For non-secure random integers, use math_random_int instead.
+            "crypto_random_int" => {
                 if args.len() != 2 {
                     return Err(RuntimeError::new(
-                        "random_int requires 2 arguments (min, max)".to_string(),
+                        "crypto_random_int requires 2 arguments (min, max)".to_string(),
                     ));
                 }
                 match (&args[0], &args[1]) {
                     (Value::Integer(min), Value::Integer(max)) => {
                         use rand::Rng;
-                        let mut rng = rand::thread_rng();
-                        let result = rng.gen_range(*min..=*max);
+                        let result = if let Some(s) = seed_override {
+                            use rand::{rngs::StdRng, SeedableRng};
+                            let mut rng = StdRng::seed_from_u64(s);
+                            rng.gen_range(*min..=*max)
+                        } else {
+                            rand::thread_rng().gen_range(*min..=*max)
+                        };
                         Ok(Value::Integer(result))
                     }
                     _ => Err(RuntimeError::new(
-                        "random_int requires integers".to_string(),
+                        "crypto_random_int requires integers".to_string(),
                     )),
                 }
             }
@@ -284,52 +294,70 @@ impl CryptoLib {
                 }
             }
             "bcrypt_hash" => {
-                if args.is_empty() || args.len() > 2 {
-                    return Err(RuntimeError::new(
-                        "bcrypt_hash requires 1-2 arguments (password, cost?)".to_string(),
-                    ));
-                }
-                let password = match &args[0] {
-                    Value::String(s) => s.clone(),
-                    _ => {
+                #[cfg(not(feature = "crypto-advanced"))]
+                return Err(RuntimeError::new(
+                    "bcrypt_hash requires the 'crypto-advanced' feature. \
+                     Rebuild with: cargo build --features crypto-advanced"
+                        .to_string(),
+                ));
+                #[cfg(feature = "crypto-advanced")]
+                {
+                    if args.is_empty() || args.len() > 2 {
                         return Err(RuntimeError::new(
-                            "bcrypt_hash: password must be a string".to_string(),
-                        ))
+                            "bcrypt_hash requires 1-2 arguments (password, cost?)".to_string(),
+                        ));
                     }
-                };
-                let cost = match args.get(1) {
-                    Some(Value::Integer(n)) => *n as u32,
-                    None => 12,
-                    _ => {
+                    let password = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "bcrypt_hash: password must be a string".to_string(),
+                            ))
+                        }
+                    };
+                    let cost = match args.get(1) {
+                        Some(Value::Integer(n)) => *n as u32,
+                        None => 12,
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "bcrypt_hash: cost must be an integer".to_string(),
+                            ))
+                        }
+                    };
+                    if !(4..=31).contains(&cost) {
                         return Err(RuntimeError::new(
-                            "bcrypt_hash: cost must be an integer".to_string(),
-                        ))
+                            "bcrypt_hash: cost must be between 4 and 31".to_string(),
+                        ));
                     }
-                };
-                if !(4..=31).contains(&cost) {
-                    return Err(RuntimeError::new(
-                        "bcrypt_hash: cost must be between 4 and 31".to_string(),
-                    ));
+                    bcrypt::hash(&password, cost)
+                        .map(Value::String)
+                        .map_err(|e| RuntimeError::new(format!("bcrypt_hash failed: {}", e)))
                 }
-                bcrypt::hash(&password, cost)
-                    .map(Value::String)
-                    .map_err(|e| RuntimeError::new(format!("bcrypt_hash failed: {}", e)))
             }
             "bcrypt_verify" => {
-                if args.len() != 2 {
-                    return Err(RuntimeError::new(
-                        "bcrypt_verify requires 2 arguments (password, hash)".to_string(),
-                    ));
-                }
-                match (&args[0], &args[1]) {
-                    (Value::String(password), Value::String(hash)) => {
-                        bcrypt::verify(password, hash)
-                            .map(Value::Boolean)
-                            .map_err(|e| RuntimeError::new(format!("bcrypt_verify failed: {}", e)))
+                #[cfg(not(feature = "crypto-advanced"))]
+                return Err(RuntimeError::new(
+                    "bcrypt_verify requires the 'crypto-advanced' feature. \
+                     Rebuild with: cargo build --features crypto-advanced"
+                        .to_string(),
+                ));
+                #[cfg(feature = "crypto-advanced")]
+                {
+                    if args.len() != 2 {
+                        return Err(RuntimeError::new(
+                            "bcrypt_verify requires 2 arguments (password, hash)".to_string(),
+                        ));
                     }
-                    _ => Err(RuntimeError::new(
-                        "bcrypt_verify requires string arguments".to_string(),
-                    )),
+                    match (&args[0], &args[1]) {
+                        (Value::String(password), Value::String(hash)) => {
+                            bcrypt::verify(password, hash)
+                                .map(Value::Boolean)
+                                .map_err(|e| RuntimeError::new(format!("bcrypt_verify failed: {}", e)))
+                        }
+                        _ => Err(RuntimeError::new(
+                            "bcrypt_verify requires string arguments".to_string(),
+                        )),
+                    }
                 }
             }
             "ed25519_sign" => {
@@ -392,100 +420,142 @@ impl CryptoLib {
                 }
             }
             "rsa_generate" => {
-                let bits = match args.first() {
-                    Some(Value::Integer(b)) => *b as usize,
-                    None => 2048,
-                    _ => {
+                #[cfg(not(feature = "crypto-advanced"))]
+                return Err(RuntimeError::new(
+                    "rsa_generate requires the 'crypto-advanced' feature. \
+                     Rebuild with: cargo build --features crypto-advanced"
+                        .to_string(),
+                ));
+                #[cfg(feature = "crypto-advanced")]
+                {
+                    use rsa::pkcs1::{EncodeRsaPrivateKey, EncodeRsaPublicKey, LineEnding};
+                    use rsa::RsaPrivateKey;
+                    let bits = match args.first() {
+                        Some(Value::Integer(b)) => *b as usize,
+                        None => 2048,
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "rsa_generate: optional arg is key size in bits (default 2048)"
+                                    .to_string(),
+                            ))
+                        }
+                    };
+                    if !(1024..=4096).contains(&bits) {
                         return Err(RuntimeError::new(
-                            "rsa_generate: optional arg is key size in bits (default 2048)"
-                                .to_string(),
-                        ))
+                            "rsa_generate: key size must be 1024–4096 bits".to_string(),
+                        ));
                     }
-                };
-                if !(1024..=4096).contains(&bits) {
-                    return Err(RuntimeError::new(
-                        "rsa_generate: key size must be 1024–4096 bits".to_string(),
-                    ));
+                    let mut rng = rand::rngs::OsRng;
+                    let private_key = RsaPrivateKey::new(&mut rng, bits)
+                        .map_err(|e| RuntimeError::new(format!("rsa_generate failed: {}", e)))?;
+                    let public_key = rsa::RsaPublicKey::from(&private_key);
+                    let priv_pem = private_key.to_pkcs1_pem(LineEnding::LF).map_err(|e| {
+                        RuntimeError::new(format!("rsa_generate: key serialization failed: {}", e))
+                    })?;
+                    let pub_pem = public_key.to_pkcs1_pem(LineEnding::LF).map_err(|e| {
+                        RuntimeError::new(format!(
+                            "rsa_generate: pubkey serialization failed: {}",
+                            e
+                        ))
+                    })?;
+                    let mut map = std::collections::HashMap::new();
+                    map.insert(
+                        "private_key".to_string(),
+                        Value::String(priv_pem.to_string()),
+                    );
+                    map.insert("public_key".to_string(), Value::String(pub_pem.to_string()));
+                    Ok(Value::Map(map))
                 }
-                use rsa::pkcs1::{EncodeRsaPrivateKey, EncodeRsaPublicKey, LineEnding};
-                use rsa::RsaPrivateKey;
-                let mut rng = rand::rngs::OsRng;
-                let private_key = RsaPrivateKey::new(&mut rng, bits)
-                    .map_err(|e| RuntimeError::new(format!("rsa_generate failed: {}", e)))?;
-                let public_key = rsa::RsaPublicKey::from(&private_key);
-                let priv_pem = private_key.to_pkcs1_pem(LineEnding::LF).map_err(|e| {
-                    RuntimeError::new(format!("rsa_generate: key serialization failed: {}", e))
-                })?;
-                let pub_pem = public_key.to_pkcs1_pem(LineEnding::LF).map_err(|e| {
-                    RuntimeError::new(format!("rsa_generate: pubkey serialization failed: {}", e))
-                })?;
-                let mut map = std::collections::HashMap::new();
-                map.insert(
-                    "private_key".to_string(),
-                    Value::String(priv_pem.to_string()),
-                );
-                map.insert("public_key".to_string(), Value::String(pub_pem.to_string()));
-                Ok(Value::Map(map))
             }
             "rsa_sign" => {
-                if args.len() != 2 {
-                    return Err(RuntimeError::new(
-                        "rsa_sign requires 2 arguments (private_key_pem, message)".to_string(),
-                    ));
-                }
-                match (&args[0], &args[1]) {
-                    (Value::String(priv_pem), Value::String(message)) => {
-                        use rsa::pkcs1::DecodeRsaPrivateKey;
-                        use rsa::pkcs1v15::SigningKey;
-                        use rsa::signature::Signer;
-                        use rsa::RsaPrivateKey;
-                        use sha2::Sha256;
-                        let private_key = RsaPrivateKey::from_pkcs1_pem(priv_pem).map_err(|e| {
-                            RuntimeError::new(format!("rsa_sign: invalid private key: {}", e))
-                        })?;
-                        let signing_key = SigningKey::<Sha256>::new(private_key);
-                        let sig = signing_key.sign(message.as_bytes());
-                        use rsa::signature::SignatureEncoding;
-                        Ok(Value::String(hex::encode(sig.to_bytes())))
+                #[cfg(not(feature = "crypto-advanced"))]
+                return Err(RuntimeError::new(
+                    "rsa_sign requires the 'crypto-advanced' feature. \
+                     Rebuild with: cargo build --features crypto-advanced"
+                        .to_string(),
+                ));
+                #[cfg(feature = "crypto-advanced")]
+                {
+                    if args.len() != 2 {
+                        return Err(RuntimeError::new(
+                            "rsa_sign requires 2 arguments (private_key_pem, message)".to_string(),
+                        ));
                     }
-                    _ => Err(RuntimeError::new(
-                        "rsa_sign requires string arguments".to_string(),
-                    )),
+                    match (&args[0], &args[1]) {
+                        (Value::String(priv_pem), Value::String(message)) => {
+                            use rsa::pkcs1::DecodeRsaPrivateKey;
+                            use rsa::pkcs1v15::SigningKey;
+                            use rsa::signature::Signer;
+                            use rsa::RsaPrivateKey;
+                            use sha2::Sha256;
+                            let private_key =
+                                RsaPrivateKey::from_pkcs1_pem(priv_pem).map_err(|e| {
+                                    RuntimeError::new(format!(
+                                        "rsa_sign: invalid private key: {}",
+                                        e
+                                    ))
+                                })?;
+                            let signing_key = SigningKey::<Sha256>::new(private_key);
+                            let sig = signing_key.sign(message.as_bytes());
+                            use rsa::signature::SignatureEncoding;
+                            Ok(Value::String(hex::encode(sig.to_bytes())))
+                        }
+                        _ => Err(RuntimeError::new(
+                            "rsa_sign requires string arguments".to_string(),
+                        )),
+                    }
                 }
             }
             "rsa_verify" => {
-                if args.len() != 3 {
-                    return Err(RuntimeError::new(
-                        "rsa_verify requires 3 arguments (public_key_pem, message, signature_hex)"
-                            .to_string(),
-                    ));
-                }
-                match (&args[0], &args[1], &args[2]) {
-                    (Value::String(pub_pem), Value::String(message), Value::String(sig_hex)) => {
-                        use rsa::pkcs1::DecodeRsaPublicKey;
-                        use rsa::pkcs1v15::{Signature, VerifyingKey};
-                        use rsa::signature::Verifier;
-                        use rsa::RsaPublicKey;
-                        use sha2::Sha256;
-                        let public_key = RsaPublicKey::from_pkcs1_pem(pub_pem).map_err(|e| {
-                            RuntimeError::new(format!("rsa_verify: invalid public key: {}", e))
-                        })?;
-                        let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-                        let sig_bytes = hex::decode(sig_hex).map_err(|_| {
-                            RuntimeError::new(
-                                "rsa_verify: signature_hex must be valid hex".to_string(),
-                            )
-                        })?;
-                        let sig = Signature::try_from(sig_bytes.as_slice()).map_err(|e| {
-                            RuntimeError::new(format!("rsa_verify: invalid signature: {}", e))
-                        })?;
-                        Ok(Value::Boolean(
-                            verifying_key.verify(message.as_bytes(), &sig).is_ok(),
-                        ))
+                #[cfg(not(feature = "crypto-advanced"))]
+                return Err(RuntimeError::new(
+                    "rsa_verify requires the 'crypto-advanced' feature. \
+                     Rebuild with: cargo build --features crypto-advanced"
+                        .to_string(),
+                ));
+                #[cfg(feature = "crypto-advanced")]
+                {
+                    if args.len() != 3 {
+                        return Err(RuntimeError::new(
+                            "rsa_verify requires 3 arguments (public_key_pem, message, signature_hex)"
+                                .to_string(),
+                        ));
                     }
-                    _ => Err(RuntimeError::new(
-                        "rsa_verify requires string arguments".to_string(),
-                    )),
+                    match (&args[0], &args[1], &args[2]) {
+                        (Value::String(pub_pem), Value::String(message), Value::String(sig_hex)) => {
+                            use rsa::pkcs1::DecodeRsaPublicKey;
+                            use rsa::pkcs1v15::{Signature, VerifyingKey};
+                            use rsa::signature::Verifier;
+                            use rsa::RsaPublicKey;
+                            use sha2::Sha256;
+                            let public_key =
+                                RsaPublicKey::from_pkcs1_pem(pub_pem).map_err(|e| {
+                                    RuntimeError::new(format!(
+                                        "rsa_verify: invalid public key: {}",
+                                        e
+                                    ))
+                                })?;
+                            let verifying_key = VerifyingKey::<Sha256>::new(public_key);
+                            let sig_bytes = hex::decode(sig_hex).map_err(|_| {
+                                RuntimeError::new(
+                                    "rsa_verify: signature_hex must be valid hex".to_string(),
+                                )
+                            })?;
+                            let sig =
+                                Signature::try_from(sig_bytes.as_slice()).map_err(|e| {
+                                    RuntimeError::new(format!(
+                                        "rsa_verify: invalid signature: {}",
+                                        e
+                                    ))
+                                })?;
+                            Ok(Value::Boolean(
+                                verifying_key.verify(message.as_bytes(), &sig).is_ok(),
+                            ))
+                        }
+                        _ => Err(RuntimeError::new(
+                            "rsa_verify requires string arguments".to_string(),
+                        )),
+                    }
                 }
             }
             _ => Err(RuntimeError::new(format!(

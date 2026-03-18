@@ -6,6 +6,24 @@ use crate::tools::logger::log_debug;
 use crate::typecheck::types::Type;
 use std::collections::HashMap;
 
+fn type_matches_value(value: &Value, expected: &Type) -> bool {
+    match (value, expected) {
+        (Value::Integer(_), Type::Int) => true,
+        (Value::Integer(_), Type::Float) => true,
+        (Value::Float(_), Type::Float) => true,
+        (Value::String(_), Type::String) => true,
+        (Value::Char(_), Type::Char) => true,
+        (Value::Char(_), Type::String) => true,
+        (Value::Boolean(_), Type::Bool) => true,
+        (Value::Array(_), Type::Array(_)) => true,
+        (Value::Map(_), Type::Map(_)) => true,
+        (Value::Null, _) => true,
+        (_, Type::Identifier(_)) => true,
+        (_, Type::Generic(_)) => true,
+        _ => false,
+    }
+}
+
 /// Statement execution (non-control-flow statements)
 pub struct StatementExecutor;
 
@@ -61,6 +79,42 @@ impl StatementExecutor {
                         map.insert(key, val);
                         Value::Map(map)
                     }
+                    (Value::Struct(sname, mut fields), Value::String(key)) => {
+                        // Struct field assignment: check type if struct def is known.
+                        let struct_def = vm.struct_defs().get(&sname).cloned();
+                        let strict = vm.strict_types();
+                        if let Some(def) = struct_def {
+                            match def.iter().find(|(f, _)| f == &key) {
+                                None => {
+                                    let known: Vec<&str> = def.iter().map(|(f, _)| f.as_str()).collect();
+                                    let msg = format!(
+                                        "Struct '{}' has no field '{}'. Known fields: {}",
+                                        sname, key, known.join(", ")
+                                    );
+                                    if strict {
+                                        return Err(RuntimeError::new(msg)
+                                            .with_code(crate::runtime::errors::ErrorCode::E0016));
+                                    }
+                                    eprintln!("[WARNING] {}", msg);
+                                }
+                                Some((_, expected_type)) => {
+                                    if !type_matches_value(&val, expected_type) {
+                                        let msg = format!(
+                                            "Struct field type mismatch: '{}.{}' expected {:?}, got {}",
+                                            sname, key, expected_type, val.type_name()
+                                        );
+                                        if strict {
+                                            return Err(RuntimeError::new(msg)
+                                                .with_code(crate::runtime::errors::ErrorCode::E0016));
+                                        }
+                                        eprintln!("[WARNING] {}", msg);
+                                    }
+                                }
+                            }
+                        }
+                        fields.insert(key, val);
+                        Value::Struct(sname, fields)
+                    }
                     (obj, idx) => {
                         return Err(RuntimeError::new(format!(
                             "Cannot index-assign: {:?}[{:?}]",
@@ -96,12 +150,18 @@ impl StatementExecutor {
                 type_params: _,
                 params,
                 body,
+                is_async,
                 intent,
                 ai_hint,
                 allowed_actions,
                 forbidden_actions,
                 ..
             } => {
+                // Register async functions so the expression evaluator knows to
+                // spawn a thread when they are called without `await`.
+                if *is_async {
+                    vm.register_async_function(name);
+                }
                 // Convert CapabilityExpr to String for intent registration
                 let allowed_strings: Vec<String> =
                     allowed_actions.iter().map(|cap| cap.to_string()).collect();
@@ -207,7 +267,10 @@ impl StatementExecutor {
                     }
                 };
 
-                // Grant permission
+                // Grant the permission (parser syntax: `permission → fs.read → /tmp/*`
+                // produces resource="fs", action="read", scope=Some("/tmp/*")).
+                // The action field is the sub-action (read/write/connect/exec/info),
+                // not an enforcement mode — there is no deny/require syntax in the grammar.
                 vm.grant_permission(perm_resource, scope.clone());
 
                 Ok(Value::Null)
@@ -249,6 +312,8 @@ pub trait StatementVM {
     fn set_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError>;
     fn set_global(&mut self, name: String, value: Value) -> Result<(), RuntimeError>;
     fn bind_pattern(&mut self, pattern: &Pattern, value: &Value) -> Result<(), RuntimeError>;
+    fn struct_defs(&self) -> &HashMap<String, Vec<(String, Type)>>;
+    fn strict_types(&self) -> bool;
     fn register_enum(&mut self, name: String, variants: Vec<(String, Option<Expression>)>);
     fn register_struct(&mut self, name: String, fields: Vec<(String, Type)>);
     fn execute_import(
@@ -269,4 +334,7 @@ pub trait StatementVM {
         name: String,
         declaration: crate::runtime::intent::IntentDeclaration,
     );
+    /// Mark `name` as an async function so the expression evaluator can spawn a
+    /// thread when it is called without `await`.
+    fn register_async_function(&mut self, name: &str);
 }

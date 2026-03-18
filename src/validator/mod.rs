@@ -1,5 +1,5 @@
 // Validator layer - separates parsing from validation
-// Validates syntax, semantics, and pentest-specific restrictions
+// Validates syntax, semantics, and security restrictions
 
 pub mod restrictions;
 pub mod semantics;
@@ -23,7 +23,7 @@ impl Validator {
         // 2. Semantic validation (type checking)
         SemanticsValidator::check_program(program)?;
 
-        // 3. Restriction checking (pentest-specific rules)
+        // 3. Restriction checking (capability declaration validation)
         RestrictionChecker::check_program(program)?;
 
         Ok(())

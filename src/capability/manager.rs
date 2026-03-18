@@ -45,6 +45,41 @@ pub enum CapabilityEvent {
     },
 }
 
+/// Typed result of a capability validity check.
+/// Replaces raw `bool` returns so callers can emit actionable error messages.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CapabilityResult {
+    /// Token is present and has not been revoked or expired.
+    Granted,
+    /// Token ID was not found in the manager.
+    NotFound,
+    /// Token exists but was explicitly revoked.
+    Revoked { token_id: String },
+    /// Token exists but its TTL has elapsed.
+    Expired { token_id: String },
+}
+
+impl CapabilityResult {
+    /// Returns `true` only for `Granted`.
+    pub fn is_granted(&self) -> bool {
+        matches!(self, CapabilityResult::Granted)
+    }
+
+    /// Returns a human-readable denial reason, or `None` if granted.
+    pub fn denial_reason(&self) -> Option<String> {
+        match self {
+            CapabilityResult::Granted => None,
+            CapabilityResult::NotFound => Some("capability token not found".to_string()),
+            CapabilityResult::Revoked { token_id } => {
+                Some(format!("capability token '{}' has been revoked", token_id))
+            }
+            CapabilityResult::Expired { token_id } => {
+                Some(format!("capability token '{}' has expired", token_id))
+            }
+        }
+    }
+}
+
 /// Capability manager - grants, validates, and revokes capability tokens
 #[derive(Clone)]
 pub struct CapabilityManager {
@@ -201,21 +236,27 @@ impl CapabilityManager {
         self.tokens.get(token_id)
     }
 
-    /// Check if capability is valid (not revoked, not expired)
-    pub fn is_valid(&self, token_id: &str) -> bool {
-        if let Some(capability) = self.tokens.get(token_id) {
-            if capability.revoked {
-                return false;
-            }
-            if let Some(expires_at) = capability.expires_at {
-                if SystemTime::now() > expires_at {
-                    return false;
+    /// Check if capability is valid (not revoked, not expired).
+    /// Returns a typed `CapabilityResult` with a denial reason when invalid.
+    pub fn is_valid_detailed(&self, token_id: &str) -> CapabilityResult {
+        match self.tokens.get(token_id) {
+            None => CapabilityResult::NotFound,
+            Some(cap) if cap.revoked => CapabilityResult::Revoked { token_id: token_id.to_string() },
+            Some(cap) => {
+                if let Some(expires_at) = cap.expires_at {
+                    if SystemTime::now() > expires_at {
+                        return CapabilityResult::Expired { token_id: token_id.to_string() };
+                    }
                 }
+                CapabilityResult::Granted
             }
-            true
-        } else {
-            false
         }
+    }
+
+    /// Check if capability is valid (not revoked, not expired).
+    /// Prefer `is_valid_detailed` for richer error reporting.
+    pub fn is_valid(&self, token_id: &str) -> bool {
+        self.is_valid_detailed(token_id).is_granted()
     }
 
     /// Generate unique token ID

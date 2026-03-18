@@ -23,6 +23,7 @@ impl VirtualMachine {
             safe_mode: false,
             debug: false,
             verbose: false,
+            strict_types: false,
             exec_allowed: true,
             permission_manager: crate::runtime::permissions::PermissionManager::new(),
             audit_trail: crate::runtime::audit::AuditTrail::new(),
@@ -33,6 +34,7 @@ impl VirtualMachine {
             active_capability: None,
             runtime_security: crate::runtime::security::RuntimeSecurity::new(),
             cancel_flag: None,
+            async_functions: std::collections::HashSet::new(),
         }
     }
 
@@ -57,6 +59,7 @@ impl VirtualMachine {
             safe_mode,
             debug,
             verbose,
+            strict_types: false,
             exec_allowed: !safe_mode,
             permission_manager: crate::runtime::permissions::PermissionManager::new(),
             audit_trail: crate::runtime::audit::AuditTrail::new(),
@@ -67,6 +70,7 @@ impl VirtualMachine {
             active_capability: None,
             runtime_security: crate::runtime::security::RuntimeSecurity::new(),
             cancel_flag: None,
+            async_functions: std::collections::HashSet::new(),
         };
 
         // If safe_mode is enabled, deny exec by default
@@ -126,6 +130,28 @@ impl VirtualMachine {
         self.cancel_flag
             .as_ref()
             .is_some_and(|f| f.load(Ordering::Relaxed))
+    }
+
+    /// Enable strict type enforcement for struct construction and field assignment.
+    /// When true, type mismatches at struct construction are hard errors (E0016).
+    /// When false (default), mismatches emit a warning-level error only in debug mode.
+    pub fn set_strict_types(&mut self, v: bool) {
+        self.strict_types = v;
+    }
+
+    /// Register a function as async (called from FunctionDef statement handler).
+    pub(super) fn register_async_function(&mut self, name: &str) {
+        self.async_functions.insert(name.to_string());
+    }
+
+    /// True if the named function was defined with the `async` keyword.
+    pub(super) fn is_async_function(&self, name: &str) -> bool {
+        self.async_functions.contains(name)
+    }
+
+    /// Snapshot the global scope so it can be passed to a spawned async thread.
+    pub fn globals_snapshot(&self) -> std::collections::HashMap<String, Value> {
+        self.scope_manager.globals().clone()
     }
 
     pub fn set_exec_allowed(&mut self, allowed: bool) {

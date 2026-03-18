@@ -100,6 +100,9 @@ pub enum Commands {
         /// Treat type-check errors as hard errors (requires --type-check).
         #[arg(long)]
         strict_types: bool,
+        /// Print all permissions the script would request and exit without running.
+        #[arg(long)]
+        permissions_report: bool,
     },
     /// Inspect / disassemble a compiled bytecode file
     Inspect {
@@ -342,6 +345,11 @@ pub enum PackageCommands {
         /// Package name
         name: String,
     },
+    /// Install a package from a local directory (copies into ~/.txtcode/packages/)
+    InstallLocal {
+        /// Path to the package directory (must contain Txtcode.toml)
+        path: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -428,6 +436,7 @@ pub fn main() {
                     allow_net,
                     type_check,
                     strict_types,
+                    permissions_report,
                 } => {
                     if *no_color || std::env::var_os("NO_COLOR").is_some() {
                         std::env::set_var("NO_COLOR", "1");
@@ -444,6 +453,31 @@ pub fn main() {
                     }
                     let effective_safe = safe_mode || *sandbox;
                     let effective_allow_exec = if *sandbox { false } else { allow_exec };
+
+                    // --permissions-report: parse the script, print all stdlib calls
+                    // that require a permission, then exit without running.
+                    if *permissions_report {
+                        if file.extension().and_then(|e| e.to_str()) != Some("tc") {
+                            eprintln!("--permissions-report only works with .tc source files");
+                            std::process::exit(1);
+                        }
+                        match std::fs::read_to_string(file) {
+                            Err(e) => { eprintln!("Error reading file: {}", e); std::process::exit(1); }
+                            Ok(source) => {
+                                let mut lexer = Lexer::new(source);
+                                match lexer.tokenize().and_then(|tokens| {
+                                    let mut p = Parser::new(tokens);
+                                    p.parse().map_err(|e| e)
+                                }) {
+                                    Err(e) => { eprintln!("Parse error: {}", e); std::process::exit(1); }
+                                    Ok(program) => {
+                                        run_cli::print_permissions_report(&program, *json);
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     // Optional static type check before execution.
                     // Only runs on .tc source files (bytecode files skip this step).
@@ -502,6 +536,7 @@ pub fn main() {
                             ts,
                             allow_fs,
                             allow_net,
+                            *strict_types,
                         )
                     } else {
                         run_cli::run_file_with_allowlists(
@@ -512,6 +547,7 @@ pub fn main() {
                             verbose,
                             allow_fs,
                             allow_net,
+                            *strict_types,
                         )
                     };
                     if let Err(e) = result {
@@ -733,6 +769,9 @@ fn handle_package_command(command: &PackageCommands) -> Result<(), Box<dyn std::
         PackageCommands::Info { name } => {
             package_info(name)?;
         }
+        PackageCommands::InstallLocal { path } => {
+            package::install_local_package(path)?;
+        }
     }
     Ok(())
 }
@@ -780,37 +819,14 @@ fn eval_snippet(
 
 fn package_search(query: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("Searching packages for '{}'...\n", query);
-
-    let registry_url = std::env::var("TXTCODE_REGISTRY").ok();
-
-    if let Some(url) = registry_url {
-        let rt = tokio::runtime::Runtime::new()?;
-        let result = rt.block_on(async {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(10))
-                .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
-                .build()?;
-            let resp = client
-                .get(format!("{}/search?q={}", url.trim_end_matches('/'), query))
-                .send()
-                .await?;
-            resp.text().await
-        });
-        match result {
-            Ok(body) => println!("{}", body),
-            Err(e) => eprintln!("Registry error: {}", e),
-        }
-    } else {
-        println!("No package registry configured.");
-        println!("Set TXTCODE_REGISTRY=https://your-registry to enable search.");
-        println!();
-        println!("To add a known package manually:");
-        println!("  txtcode package add <name> <version>");
-    }
-    Ok(())
+    let packages_dir = txtcode::config::Config::get_packages_dir()
+        .unwrap_or_else(|_| PathBuf::from(".txtcode/packages"));
+    let registry = package::PackageRegistry::new(packages_dir);
+    registry.print_search(query)
 }
 
 fn package_info(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // If the package is listed in the local Txtcode.toml, show that first.
     let toml_path = PathBuf::from("Txtcode.toml");
     if toml_path.exists() {
         let content = std::fs::read_to_string(&toml_path)?;
@@ -827,31 +843,12 @@ fn package_info(name: &str) -> Result<(), Box<dyn std::error::Error>> {
                     println!("Entry:   {}", t);
                 }
             }
-            return Ok(());
+            println!();
         }
     }
-
-    let registry_url = std::env::var("TXTCODE_REGISTRY").ok();
-    if let Some(url) = registry_url {
-        let rt = tokio::runtime::Runtime::new()?;
-        let result = rt.block_on(async {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(10))
-                .user_agent(format!("txtcode/{}", env!("CARGO_PKG_VERSION")))
-                .build()?;
-            let resp = client
-                .get(format!("{}/packages/{}", url.trim_end_matches('/'), name))
-                .send()
-                .await?;
-            resp.text().await
-        });
-        match result {
-            Ok(body) => println!("{}", body),
-            Err(e) => eprintln!("Registry error: {}", e),
-        }
-    } else {
-        println!("Package '{}' not found in local Txtcode.toml.", name);
-        println!("Set TXTCODE_REGISTRY=https://your-registry to look up remote packages.");
-    }
-    Ok(())
+    // Always try registry lookup for full metadata.
+    let packages_dir = txtcode::config::Config::get_packages_dir()
+        .unwrap_or_else(|_| PathBuf::from(".txtcode/packages"));
+    let registry = package::PackageRegistry::new(packages_dir);
+    registry.print_info(name)
 }

@@ -1,35 +1,37 @@
-# Txt-code Language Specification — v0.4.0
+# Txt-code Language Specification — v0.5.0
 
-> **Status:** v0.4.0 release. Behaviour described here matches the current implementation
-> except where explicitly marked as “planned / not yet implemented”.
-> Breaking changes between minor versions are documented in the [CHANGELOG](https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md) on GitHub.
+> **Status:** v0.5.0 — API and language-spec freeze.
+> The public API, permission model, stdlib function names, and core language syntax are **stable**
+> for the v0.5 series. Breaking changes will not be introduced before v0.6.0.
+> All changes are documented in the [CHANGELOG](https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md).
 >
-> **New in v0.4:**
+> **New in v0.5 (over v0.4):**
+> - **Real async/await** — `async define → fn → (args)` spawns an OS thread; `await` blocks until result; `Value::Future` type
+> - **Package registry backend** — `registry/index.json` single source of truth; `RegistryIndex` type; SHA-256 verification; `package search` / `package info` use index
+> - **Starter packages** — `npl-math`, `npl-strings`, `npl-collections`, `npl-datetime` ship in `packages/`
+> - **`txtcode package install-local <PATH>`** — install from local directory
+> - **Semver resolver** — 11 new unit tests covering `^`, `~`, `>=`, exact, non-semver
+> - **`txtcode run --permissions-report`** — list privileged calls without running
+> - **`CapabilityResult` enum** (`Granted`, `NotFound`, `Revoked`, `Expired`) — typed denial reasons
+> - **Struct field type checking** — construction and bracket-assign validate against declared types; advisory (`[WARNING]`) or strict (`E0016`)
+> - **`Value::type_name()`** — human-readable type name for error messages
+> - **`xml_decode`** canonical alias; `json_encode`/`json_decode` protected from obfuscation
+> - **FFI stdlib** (`--features ffi`) — `ffi_load`, `ffi_call`, `ffi_close`; `sys.ffi` permission gate
+> - **Performance baselines** — `cargo bench` covers lexer/fib, lexer/loop, parser/complex, vm/ast_loop (+ bytecode variants with `--features bytecode`)
+>
+> **New in v0.4 (over v0.3):**
 > - Virtual environment system (`txtcode env`) with 12 subcommands
 > - Bytecode VM: `break`/`continue`, `for x in arr`, `repeat N`, `match`, string interpolation
 > - Integer overflow guards (`checked_*`) in both AST VM and bytecode VM
 > - Recursion depth limit (50) enforced across all VMs
 > - User-defined functions with caller/callee scope isolation in bytecode VM
-> - Module imports (`ImportModule`) in bytecode VM
 > - `?.` / `?[]` / `?()` optional chaining — both VMs (returns `null` on null target)
-> - `do…while` loop in bytecode VM
-> - `f”...”` string interpolation prefix; raw strings `r”...”`, number separators `1_000_000`
-> - Spread operator `[...arr]` in both VMs
-> - Multi-return: `return → a, b` auto-wraps as `[a, b]`
-> - Destructured function arguments: `define → f → ({x, y})`
-> - `doc →` / `hint →` canonical annotation keywords
-> - Pipe operator `|>` with lambda/complex RHS in both VMs
-> - Pattern matching: array `[a, b]` and struct `{x, y}` destructuring in `match`
-> - `++`/`--` now errors cleanly on non-identifier targets
-> - `txtcode inspect` command — disassemble compiled bytecode
-> - Call depth unified to 50 across all VMs
-> - `async`/`await` runs synchronously (passthrough; true async planned for v0.5)
 >
 > **Still not fully implemented:**
 > - Generic type enforcement at runtime (type params are parsed but erased at execution)
 > - `++arr[0]` / `--arr[0]` on non-identifier targets — use `store → arr[0] → arr[0] + 1` instead
 > - AST identifier obfuscation (`Obfuscator::obfuscate` is a no-op placeholder)
-> - WebSocket support — planned for v0.5
+> - WebSocket support — planned for v0.6
 > - macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only
 
 ---
@@ -770,12 +772,12 @@ print → add5(3)    # 8
 
 The captured environment is a snapshot: mutations to `n` after `make_adder` returns do not affect existing closures.
 
-### 4.6 Async Functions (synchronous mode in v0.4)
+### 4.6 Async Functions
 
-> **v0.4 note:** `async`/`await` syntax is fully parsed and accepted. In the current
-> implementation both VMs execute async functions **synchronously** — `await` evaluates
-> the expression and returns its value immediately without any blocking or parallelism.
-> Full Tokio-backed async I/O is planned for v0.5.
+> **v0.5:** `async define → fn → (args)` now spawns a real OS thread when called without `await`.
+> The return value is `Value::Future`. Calling `await future` blocks the calling thread until the
+> spawned task finishes. Non-future values passed to `await` are returned unchanged (identity).
+> The child thread receives a snapshot of the parent's global scope.
 
 ```txtcode
 async → define → fetch → (url: string) → string
@@ -787,7 +789,8 @@ end
 store → result → fetch("https://example.com")
 ```
 
-- `async → define` is accepted; the function runs synchronously.
+- `async define → fn → (args)` spawns an OS thread; returns `Value::Future`.
+- `await expr` — if `expr` is a `Future`, blocks until the thread finishes; otherwise identity.
 - `await → expr` evaluates `expr` and returns the result directly.
 - No `Future<T>` type at runtime — the value is returned as-is.
 - `await_all` is not built-in; model parallel execution with sequential calls for now.
@@ -1144,14 +1147,14 @@ informed decisions about running Txt-code scripts.
 | **Source file size limit** | 10 MB max, rejected before parsing | Prevents resource exhaustion |
 | **Permission checking in stdlib** | `call_function_with_combined_traits` checks net/IO/sys/exec | Before call via PermissionChecker trait |
 
-### F.2 Not Yet Enforced (v0.4 status)
+### F.2 Not Yet Enforced (v0.5 status)
 
 | Gap | Impact | Status |
 |-----|--------|--------|
-| **Memory limits** | No explicit heap limit; bounded by host OS only | Future |
-| **`?()` optional call on non-null non-function** | Raises RuntimeError in bytecode VM | v0.5 |
-| **Source comments in migrate** | `#` comments are not preserved through AST printer | v0.4 |
-| **`return →` inside nested blocks** | Does not propagate through `match`, `if`, or `for` to caller | v0.5 |
+| **Memory limits** | No explicit heap limit; bounded by host OS only | v0.6 |
+| **`?()` optional call on non-null non-function** | Raises RuntimeError in bytecode VM | v0.6 |
+| **Source comments in migrate** | `#` comments are not preserved through AST printer | v0.6 |
+| **`return →` inside nested blocks** | Does not propagate through `match`, `if`, or `for` to caller | v0.6 |
 
 ### F.2a Known Runtime Limitation — `return →` in Nested Blocks
 

@@ -6,11 +6,22 @@ use std::time::Duration;
 pub struct NetLib;
 
 impl NetLib {
+    /// Call a networking library function.
+    ///
+    /// `permission_checker`: Must be `Some(checker)` in all VM-dispatched calls.
+    /// Pass `None` only in trusted internal Rust contexts (unit tests, tool executors
+    /// that perform their own permission checks upstream).
     pub fn call_function(
         name: &str,
         args: &[Value],
         permission_checker: Option<&dyn crate::stdlib::permission_checker::PermissionChecker>,
     ) -> Result<Value, RuntimeError> {
+        #[cfg(debug_assertions)]
+        if permission_checker.is_none() {
+            crate::tools::logger::log_warn(&format!(
+                "stdlib internal: '{}' called without permission_checker — trusted path only", name
+            ));
+        }
         match name {
             "http_get" => {
                 if args.len() != 1 {
@@ -20,9 +31,8 @@ impl NetLib {
                     Value::String(url) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            if let Some(hostname) = Self::extract_hostname(url) {
-                                checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                            }
+                            let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         Self::http_get_sync(url)
                     }
@@ -37,9 +47,8 @@ impl NetLib {
                     (Value::String(url), Value::String(body)) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            if let Some(hostname) = Self::extract_hostname(url) {
-                                checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                            }
+                            let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         let headers = if args.len() == 3 {
                             match &args[2] {
@@ -60,9 +69,8 @@ impl NetLib {
                     (Value::String(url), Value::String(body)) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            if let Some(hostname) = Self::extract_hostname(url) {
-                                checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                            }
+                            let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         let headers = if args.len() == 3 {
                             match &args[2] { Value::Map(h) => Some(h), _ => return Err(RuntimeError::new("http_put headers must be a map".to_string())) }
@@ -80,9 +88,8 @@ impl NetLib {
                     Value::String(url) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            if let Some(hostname) = Self::extract_hostname(url) {
-                                checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                            }
+                            let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         let headers = if args.len() == 2 {
                             match &args[1] { Value::Map(h) => Some(h), _ => return Err(RuntimeError::new("http_delete headers must be a map".to_string())) }
@@ -100,9 +107,8 @@ impl NetLib {
                     (Value::String(url), Value::String(body)) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            if let Some(hostname) = Self::extract_hostname(url) {
-                                checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                            }
+                            let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         let headers = if args.len() == 3 {
                             match &args[2] { Value::Map(h) => Some(h), _ => return Err(RuntimeError::new("http_patch headers must be a map".to_string())) }
@@ -120,9 +126,8 @@ impl NetLib {
                     Value::String(url) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            if let Some(hostname) = Self::extract_hostname(url) {
-                                checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                            }
+                            let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         Self::http_headers_sync(url)
                     }
@@ -137,9 +142,8 @@ impl NetLib {
                     Value::String(url) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            if let Some(hostname) = Self::extract_hostname(url) {
-                                checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                            }
+                            let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         Self::http_status_sync(url)
                     }
@@ -165,9 +169,8 @@ impl NetLib {
                 } else { 30000 };
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
-                    if let Some(hostname) = Self::extract_hostname(&url) {
-                        checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                    }
+                    let hostname = Self::extract_hostname(&url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                 }
                 Self::http_timeout_sync(&url, &method, body.as_deref(), timeout_ms)
             }
@@ -179,9 +182,8 @@ impl NetLib {
                     Value::String(url) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            if let Some(hostname) = Self::extract_hostname(url) {
-                                checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
-                            }
+                            let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         // Synchronous context: no real streaming, returns full body like http_get
                         Self::http_get_sync(url)

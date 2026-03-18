@@ -180,6 +180,7 @@ fn test_safe_mode_blocks_exec() {
 // Bytecode VM: NullCoalesce
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_null_coalesce_returns_default_for_null() {
     use txtcode::compiler::bytecode::Bytecode;
@@ -207,6 +208,7 @@ fn test_bytecode_vm_null_coalesce_returns_default_for_null() {
     assert_eq!(result.unwrap(), Value::Integer(42));
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_null_coalesce_returns_value_when_not_null() {
     use txtcode::compiler::bytecode::Bytecode;
@@ -233,6 +235,7 @@ fn test_bytecode_vm_null_coalesce_returns_value_when_not_null() {
     assert_eq!(result.unwrap(), Value::String("hello".to_string()));
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_optional_member_null_safe() {
     // OptionalGetField on Null must return Null (safe navigation, no error)
@@ -383,6 +386,7 @@ fn test_smoke_linter_does_not_panic() {
 // Bytecode VM: control flow and iterators (v0.4)
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_while_loop_executes_correctly() {
     use txtcode::runtime::bytecode_vm::BytecodeVM;
@@ -428,6 +432,7 @@ fn test_bytecode_vm_while_loop_executes_correctly() {
     );
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_for_loop_iterates_array() {
     use txtcode::compiler::bytecode::BytecodeCompiler;
@@ -455,6 +460,7 @@ fn test_bytecode_vm_for_loop_iterates_array() {
     );
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_for_loop_empty_array_skips_body() {
     use txtcode::compiler::bytecode::BytecodeCompiler;
@@ -481,6 +487,7 @@ fn test_bytecode_vm_for_loop_empty_array_skips_body() {
     );
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_increment_operator() {
     use txtcode::compiler::bytecode::BytecodeCompiler;
@@ -562,6 +569,7 @@ fn test_recursion_depth_limit() {
     );
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_match_string_case() {
     use txtcode::compiler::bytecode::BytecodeCompiler;
@@ -602,6 +610,7 @@ fn test_bytecode_vm_match_string_case() {
 // User-defined functions in bytecode VM (v0.4)
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_user_function_simple() {
     use txtcode::compiler::bytecode::BytecodeCompiler;
@@ -640,6 +649,7 @@ fn test_bytecode_vm_user_function_simple() {
     );
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_user_function_two_params() {
     use txtcode::compiler::bytecode::BytecodeCompiler;
@@ -678,6 +688,7 @@ fn test_bytecode_vm_user_function_two_params() {
     );
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_recursion_depth_limit() {
     use txtcode::compiler::bytecode::BytecodeCompiler;
@@ -1071,6 +1082,7 @@ fn test_pipe_exec_blocked_by_permission_checker() {
 // Bytecode VM parity: safe_mode and deny_permission match AST VM behaviour
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_safe_mode_blocks_exec_parity() {
     use txtcode::compiler::bytecode::BytecodeCompiler;
@@ -1095,6 +1107,7 @@ fn test_bytecode_vm_safe_mode_blocks_exec_parity() {
     );
 }
 
+#[cfg(feature = "bytecode")]
 #[test]
 fn test_bytecode_vm_deny_permission_does_not_break_arithmetic() {
     use txtcode::compiler::bytecode::BytecodeCompiler;

@@ -9,6 +9,104 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **`str_format(template, args...)` / `format(template, args...)`** — `{}` sequential and `{N}` positional placeholder formatting. `str_format("{} + {} = {}", 1, 2, 3)` → `"1 + 2 = 3"`.
+- **`str_repeat(s, n)`** — repeat a string n times.
+- **`str_contains(s, substr)`** — boolean membership test (cleaner than `indexOf() != -1`).
+- **`str_chars(s)`** — split a string into an array of single-character strings.
+- **`str_reverse(s)`** — reverse the characters of a string.
+- **`str_center(s, width, pad_char?)`** — center-pad a string to the given width (default pad char `' '`).
+- **`array_sum(arr)`** — sum all numeric elements; preserves int vs float.
+- **`array_flatten(arr)`** — flatten one level of nesting.
+- **`array_enumerate(arr)`** — produce `[[0, v0], [1, v1], ...]` for indexed iteration.
+- **`array_zip(arr1, arr2)`** — produce `[[a0, b0], [a1, b1], ...]` pairs (stops at shorter array).
+- **`array_contains(arr, val)`** — boolean membership test.
+- **`array_push(arr, val)`** — return a new array with `val` appended.
+- **`array_pop(arr)`** — return `[new_arr, last_element]`; errors on empty array.
+- **`array_head(arr)`** — first element, or `null` for empty array.
+- **`array_tail(arr)`** — all but the first element, or `[]` for empty array.
+
+### Fixed
+- **Lexer: `{` in plain strings no longer triggers interpolation** — only `f"..."` strings support `{expr}` interpolation. Regular `"..."` strings treat `{` and `}` as literal characters. This fixes a long-standing bug where writing `"{}"` in a string produced an interpolated empty expression instead of the two-character literal `{}`. Escaping with `\{` still works as before.
+
+---
+
+## [0.5.0] — 2026-03-18
+
+### Summary
+
+v0.5.0 is the **API and language-spec freeze** release. All seven planned phases are complete.
+The public crate API, permission model, stdlib function names, and language syntax are now stable
+for the v0.5 series. Breaking changes will be deferred to v0.6.0 and signalled in advance.
+
+### Added
+- **Package registry backend** (Phase 5-C) — `registry/index.json` is the single source of truth for all published packages. New `RegistryIndex` type (with `from_str`, `from_file`, `search`, `get_package`, `latest_version`). `PackageRegistry::load_index()` resolves in order: `TXTCODE_REGISTRY_INDEX_FILE` env var (local/test) → HTTPS fetch (net feature). `download_package` is un-stubbed — it looks up the version entry in the index, verifies SHA-256 (skipped when empty), then extracts the tarball. `txtcode package search` and `txtcode package info` now use the index instead of custom HTTP calls.
+- **Real async/await execution** (Phase 6-B) — `async define → fn → (args)` now spawns an OS thread when called. The return value is `Value::Future`; `await expr` blocks the calling thread until the task completes. Non-future values passed to `await` are returned as-is (identity). The child thread receives a snapshot of the parent's global scope so it can call other user-defined functions and see global constants. Both AST VM and bytecode VM handle `Value::Future` in display/type/JSON.
+- **Starter packages** (Phase 5-B) — four curated packages in `packages/` ship with the repo:
+  - `npl-math@0.1.0` — GCD, LCM, primality, factorial, Fibonacci, clamp, lerp, mean, median, ipow
+  - `npl-strings@0.1.0` — pad_left/right, center, repeat_str, truncate, words, count_substr, wrap
+  - `npl-collections@0.1.0` — zip, flatten, chunk, unique, frequencies, take, drop, range, range_step
+  - `npl-datetime@0.1.0` — timestamp, today, format_date, format_datetime, relative_time, elapsed_seconds, is_leap_year, days_in_month
+- **`txtcode package install-local <PATH>`** — new subcommand that copies a local package directory (containing `Txtcode.toml`) into `~/.txtcode/packages/{name}/{version}/`; idempotent, safe against path traversal.
+- **Semver resolver unit tests** — 11 tests covering `^`, `~`, `>=`, exact, non-semver, missing-package, and `get_installed_version`/`is_installed` paths in `DependencyResolver` (Phase 5-A).
+- **`txtcode run --permissions-report`** — parse a `.tc` script, print every privileged permission it would request (grouped by permission string), then exit without running. Supports `--json` output.
+- **`CapabilityResult` enum** (`Granted`, `NotFound`, `Revoked { token_id }`, `Expired { token_id }`) — replaces raw `bool` returns from `CapabilityManager::is_valid`. New `is_valid_detailed()` method returns typed result; `is_valid()` now delegates to it.  Both AST VM and Bytecode VM `use_capability()` now emit actionable denial reasons instead of generic "Invalid or expired" messages.
+- **`RestrictionChecker::collect_privileged_calls_pub` / `required_capability_pub`** — public wrappers used by the permissions report feature.
+- **Async function warning** — defining an `async` function now emits a `[WARNING]` explaining that it executes synchronously (E0051), preventing silent concurrency misexpectations.
+- **FFI stdlib** (`ffi` feature, Phase 6-C) — load native shared libraries and call C functions from Txtcode scripts.
+  `ffi_load(path)` opens a `.so`/`.dll` and returns an integer handle.
+  `ffi_call(handle, fn_name, ret_type, args)` resolves the symbol and dispatches with 0–4 `i64` arguments; supported return types: `"int"` (i64), `"float"` (f64), `"void"` (null).
+  `ffi_close(handle)` unloads the library.
+  All three require the `sys.ffi` permission. Enabled with `cargo build --features ffi`; off by default.
+  Names (`ffi_load`, `ffi_call`, `ffi_close`) are protected from obfuscation via the `ffi_` prefix.
+- **Struct field assignment type checking** — `store → s["field"] → value` (bracket-notation struct field assign) now validates the value type against the struct definition. Unknown field writes and type mismatches emit `[WARNING]` in advisory mode, `E0016` error in strict mode.
+- **`struct_defs()` / `strict_types()` added to `StatementVM` trait** — enables statement-level type enforcement consistent with expression-level checking.
+- **`Value::type_name()`** — returns a human-readable type name string (`"int"`, `"float"`, `"string"`, etc.) for use in error messages.
+- **Struct field type enforcement** — struct construction now validates field values against declared types (from `struct Point(x: int, y: int)` definitions).
+  In advisory mode (default): type mismatches emit a `[WARNING]` to stderr and execution continues.
+  In strict mode (`--strict-types`): type mismatches raise a hard `RuntimeError` with code `E0016`.
+- **Unknown field detection** — constructing a struct with a field not declared in the struct definition emits a `[WARNING]` (or hard error in strict mode).
+- **`ErrorCode::E0016`** (StructFieldTypeMismatch), **`E0051`** (AsyncWithoutExperimental), **`E0052`** (ExperimentalDisabled) added to the stable error code table.
+- **`vm.set_strict_types(bool)`** — new setter on `VirtualMachine`; wired from `txtcode run --strict-types` into runtime struct type checking.
+- **`xml_decode`** — canonical name for the XML parsing function. `xml_parse` is kept as a legacy alias (both names work).
+- **`json_encode` / `json_decode`** — added to obfuscator's `STDLIB_NAMES` (were already the canonical names in the stdlib; now protected from mangling).
+
+### Changed
+- `run_file_with_allowlists` now accepts a `strict_types: bool` parameter and threads it into the VM.
+- Obfuscator `STDLIB_NAMES`: removed stale `debug`/`info`/`warn`/`error` bare log aliases (removed from stdlib in v0.4.1); added `xml_decode`, `json_encode`, `json_decode`.
+
+---
+
+## [0.4.1] — 2026-03-18
+
+### Removed
+- **`PermissionResource::WiFi` and `PermissionResource::Bluetooth`** — removed from the permission model entirely.
+  These variants were unimplemented placeholders with dangerous subcategories (`deauth`, `inject`, `fuzz`).
+  Attempting to use `wifi.*` or `ble.*` permission strings now returns a clear error.
+- **`pentest` feature flag** — removed from `Cargo.toml`. Was an empty placeholder with no implementation.
+- **`WiFiCapability` / `BLECapability` structs** — removed from `src/capability/`. Files emptied; will be deleted in v0.5.0.
+- **Bare logging aliases** — `debug`, `info`, `warn`, `error` removed from stdlib exports.
+  Use `log_debug`, `log_info`, `log_warn`, `log_error` (canonical names, unchanged).
+- **`random_bytes`, `random_int` in CryptoLib** — renamed to `crypto_random_bytes`, `crypto_random_int`
+  to distinguish from `math_random_int` / `math_random_float` in CoreLib.
+  Old names are gone. Update call sites to use the new names.
+
+### Fixed
+- **Package registry URL** — `PackageRegistry::download_package()` no longer silently 404s against a
+  nonexistent GitHub org. Remote installs now return a clear error with instructions to use local path deps.
+  Remote registry will be available in v0.7.0.
+- **`LockFile` checksums** — removed `compute_checksum(name, version)` which hashed name strings instead
+  of file content. `LockFile::add_package()` now requires actual tarball bytes and hashes those.
+- **`tar` subprocess** — package tarball extraction no longer calls `std::process::Command::new("tar")`.
+  Replaced with pure-Rust `flate2` + `tar` crates. Cross-platform, no external binary required.
+  Path traversal (zip-slip) protection maintained on all entries.
+- **Bytecode VM `grant_permission` / `deny_permission`** — fixed incorrect single-argument calls in
+  `BcvmExecutor`; now correctly passes `(resource, scope)` tuple.
+
+### Dependencies added
+- `flate2 = "1.0"` — pure-Rust gzip decompression (replaces system `tar`)
+- `tar = "0.4"` — pure-Rust tar archive reading (replaces system `tar`)
+
 ---
 
 ## [0.4.0] — 2026-03-11

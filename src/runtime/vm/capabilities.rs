@@ -47,12 +47,14 @@ impl VirtualMachine {
 
     /// Set active capability for current scope
     pub fn use_capability(&mut self, token_id: String) -> Result<(), RuntimeError> {
-        // Validate capability exists and is valid
-        if self.capability_manager.is_valid(&token_id) {
+        // Validate capability exists and is valid; use detailed result for useful errors.
+        let result = self.capability_manager.is_valid_detailed(&token_id);
+        if result.is_granted() {
             self.active_capability = Some(token_id);
             Ok(())
         } else {
-            Err(self.create_error(format!("Invalid or expired capability token: {}", token_id)))
+            let reason = result.denial_reason().unwrap_or_else(|| "invalid token".to_string());
+            Err(self.create_error(format!("Capability denied: {}", reason)))
         }
     }
 

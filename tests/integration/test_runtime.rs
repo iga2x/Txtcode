@@ -499,3 +499,337 @@ fn test_array_slice_stdlib_oob_errors() {
     let result = run_ast_repl(r#"array_slice([1, 2, 3], 0, 99)"#);
     assert!(result.is_err(), "OOB must error");
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2-A — Struct type enforcement tests
+// ---------------------------------------------------------------------------
+
+fn run_with_strict(source: &str) -> Result<txtcode::runtime::Value, txtcode::runtime::errors::RuntimeError> {
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    vm.set_strict_types(true);
+    vm.interpret(&program)
+}
+
+#[test]
+fn test_struct_construction_correct_types() {
+    // Correct types — must succeed in both advisory and strict mode.
+    // Struct literal syntax: TypeName{ field: value, ... }
+    let source = "struct Point(x: int, y: int)\nstore → p → Point{ x: 1, y: 2 }";
+    let result = run_ast_repl(source);
+    assert!(result.is_ok(), "correct struct construction should succeed: {:?}", result);
+}
+
+#[test]
+fn test_struct_construction_type_mismatch_advisory() {
+    // Wrong type in advisory mode (default) — should warn but NOT error.
+    let source = "struct Point(x: int, y: int)\nstore → p → Point{ x: \"bad\", y: 2 }";
+    let result = run_ast_repl(source);
+    assert!(result.is_ok(), "advisory mode should not hard-error on type mismatch: {:?}", result);
+}
+
+#[test]
+fn test_struct_construction_type_mismatch_strict() {
+    // Wrong type in strict mode — must return E0016 error.
+    let source = "struct Point(x: int, y: int)\nstore → p → Point{ x: \"bad\", y: 2 }";
+    let result = run_with_strict(source);
+    assert!(result.is_err(), "strict mode must error on type mismatch");
+    let err = result.unwrap_err();
+    assert_eq!(
+        err.code,
+        Some(txtcode::runtime::errors::ErrorCode::E0016),
+        "error code must be E0016, got: {:?}", err.code
+    );
+}
+
+#[test]
+fn test_struct_unknown_field_strict() {
+    // Unknown field in strict mode — must return E0016.
+    let source = "struct Point(x: int, y: int)\nstore → p → Point{ x: 1, y: 2, z: 3 }";
+    let result = run_with_strict(source);
+    assert!(result.is_err(), "strict mode must error on unknown field");
+    let err = result.unwrap_err();
+    assert_eq!(
+        err.code,
+        Some(txtcode::runtime::errors::ErrorCode::E0016),
+        "error code must be E0016, got: {:?}", err.code
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2-C — Error code inference tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_error_code_e0016_inferred() {
+    use txtcode::runtime::errors::ErrorCode;
+    assert_eq!(
+        ErrorCode::infer_from_message("Struct field type mismatch: 'Point.x' expected Int, got string"),
+        ErrorCode::E0016
+    );
+}
+
+#[test]
+fn test_error_code_e0051_inferred() {
+    use txtcode::runtime::errors::ErrorCode;
+    assert_eq!(
+        ErrorCode::infer_from_message("async function 'foo' is not supported"),
+        ErrorCode::E0051
+    );
+}
+
+#[test]
+fn test_error_code_e0052_inferred() {
+    use txtcode::runtime::errors::ErrorCode;
+    assert_eq!(
+        ErrorCode::infer_from_message("experimental feature disabled"),
+        ErrorCode::E0052
+    );
+}
+
+#[test]
+fn test_error_code_e0001_inferred() {
+    use txtcode::runtime::errors::ErrorCode;
+    assert_eq!(
+        ErrorCode::infer_from_message("permission denied: fs.write"),
+        ErrorCode::E0001
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6-B — async/await tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_async_call_returns_future() {
+    // Calling an async function without await yields a Value::Future
+    let result = run_ast_repl(
+        r#"
+async define → double → (x)
+  return → x * 2
+end
+store → f → double(5)
+f
+"#,
+    );
+    assert!(result.is_ok(), "{:?}", result);
+    assert!(
+        matches!(result.unwrap(), txtcode::runtime::Value::Future(_)),
+        "expected Value::Future"
+    );
+}
+
+#[test]
+fn test_async_await_resolves_value() {
+    // await on an async function call should block and return the computed value.
+    let result = run_ast_repl(
+        r#"
+async define → triple → (x)
+  return → x * 3
+end
+store → result → await triple(4)
+result
+"#,
+    );
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(12));
+}
+
+#[test]
+fn test_await_on_non_future_is_identity() {
+    // `await` on a plain value is a transparent no-op.
+    let result = run_ast_repl(
+        "store → x → await 42\nx",
+    );
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(42));
+}
+
+#[test]
+fn test_async_concurrent_tasks() {
+    // Spawn two async tasks concurrently and await both.
+    let result = run_ast_repl(
+        r#"
+async define → add_one → (x)
+  return → x + 1
+end
+store → f1 → add_one(10)
+store → f2 → add_one(20)
+store → r1 → await f1
+store → r2 → await f2
+r1 + r2
+"#,
+    );
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(32));
+}
+
+#[test]
+fn test_async_function_sees_globals() {
+    // The async task's VM gets a snapshot of globals, so it can read
+    // a global constant defined before the call.
+    let result = run_ast_repl(
+        r#"
+store → base → 100
+async define → offset → (x)
+  return → base + x
+end
+store → result → await offset(7)
+result
+"#,
+    );
+    assert!(result.is_ok(), "{:?}", result);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(107));
+}
+
+// ── New stdlib functions (v0.6) ───────────────────────────────────────────────
+
+#[test]
+fn test_str_format_sequential() {
+    let result = run_ast_repl(r#"str_format("{} + {} = {}", 1, 2, 3)"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("1 + 2 = 3".to_string()));
+}
+
+#[test]
+fn test_str_format_positional() {
+    let result = run_ast_repl(r#"str_format("{1} before {0}", "world", "hello")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("hello before world".to_string()));
+}
+
+#[test]
+fn test_format_alias() {
+    let result = run_ast_repl(r#"format("x={}", 42)"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("x=42".to_string()));
+}
+
+#[test]
+fn test_str_repeat() {
+    let result = run_ast_repl(r#"str_repeat("ab", 3)"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("ababab".to_string()));
+}
+
+#[test]
+fn test_str_repeat_zero() {
+    let result = run_ast_repl(r#"str_repeat("x", 0)"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("".to_string()));
+}
+
+#[test]
+fn test_str_contains_true() {
+    let result = run_ast_repl(r#"str_contains("hello world", "world")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Boolean(true));
+}
+
+#[test]
+fn test_str_contains_false() {
+    let result = run_ast_repl(r#"str_contains("hello", "xyz")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Boolean(false));
+}
+
+#[test]
+fn test_str_chars() {
+    let result = run_ast_repl(r#"len(str_chars("abc"))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(3));
+}
+
+#[test]
+fn test_str_reverse() {
+    let result = run_ast_repl(r#"str_reverse("hello")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("olleh".to_string()));
+}
+
+#[test]
+fn test_str_center() {
+    let result = run_ast_repl(r#"str_center("hi", 6)"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("  hi  ".to_string()));
+}
+
+#[test]
+fn test_str_center_custom_pad() {
+    let result = run_ast_repl(r#"str_center("hi", 6, "-")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("--hi--".to_string()));
+}
+
+#[test]
+fn test_array_sum_int() {
+    let result = run_ast_repl(r#"array_sum([1, 2, 3, 4])"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(10));
+}
+
+#[test]
+fn test_array_sum_float() {
+    let result = run_ast_repl(r#"array_sum([1.5, 2.5])"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Float(4.0));
+}
+
+#[test]
+fn test_array_flatten() {
+    let result = run_ast_repl(r#"array_flatten([[1, 2], [3], [4, 5]])"#);
+    assert_eq!(
+        result.unwrap(),
+        txtcode::runtime::Value::Array(vec![
+            txtcode::runtime::Value::Integer(1),
+            txtcode::runtime::Value::Integer(2),
+            txtcode::runtime::Value::Integer(3),
+            txtcode::runtime::Value::Integer(4),
+            txtcode::runtime::Value::Integer(5),
+        ])
+    );
+}
+
+#[test]
+fn test_array_enumerate() {
+    let result = run_ast_repl(r#"len(array_enumerate(["a", "b", "c"]))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(3));
+}
+
+#[test]
+fn test_array_zip() {
+    let result = run_ast_repl(r#"len(array_zip([1, 2], ["a", "b"]))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(2));
+}
+
+#[test]
+fn test_array_contains_true() {
+    let result = run_ast_repl(r#"array_contains([1, 2, 3], 2)"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Boolean(true));
+}
+
+#[test]
+fn test_array_contains_false() {
+    let result = run_ast_repl(r#"array_contains([1, 2, 3], 99)"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Boolean(false));
+}
+
+#[test]
+fn test_array_push() {
+    let result = run_ast_repl(r#"len(array_push([1, 2], 3))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(3));
+}
+
+#[test]
+fn test_array_head() {
+    let result = run_ast_repl(r#"array_head([10, 20, 30])"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(10));
+}
+
+#[test]
+fn test_array_head_empty() {
+    let result = run_ast_repl(r#"array_head([])"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Null);
+}
+
+#[test]
+fn test_array_tail() {
+    let result = run_ast_repl(r#"len(array_tail([1, 2, 3]))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(2));
+}
+
+#[test]
+fn test_array_tail_empty() {
+    let result = run_ast_repl(r#"array_tail([])"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Array(vec![]));
+}

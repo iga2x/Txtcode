@@ -2,6 +2,9 @@ use super::VirtualMachine;
 use crate::runtime::audit::AuditResult;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::permissions::{Permission, PermissionManager, PermissionResource};
+use crate::runtime::security_pipeline::{
+    self, PipelineAuditResult, SecurityPipelineContext,
+};
 
 /// Permission management methods for VirtualMachine
 impl VirtualMachine {
@@ -28,156 +31,141 @@ impl VirtualMachine {
             .map_err(|e| self.create_error(format!("Permission error: {}", e)))
     }
 
-    /// Check permission and log to audit trail (mutable version)
-    /// Also checks rate limits and policies
-    /// Execution order: Intent → Capability → Permission
+    /// Check permission and log to audit trail (mutable version).
+    /// Delegates to the shared 6-layer `run_pipeline()` in `security_pipeline.rs`.
     pub fn check_permission_with_audit(
         &mut self,
         resource: &PermissionResource,
         scope: Option<&str>,
     ) -> Result<(), RuntimeError> {
-        // Check max execution time
-        self.check_max_execution_time()?;
-
-        // Check AI allowance if AI metadata is present
-        if !self.ai_metadata.is_empty() {
-            self.check_ai_allowed()?;
-        }
-
-        // 1. CHECK INTENT FIRST (if function has intent declared)
-        // Get current function name from call stack
-        if let Some(current_frame) = self.call_stack.current_frame() {
-            let function_name = &current_frame.function_name;
-            let action = match resource {
-                PermissionResource::FileSystem(action) => format!("fs.{}", action),
-                PermissionResource::Network(action) => format!("net.{}", action),
-                PermissionResource::System(action) => format!("sys.{}", action),
-                PermissionResource::Process(_) => "process.exec".to_string(),
-                PermissionResource::WiFi(action) => format!("wifi.{}", action),
-                PermissionResource::Bluetooth(action) => format!("ble.{}", action),
-            };
-            let resource_str = scope.unwrap_or("");
-
-            // Check intent - if violated, error immediately
-            if let Err(intent_err) = self.check_intent(function_name, &action, resource_str) {
-                // Log intent violation to audit trail
-                let _ = self.audit_trail.log_action(
-                    format!("intent.violation.{}", action),
-                    resource_str.to_string(),
-                    Some(format!("intent:{}", function_name)),
-                    crate::runtime::audit::AuditResult::Denied,
-                    if self.ai_metadata.is_empty() {
-                        None
-                    } else {
-                        Some(&self.ai_metadata)
-                    },
-                );
-                return Err(intent_err);
-            }
-        }
-
-        // 2. CHECK CAPABILITY TOKEN (if active in current scope)
-        // Clone to release the shared borrow before any &mut self call below.
-        if let Some(token_id) = self.active_capability.clone() {
-            let action = self.get_action_from_resource(resource);
-            match self
-                .capability_manager
-                .check(&token_id, resource, &action, scope)
-            {
-                Ok(()) => {
-                    // Explicit denies always win, even over a valid capability token.
-                    // A `deny_permission()` call must not be bypassable by holding a token.
-                    if let Err(deny_err) = self.permission_manager.check_denied(resource, scope) {
-                        let _ = self.audit_trail.log_action(
-                            format!("capability.denied.{}", action),
-                            scope.unwrap_or("").to_string(),
-                            Some(format!("capability:{}/deny-override", token_id)),
-                            AuditResult::Denied,
-                            if self.ai_metadata.is_empty() {
-                                None
-                            } else {
-                                Some(&self.ai_metadata)
-                            },
-                        );
-                        return Err(
-                            self.create_error(format!("Permission error: {}", deny_err))
-                        );
-                    }
-                    // Capability valid and no explicit deny — still apply rate limiting (2.4).
-                    // Rate limits must apply regardless of how access is granted.
-                    let cap_action_str = format!("capability.check.{}", action);
-                    self.check_rate_limit(&cap_action_str)?;
-                    // Log and allow
-                    let _ = self.audit_trail.log_action(
-                        format!("capability.used.{}", action),
-                        scope.unwrap_or("").to_string(),
-                        Some(format!("capability:{}", token_id)),
-                        AuditResult::Allowed,
-                        if self.ai_metadata.is_empty() {
-                            None
-                        } else {
-                            Some(&self.ai_metadata)
-                        },
-                    );
-                    return Ok(());
-                }
-                Err(cap_err) => {
-                    // Capability check failed - log and return error
-                    let _ = self.audit_trail.log_action(
-                        format!("capability.check.{}", action),
-                        scope.unwrap_or("").to_string(),
-                        Some(format!("capability:{}", token_id)),
-                        AuditResult::Denied,
-                        if self.ai_metadata.is_empty() {
-                            None
-                        } else {
-                            Some(&self.ai_metadata)
-                        },
-                    );
-                    return Err(self.create_error(format!("Capability error: {}", cap_err)));
-                }
-            }
-        }
-
-        // 3. Check rate limit for this action/resource
-        let action_str = format!("permission.check.{}", resource);
-        self.check_rate_limit(&action_str)?;
-
-        // 4. Check permission
-        let result = self.permission_manager.check(resource, scope);
-
-        // Log permission check to audit trail
-        let _ = self.audit_trail.log_permission_check(
-            resource,
-            scope,
-            result.clone(),
-            if self.ai_metadata.is_empty() {
-                None
-            } else {
-                Some(&self.ai_metadata)
-            },
-        );
-
-        result.map_err(|e| self.create_error(format!("Permission error: {}", e)))
+        security_pipeline::run_pipeline(self, resource, scope)
+            .into_result()
+            .map_err(|e| self.create_error(e))
     }
 
     /// Get permission manager reference
     pub fn get_permission_manager(&self) -> &PermissionManager {
         &self.permission_manager
     }
+}
 
-    /// Get action string from PermissionResource (helper for capabilities and intent checks).
-    /// Uses the same namespaced format as the Bytecode VM and the intent check in
-    /// check_permission_with_audit so that capability tokens and intent declarations
-    /// registered via either VM use the same action namespace: "fs.read", "net.connect", etc.
-    pub(super) fn get_action_from_resource(&self, resource: &PermissionResource) -> String {
-        match resource {
-            PermissionResource::FileSystem(action) => format!("fs.{}", action),
-            PermissionResource::Network(action) => format!("net.{}", action),
-            PermissionResource::System(action) => format!("sys.{}", action),
-            PermissionResource::Process(_) => "process.exec".to_string(),
-            PermissionResource::WiFi(action) => format!("wifi.{}", action),
-            PermissionResource::Bluetooth(action) => format!("ble.{}", action),
+// ── SecurityPipelineContext impl ─────────────────────────────────────────────
+
+impl SecurityPipelineContext for VirtualMachine {
+    fn check_max_execution_time(&mut self) -> Result<(), String> {
+        self.policy_engine
+            .check_max_execution_time()
+            .map_err(|e| format!("Policy error: {}", e))
+    }
+
+    fn check_ai_allowed(&mut self) -> Result<(), String> {
+        self.policy_engine
+            .check_ai_allowed()
+            .map_err(|e| format!("Policy error: {}", e))
+    }
+
+    fn check_intent(&self, function_name: &str, action: &str, resource: &str) -> Result<(), String> {
+        self.intent_checker
+            .check_action(function_name, action, resource)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Handles deny-wins, rate-limit (Phase 2.4), and audit logging for capability checks.
+    fn check_capability(
+        &mut self,
+        resource: &PermissionResource,
+        action: &str,
+        scope: Option<&str>,
+    ) -> Option<Result<(), String>> {
+        let token_id = self.active_capability.clone()?;
+
+        match self.capability_manager.check(&token_id, resource, action, scope) {
+            Ok(()) => {
+                // Explicit denies always win, even over a valid capability token.
+                if let Err(deny_err) = self.permission_manager.check_denied(resource, scope) {
+                    let _ = self.audit_trail.log_action(
+                        format!("capability.denied.{}", action),
+                        scope.unwrap_or("").to_string(),
+                        Some(format!("capability:{}/deny-override", token_id)),
+                        AuditResult::Denied,
+                        if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                    );
+                    return Some(Err(format!("Permission error: {}", deny_err)));
+                }
+                // Rate limit still applies even when capability grants access (Phase 2.4).
+                if let Err(e) = self.policy_engine
+                    .check_rate_limit(&format!("capability.check.{}", action))
+                {
+                    return Some(Err(format!("Policy error: {}", e)));
+                }
+                let _ = self.audit_trail.log_action(
+                    format!("capability.used.{}", action),
+                    scope.unwrap_or("").to_string(),
+                    Some(format!("capability:{}", token_id)),
+                    AuditResult::Allowed,
+                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                );
+                Some(Ok(()))
+            }
+            Err(cap_err) => {
+                let _ = self.audit_trail.log_action(
+                    format!("capability.check.{}", action),
+                    scope.unwrap_or("").to_string(),
+                    Some(format!("capability:{}", token_id)),
+                    AuditResult::Denied,
+                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                );
+                Some(Err(format!("Capability error: {}", cap_err)))
+            }
         }
+    }
+
+    fn check_rate_limit(&mut self, action: &str) -> Result<(), String> {
+        self.policy_engine
+            .check_rate_limit(action)
+            .map_err(|e| format!("Policy error: {}", e))
+    }
+
+    fn check_permission_manager(
+        &mut self,
+        resource: &PermissionResource,
+        scope: Option<&str>,
+    ) -> Result<(), String> {
+        let result = self.permission_manager.check(resource, scope);
+        let _ = self.audit_trail.log_permission_check(
+            resource,
+            scope,
+            result.clone(),
+            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+        );
+        result.map_err(|e| format!("Permission error: {}", e))
+    }
+
+    fn current_function_name(&self) -> Option<&str> {
+        self.call_stack.current_frame().map(|f| f.function_name.as_str())
+    }
+
+    fn has_ai_metadata(&self) -> bool {
+        !self.ai_metadata.is_empty()
+    }
+
+    fn log_audit(
+        &mut self,
+        action: &str,
+        resource: &str,
+        token: Option<&str>,
+        result: PipelineAuditResult,
+    ) {
+        let audit_result = match result {
+            PipelineAuditResult::Allowed => AuditResult::Allowed,
+            PipelineAuditResult::Denied => AuditResult::Denied,
+        };
+        let _ = self.audit_trail.log_action(
+            action.to_string(),
+            resource.to_string(),
+            token.map(|s| s.to_string()),
+            audit_result,
+            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+        );
     }
 }

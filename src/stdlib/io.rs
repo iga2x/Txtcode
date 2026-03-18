@@ -205,13 +205,22 @@ impl IOLib {
 }
 
 impl IOLib {
-    /// Call an I/O library function
-    /// permission_checker: optional permission checker for permission enforcement
+    /// Call an I/O library function.
+    ///
+    /// `permission_checker`: Must be `Some(checker)` in all VM-dispatched calls.
+    /// Pass `None` only in trusted internal Rust contexts (unit tests, tool executors
+    /// that perform their own permission checks upstream).
     pub fn call_function(
         name: &str,
         args: &[Value],
         permission_checker: Option<&dyn crate::stdlib::permission_checker::PermissionChecker>,
     ) -> Result<Value, RuntimeError> {
+        #[cfg(debug_assertions)]
+        if permission_checker.is_none() {
+            crate::tools::logger::log_warn(&format!(
+                "stdlib internal: '{}' called without permission_checker — trusted path only", name
+            ));
+        }
         match name {
             "read_file" => {
                 if args.len() != 1 {
@@ -273,6 +282,13 @@ impl IOLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("read".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         match Self::validate_path(path) {
                             Ok(validated_path) => Ok(Value::Boolean(validated_path.exists())),
                             Err(_) => Ok(Value::Boolean(false)), // Invalid path = doesn't exist
@@ -291,6 +307,13 @@ impl IOLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("read".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         let validated_path = Self::validate_path(path)?;
                         let entries: Result<Vec<Value>, RuntimeError> =
                             fs::read_dir(&validated_path)
@@ -310,7 +333,10 @@ impl IOLib {
                                         })
                                 })
                                 .collect();
-                        entries.map(Value::Array)
+                        entries.map(|mut v| {
+                            v.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                            Value::Array(v)
+                        })
                     }
                     _ => Err(RuntimeError::new(
                         "list_dir requires a string path".to_string(),
@@ -325,6 +351,13 @@ impl IOLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("read".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         match Self::validate_path(path) {
                             Ok(validated_path) => Ok(Value::Boolean(validated_path.is_file())),
                             Err(_) => Ok(Value::Boolean(false)), // Invalid path = not a file
@@ -343,6 +376,13 @@ impl IOLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("read".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
                         match Self::validate_path(path) {
                             Ok(validated_path) => Ok(Value::Boolean(validated_path.is_dir())),
                             Err(_) => Ok(Value::Boolean(false)), // Invalid path = not a dir
@@ -391,7 +431,7 @@ impl IOLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
-                                &PermissionResource::FileSystem("write".to_string()),
+                                &PermissionResource::FileSystem("delete".to_string()),
                                 Some(path.as_str()),
                             )?;
                         }
@@ -857,29 +897,59 @@ impl IOLib {
                 }
             }
             "zip_create" => {
-                if args.is_empty() {
-                    return Err(RuntimeError::new(
-                        "zip_create requires at least 1 argument: output_path".to_string(),
-                    ));
-                }
-                let output_path = match &args[0] {
-                    Value::String(s) => s.clone(),
-                    _ => {
+                #[cfg(not(feature = "stdlib-full"))]
+                return Err(RuntimeError::new(
+                    "zip_create requires the 'stdlib-full' feature. \
+                     Rebuild with: cargo build --features stdlib-full"
+                        .to_string(),
+                ));
+                #[cfg(feature = "stdlib-full")]
+                {
+                    if args.is_empty() {
                         return Err(RuntimeError::new(
-                            "zip_create: output_path must be a string".to_string(),
-                        ))
+                            "zip_create requires at least 1 argument: output_path".to_string(),
+                        ));
                     }
-                };
-                let validated_output = Self::validate_path(&output_path)?;
-                let file = std::fs::File::create(&validated_output).map_err(|e| {
-                    RuntimeError::new(format!("zip_create: cannot create {}: {}", output_path, e))
-                })?;
-                let mut zip_writer = zip::ZipWriter::new(file);
-                let options = zip::write::SimpleFileOptions::default()
-                    .compression_method(zip::CompressionMethod::Deflated);
-                let file_args: Vec<String> = if args.len() == 2 {
-                    if let Value::Array(arr) = &args[1] {
-                        arr.iter()
+                    let output_path = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "zip_create: output_path must be a string".to_string(),
+                            ))
+                        }
+                    };
+                    let validated_output = Self::validate_path(&output_path)?;
+                    let file = std::fs::File::create(&validated_output).map_err(|e| {
+                        RuntimeError::new(format!(
+                            "zip_create: cannot create {}: {}",
+                            output_path, e
+                        ))
+                    })?;
+                    let mut zip_writer = zip::ZipWriter::new(file);
+                    let options = zip::write::SimpleFileOptions::default()
+                        .compression_method(zip::CompressionMethod::Deflated);
+                    let file_args: Vec<String> = if args.len() == 2 {
+                        if let Value::Array(arr) = &args[1] {
+                            arr.iter()
+                                .filter_map(|v| {
+                                    if let Value::String(s) = v {
+                                        Some(s.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect()
+                        } else if let Value::String(s) = &args[1] {
+                            vec![s.clone()]
+                        } else {
+                            return Err(RuntimeError::new(
+                                "zip_create: second argument must be a string or array of strings"
+                                    .to_string(),
+                            ));
+                        }
+                    } else {
+                        args[1..]
+                            .iter()
                             .filter_map(|v| {
                                 if let Value::String(s) = v {
                                     Some(s.clone())
@@ -888,106 +958,114 @@ impl IOLib {
                                 }
                             })
                             .collect()
-                    } else if let Value::String(s) = &args[1] {
-                        vec![s.clone()]
-                    } else {
+                    };
+                    for src_path in &file_args {
+                        let name = std::path::Path::new(src_path)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(src_path.as_str());
+                        zip_writer.start_file(name, options).map_err(|e| {
+                            RuntimeError::new(format!(
+                                "zip_create: error adding {}: {}",
+                                src_path, e
+                            ))
+                        })?;
+                        let data = std::fs::read(src_path).map_err(|e| {
+                            RuntimeError::new(format!(
+                                "zip_create: cannot read {}: {}",
+                                src_path, e
+                            ))
+                        })?;
+                        use std::io::Write;
+                        zip_writer.write_all(&data).map_err(|e| {
+                            RuntimeError::new(format!("zip_create: write error: {}", e))
+                        })?;
+                    }
+                    zip_writer.finish().map_err(|e| {
+                        RuntimeError::new(format!("zip_create: finalize error: {}", e))
+                    })?;
+                    Ok(Value::String(validated_output.to_string_lossy().to_string()))
+                }
+            }
+            "zip_extract" => {
+                #[cfg(not(feature = "stdlib-full"))]
+                return Err(RuntimeError::new(
+                    "zip_extract requires the 'stdlib-full' feature. \
+                     Rebuild with: cargo build --features stdlib-full"
+                        .to_string(),
+                ));
+                #[cfg(feature = "stdlib-full")]
+                {
+                    if args.len() < 2 {
                         return Err(RuntimeError::new(
-                            "zip_create: second argument must be a string or array of strings"
+                            "zip_extract requires 2 arguments: archive_path, output_dir"
                                 .to_string(),
                         ));
                     }
-                } else {
-                    args[1..]
-                        .iter()
-                        .filter_map(|v| {
-                            if let Value::String(s) = v {
-                                Some(s.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect()
-                };
-                for src_path in &file_args {
-                    let name = std::path::Path::new(src_path)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or(src_path.as_str());
-                    zip_writer.start_file(name, options).map_err(|e| {
-                        RuntimeError::new(format!("zip_create: error adding {}: {}", src_path, e))
-                    })?;
-                    let data = std::fs::read(src_path).map_err(|e| {
-                        RuntimeError::new(format!("zip_create: cannot read {}: {}", src_path, e))
-                    })?;
-                    use std::io::Write;
-                    zip_writer.write_all(&data).map_err(|e| {
-                        RuntimeError::new(format!("zip_create: write error: {}", e))
-                    })?;
-                }
-                zip_writer
-                    .finish()
-                    .map_err(|e| RuntimeError::new(format!("zip_create: finalize error: {}", e)))?;
-                Ok(Value::String(validated_output.to_string_lossy().to_string()))
-            }
-            "zip_extract" => {
-                if args.len() < 2 {
-                    return Err(RuntimeError::new(
-                        "zip_extract requires 2 arguments: archive_path, output_dir".to_string(),
-                    ));
-                }
-                let archive_path = match &args[0] {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(RuntimeError::new(
-                            "zip_extract: archive_path must be a string".to_string(),
+                    let archive_path = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "zip_extract: archive_path must be a string".to_string(),
+                            ))
+                        }
+                    };
+                    let output_dir = match &args[1] {
+                        Value::String(s) => s.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                "zip_extract: output_dir must be a string".to_string(),
+                            ))
+                        }
+                    };
+                    let file = std::fs::File::open(&archive_path).map_err(|e| {
+                        RuntimeError::new(format!(
+                            "zip_extract: cannot open {}: {}",
+                            archive_path, e
                         ))
-                    }
-                };
-                let output_dir = match &args[1] {
-                    Value::String(s) => s.clone(),
-                    _ => {
-                        return Err(RuntimeError::new(
-                            "zip_extract: output_dir must be a string".to_string(),
-                        ))
-                    }
-                };
-                let file = std::fs::File::open(&archive_path).map_err(|e| {
-                    RuntimeError::new(format!("zip_extract: cannot open {}: {}", archive_path, e))
-                })?;
-                let mut archive = zip::ZipArchive::new(file).map_err(|e| {
-                    RuntimeError::new(format!("zip_extract: invalid archive: {}", e))
-                })?;
-                std::fs::create_dir_all(&output_dir).map_err(|e| {
-                    RuntimeError::new(format!("zip_extract: cannot create output dir: {}", e))
-                })?;
-                let output_dir_path = std::path::Path::new(&output_dir);
-                let count = archive.len();
-                for i in 0..count {
-                    let mut entry = archive.by_index(i).map_err(|e| {
-                        RuntimeError::new(format!("zip_extract: error reading entry {}: {}", i, e))
                     })?;
-                    let entry_name = entry.name().to_string();
-                    // Zip-slip prevention: validate entry path against output_dir (0.1)
-                    let out_path = Self::validate_zip_entry_path(output_dir_path, &entry_name)?;
-                    if entry.is_dir() {
-                        std::fs::create_dir_all(&out_path).map_err(|e| {
-                            RuntimeError::new(format!("zip_extract: mkdir error: {}", e))
+                    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+                        RuntimeError::new(format!("zip_extract: invalid archive: {}", e))
+                    })?;
+                    std::fs::create_dir_all(&output_dir).map_err(|e| {
+                        RuntimeError::new(format!(
+                            "zip_extract: cannot create output dir: {}",
+                            e
+                        ))
+                    })?;
+                    let output_dir_path = std::path::Path::new(&output_dir);
+                    let count = archive.len();
+                    for i in 0..count {
+                        let mut entry = archive.by_index(i).map_err(|e| {
+                            RuntimeError::new(format!(
+                                "zip_extract: error reading entry {}: {}",
+                                i, e
+                            ))
                         })?;
-                    } else {
-                        if let Some(parent) = out_path.parent() {
-                            std::fs::create_dir_all(parent).map_err(|e| {
+                        let entry_name = entry.name().to_string();
+                        // Zip-slip prevention: validate entry path against output_dir (0.1)
+                        let out_path =
+                            Self::validate_zip_entry_path(output_dir_path, &entry_name)?;
+                        if entry.is_dir() {
+                            std::fs::create_dir_all(&out_path).map_err(|e| {
                                 RuntimeError::new(format!("zip_extract: mkdir error: {}", e))
                             })?;
+                        } else {
+                            if let Some(parent) = out_path.parent() {
+                                std::fs::create_dir_all(parent).map_err(|e| {
+                                    RuntimeError::new(format!("zip_extract: mkdir error: {}", e))
+                                })?;
+                            }
+                            let mut out_file = std::fs::File::create(&out_path).map_err(|e| {
+                                RuntimeError::new(format!("zip_extract: create error: {}", e))
+                            })?;
+                            std::io::copy(&mut entry, &mut out_file).map_err(|e| {
+                                RuntimeError::new(format!("zip_extract: copy error: {}", e))
+                            })?;
                         }
-                        let mut out_file = std::fs::File::create(&out_path).map_err(|e| {
-                            RuntimeError::new(format!("zip_extract: create error: {}", e))
-                        })?;
-                        std::io::copy(&mut entry, &mut out_file).map_err(|e| {
-                            RuntimeError::new(format!("zip_extract: copy error: {}", e))
-                        })?;
                     }
+                    Ok(Value::Integer(count as i64))
                 }
-                Ok(Value::Integer(count as i64))
             }
             _ => Err(RuntimeError::new(format!("Unknown I/O function: {}", name))),
         }

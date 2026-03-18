@@ -1,4 +1,4 @@
-// Restriction checking - pentest-specific rules and security constraints
+// Restriction checking - security constraint validation for capability declarations
 
 use super::ValidationError;
 use crate::parser::ast::{CapabilityExpr, Expression, Program, Statement};
@@ -46,7 +46,7 @@ impl RestrictionChecker {
                 // Validate that allowed_actions strings are well-formed.
                 for cap in allowed_actions.iter().chain(forbidden_actions.iter()) {
                     if let CapabilityExpr::Simple { resource, action, .. } = cap {
-                        let known_resources = ["fs", "net", "sys", "process", "filesystem", "network", "system", "proc", "wifi", "ble", "bluetooth"];
+                        let known_resources = ["fs", "net", "sys", "process", "filesystem", "network", "system", "proc"];
                         if !known_resources.contains(&resource.as_str()) {
                             return Err(ValidationError::Restriction(format!(
                                 "Function '{}': unknown capability resource '{}'. \
@@ -93,6 +93,16 @@ impl RestrictionChecker {
             _ => {}
         }
         Ok(())
+    }
+
+    /// Public wrapper for use by the permissions report CLI command.
+    pub fn collect_privileged_calls_pub(stmts: &[Statement]) -> Vec<String> {
+        Self::collect_privileged_calls(stmts)
+    }
+
+    /// Public wrapper for use by the permissions report CLI command.
+    pub fn required_capability_pub(fn_name: &str) -> Option<&'static str> {
+        Self::required_capability(fn_name)
     }
 
     /// Collect names of all privileged stdlib functions called anywhere in `stmts`.
@@ -252,7 +262,8 @@ impl RestrictionChecker {
     /// or `None` if the function is unprivileged.
     fn required_capability(fn_name: &str) -> Option<&'static str> {
         match fn_name {
-            "exec" | "spawn" | "pipe_exec" | "kill" | "signal_send" => Some("sys.exec"),
+            "exec" | "exec_status" | "exec_lines" | "exec_json"
+            | "spawn" | "pipe_exec" | "kill" | "signal_send" => Some("sys.exec"),
             "http_get" | "http_post" | "http_put" | "http_delete" | "http_patch"
             | "tcp_connect" | "udp_send" | "resolve" => Some("net.connect"),
             "write_file" | "append_file" | "delete" | "mkdir" | "rmdir"
@@ -261,15 +272,6 @@ impl RestrictionChecker {
             | "read_lines" | "csv_read" => Some("fs.read"),
             "setenv" | "getenv" | "env_list" => Some("sys.env"),
             "cpu_count" | "memory" | "disk_space" => Some("sys.info"),
-            "wifi_scan" => Some("wifi.scan"),
-            "wifi_capture" => Some("wifi.capture"),
-            "wifi_deauth" => Some("wifi.deauth"),
-            "wifi_inject" => Some("wifi.inject"),
-            "ble_scan" => Some("ble.scan"),
-            "ble_connect" => Some("ble.connect"),
-            "ble_fuzz" => Some("ble.fuzz"),
-            "ble_read" => Some("ble.read"),
-            "ble_write" => Some("ble.write"),
             _ => None,
         }
     }
@@ -283,8 +285,7 @@ impl RestrictionChecker {
             let required_norm = required
                 .replace("filesystem.", "fs.")
                 .replace("network.", "net.")
-                .replace("system.", "sys.")
-                .replace("bluetooth.", "ble.");
+                .replace("system.", "sys.");
             formed == required_norm
                 || formed == required
         } else {

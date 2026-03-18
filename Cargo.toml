@@ -1,6 +1,6 @@
 [package]
 name = "txtcode"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["MD POOR"]
 description = "Txt-code: A simple, memorable, security-focused programming language"
@@ -8,20 +8,15 @@ license = "MIT"
 repository = "https://github.com/iga2x/txtcode"
 
 [dependencies]
-# Parser
-nom = "7.1"
-
-# Error handling
-anyhow = "1.0"
-thiserror = "1.0"
-
-# Serialization (for bytecode, AST)
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-bincode = "1.3"
 toml = "0.8"
 
-# Cryptography (for security features)
+# Bytecode serialization — only needed when bytecode VM is compiled in.
+bincode = { version = "1.3", optional = true }
+
+# Cryptography (core — always included)
 aes-gcm = "0.10"
 sha2 = "0.10"
 md5 = "0.7"
@@ -30,73 +25,77 @@ ring = "0.17"
 hex = "0.4"
 base64 = "0.21"
 
-# Math
-libm = "0.2"
+# Advanced cryptography — password hashing + RSA (opt-in)
+bcrypt = { version = "0.15", optional = true }
+rsa   = { version = "0.9", features = ["sha2"], optional = true }
 
-# Networking (for stdlib)
-tokio = { version = "1.0", features = ["full"] }
-reqwest = { version = "0.11", features = ["json", "blocking"] }
-hyper = { version = "1.0", features = ["full"] }
+# Networking — HTTP client + async TCP/UDP (opt-in)
+tokio   = { version = "1.0", features = ["rt", "rt-multi-thread", "net"], optional = true }
+reqwest = { version = "0.11", features = ["json", "blocking"], optional = true }
 
-# File I/O
-walkdir = "2.4"
+# File I/O — archive + structured formats (opt-in)
+zip       = { version = "2.1", optional = true }
+quick-xml = { version = "0.31", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+
+# Safe temporary file creation (prevents TOCTOU races in temp_file())
+tempfile = "3"
+
+# Pure-Rust tarball extraction (replaces system `tar` subprocess)
+flate2 = "1.0"
+tar    = { version = "0.4", package = "tar" }
 
 # CLI
-clap = { version = "4.4", features = ["derive"] }
+clap    = { version = "4.4", features = ["derive"] }
 colored = "2.1"
 
 # REPL
 rustyline = "14.0"
 
-# Lazy static
+# Utilities (always needed)
 lazy_static = "1.4"
+chrono      = "0.4"
+regex       = "1.10"
+semver      = "1.0"
 
-# Directory utilities (for ~/.txtcode/ paths)
+# Directory utilities
 dirs = "5.0"
 
-# Date/time utilities (for logging)
-chrono = "0.4"
+# FFI — dynamic library loading (opt-in; requires unsafe native code)
+libloading = { version = "0.8", optional = true }
 
-# Regular expressions
-regex = "1.10"
-
-# Semantic versioning
-semver = "1.0"
-
-# Archive / serialization formats (always included)
-zip = "2.1"
-quick-xml = "0.31"
-serde_yaml = "0.9"
-
-# Safe temporary file creation (prevents TOCTOU races in temp_file())
-tempfile = "3"
-
-# Password hashing
-bcrypt = "0.15"
-
-# RSA cryptography
-rsa = { version = "0.9", features = ["sha2"] }
-
-# System calls (Unix)
+# System calls (Unix only)
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# ── Feature flags ────────────────────────────────────────────────────────────
+#
+# default       = stdlib-full + net  (same as before, no breakage)
+# bytecode      = bytecode VM + compiler + bincode serialization  (experimental)
+# net           = HTTP / TCP / UDP / DNS stdlib functions
+# stdlib-full   = zip / XML / YAML stdlib functions
+# crypto-advanced = bcrypt + RSA stdlib functions
+# ai-metadata   = AI-aware execution context (experimental, off by default)
+#
+# cargo build                          → default: stdlib-full + net
+# cargo build --no-default-features    → core only
+# cargo build --features bytecode      → add bytecode VM
+# cargo build --features crypto-advanced → add bcrypt + RSA
+# cargo build --features ai-metadata   → add AI execution context
 [features]
-# Real feature flags (Phase 3 — replaces legacy no-op flags)
 default = ["stdlib-full", "net"]
-stdlib-full = []           # zip, quick-xml, serde_yaml (currently always included)
-net = []                   # HTTP/TCP networking (currently always included)
-bytecode = []              # Bytecode VM (experimental; bincode always present for now)
-async = []                 # Async runtime (placeholder; tokio currently always linked)
-crypto-advanced = []       # RSA + bcrypt (currently always included)
-pentest = []               # WiFi/BLE capabilities (requires explicit opt-in)
+stdlib-full     = ["dep:zip", "dep:quick-xml", "dep:serde_yaml"]
+net             = ["dep:tokio", "dep:reqwest"]
+bytecode        = ["dep:bincode"]
+crypto-advanced = ["dep:bcrypt", "dep:rsa"]
+ffi             = ["dep:libloading"] # Native shared-library FFI (experimental, opt-in)
+ai-metadata     = []                # AI-aware execution context (experimental)
 
-# Legacy feature names — kept to avoid breaking external build scripts.
-# They are now aliases for features that no longer gate their named dependency.
-zip-support = []
-xml-support = []
-yaml-support = []
-full-stdlib = ["stdlib-full"]
+# Legacy aliases — kept to avoid breaking external build scripts.
+zip-support  = ["stdlib-full"]
+xml-support  = ["stdlib-full"]
+yaml-support = ["stdlib-full"]
+full-stdlib  = ["stdlib-full"]
 
 [dev-dependencies]
 criterion = "0.5"
@@ -108,4 +107,3 @@ harness = false
 [lib]
 name = "txtcode"
 path = "src/lib.rs"
-

@@ -50,6 +50,7 @@ pub struct VirtualMachine {
     safe_mode: bool,
     debug: bool,
     verbose: bool,
+    strict_types: bool,
     exec_allowed: bool, // Keep for backward compatibility, but deprecate
     permission_manager: PermissionManager,
     audit_trail: AuditTrail,               // NEW: Audit trail for all actions
@@ -62,6 +63,10 @@ pub struct VirtualMachine {
     /// Cancellation flag: when set to `true` by an external caller (e.g. timeout handler),
     /// the VM terminates its execution loop at the next statement boundary.
     cancel_flag: Option<Arc<AtomicBool>>,
+    /// Names of functions declared with the `async` keyword.
+    /// When one of these is called (without `await`), a thread is spawned and
+    /// a `Value::Future` is returned to the caller instead of blocking.
+    async_functions: HashSet<String>,
 }
 
 impl VirtualMachine {
@@ -337,6 +342,18 @@ impl StatementVM for VirtualMachine {
         // Methods from impl VirtualMachine blocks in submodules are merged
         VirtualMachine::register_function_intent(self, name, declaration)
     }
+
+    fn struct_defs(&self) -> &HashMap<String, Vec<(String, Type)>> {
+        &self.struct_defs
+    }
+
+    fn strict_types(&self) -> bool {
+        self.strict_types
+    }
+
+    fn register_async_function(&mut self, name: &str) {
+        self.async_functions.insert(name.to_string());
+    }
 }
 
 impl ControlFlowVM for VirtualMachine {
@@ -530,6 +547,18 @@ impl FunctionExecutor for VirtualMachine {
             _ => Err(RuntimeError::new("Expected function value".to_string())),
         }
     }
+
+    fn deterministic_time(&self) -> Option<std::time::SystemTime> {
+        if self.policy_engine.is_deterministic_mode() {
+            Some(self.policy_engine.get_time())
+        } else {
+            None
+        }
+    }
+
+    fn deterministic_random_seed(&self) -> Option<u64> {
+        self.policy_engine.get_random_seed()
+    }
 }
 
 // Implement ExpressionVM trait for VirtualMachine
@@ -645,6 +674,10 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
         Some(self.exec_allowed)
     }
 
+    fn strict_types(&self) -> bool {
+        self.strict_types
+    }
+
     fn execute_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError> {
         VirtualMachine::execute_statement(self, stmt)
     }
@@ -682,6 +715,70 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
             return self.dispatch_tool_function(name, args);
         }
         StdLib::call_function(name, args, self.exec_allowed, Some(self))
+    }
+
+    fn is_async_function(&self, name: &str) -> bool {
+        self.async_functions.contains(name)
+    }
+
+    fn globals_snapshot(&self) -> HashMap<String, Value> {
+        self.scope_manager.globals().clone()
+    }
+
+    fn exec_allowed_bool(&self) -> bool {
+        self.exec_allowed
+    }
+
+    /// Spawn an async user function in a new OS thread and return a `Value::Future`.
+    ///
+    /// The spawned thread gets its own fresh `VirtualMachine` pre-loaded with a
+    /// snapshot of the current global scope (so it can see other functions and
+    /// global variables defined before the call).
+    fn maybe_spawn_async(
+        &mut self,
+        name: &str,
+        params: Vec<crate::parser::ast::Parameter>,
+        body: Vec<crate::parser::ast::Statement>,
+        captured_env: HashMap<String, Value>,
+        args: Vec<Value>,
+    ) -> Option<Result<Value, RuntimeError>> {
+        if !self.async_functions.contains(name) {
+            return None;
+        }
+
+        let globals = self.scope_manager.globals().clone();
+        let exec_allowed = self.exec_allowed;
+        let name_owned = name.to_string();
+
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+
+        std::thread::spawn(move || {
+            use crate::runtime::execution::expressions::call_user_function;
+            use crate::parser::ast::{Expression, Literal};
+
+            let mut child_vm = VirtualMachine::new();
+            child_vm.set_exec_allowed(exec_allowed);
+            // Populate the child VM with all globals (user functions, constants, etc.)
+            for (k, v) in globals {
+                child_vm.define_global(k, v);
+            }
+
+            let dummy_expr = Expression::Literal(Literal::Null);
+            let result = call_user_function(
+                &mut child_vm,
+                &name_owned,
+                &params,
+                &body,
+                &captured_env,
+                &args,
+                &dummy_expr,
+            )
+            .map_err(|e: crate::runtime::errors::RuntimeError| e.to_string());
+
+            sender.send(result);
+        });
+
+        Some(Ok(Value::Future(handle)))
     }
 }
 
