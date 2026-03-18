@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#txt-code-language-specification-v040" class="md-skip">
+        <a href="#txt-code-language-specification-v050" class="md-skip">
           Skip to content
         </a>
       
@@ -1183,10 +1183,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#46-async-functions-synchronous-mode-in-v04" class="md-nav__link">
+  <a href="#46-async-functions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.6 Async Functions (synchronous mode in v0.4)
+        4.6 Async Functions
       
     </span>
   </a>
@@ -1548,10 +1548,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#f2-not-yet-enforced-v04-status" class="md-nav__link">
+  <a href="#f2-not-yet-enforced-v05-status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        F.2 Not Yet Enforced (v0.4 status)
+        F.2 Not Yet Enforced (v0.5 status)
       
     </span>
   </a>
@@ -2557,10 +2557,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#46-async-functions-synchronous-mode-in-v04" class="md-nav__link">
+  <a href="#46-async-functions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.6 Async Functions (synchronous mode in v0.4)
+        4.6 Async Functions
       
     </span>
   </a>
@@ -2922,10 +2922,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#f2-not-yet-enforced-v04-status" class="md-nav__link">
+  <a href="#f2-not-yet-enforced-v05-status" class="md-nav__link">
     <span class="md-ellipsis">
       
-        F.2 Not Yet Enforced (v0.4 status)
+        F.2 Not Yet Enforced (v0.5 status)
       
     </span>
   </a>
@@ -3145,36 +3145,37 @@
   
 
 
-<h1 id="txt-code-language-specification-v040">Txt-code Language Specification — v0.4.0</h1>
+<h1 id="txt-code-language-specification-v050">Txt-code Language Specification — v0.5.0</h1>
 <blockquote>
-<p><strong>Status:</strong> v0.4.0 release. Behaviour described here matches the current implementation
-except where explicitly marked as “planned / not yet implemented”.
-Breaking changes between minor versions are documented in the <a href="https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md">CHANGELOG</a> on GitHub.</p>
-<p><strong>New in v0.4:</strong>
+<p><strong>Status:</strong> v0.5.0 — API and language-spec freeze.
+The public API, permission model, stdlib function names, and core language syntax are <strong>stable</strong>
+for the v0.5 series. Breaking changes will not be introduced before v0.6.0.
+All changes are documented in the <a href="https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md">CHANGELOG</a>.</p>
+<p><strong>New in v0.5 (over v0.4):</strong>
+- <strong>Real async/await</strong> — <code>async define → fn → (args)</code> spawns an OS thread; <code>await</code> blocks until result; <code>Value::Future</code> type
+- <strong>Package registry backend</strong> — <code>registry/index.json</code> single source of truth; <code>RegistryIndex</code> type; SHA-256 verification; <code>package search</code> / <code>package info</code> use index
+- <strong>Starter packages</strong> — <code>npl-math</code>, <code>npl-strings</code>, <code>npl-collections</code>, <code>npl-datetime</code> ship in <code>packages/</code>
+- <strong><code>txtcode package install-local &lt;PATH&gt;</code></strong> — install from local directory
+- <strong>Semver resolver</strong> — 11 new unit tests covering <code>^</code>, <code>~</code>, <code>&gt;=</code>, exact, non-semver
+- <strong><code>txtcode run --permissions-report</code></strong> — list privileged calls without running
+- <strong><code>CapabilityResult</code> enum</strong> (<code>Granted</code>, <code>NotFound</code>, <code>Revoked</code>, <code>Expired</code>) — typed denial reasons
+- <strong>Struct field type checking</strong> — construction and bracket-assign validate against declared types; advisory (<code>[WARNING]</code>) or strict (<code>E0016</code>)
+- <strong><code>Value::type_name()</code></strong> — human-readable type name for error messages
+- <strong><code>xml_decode</code></strong> canonical alias; <code>json_encode</code>/<code>json_decode</code> protected from obfuscation
+- <strong>FFI stdlib</strong> (<code>--features ffi</code>) — <code>ffi_load</code>, <code>ffi_call</code>, <code>ffi_close</code>; <code>sys.ffi</code> permission gate
+- <strong>Performance baselines</strong> — <code>cargo bench</code> covers lexer/fib, lexer/loop, parser/complex, vm/ast_loop (+ bytecode variants with <code>--features bytecode</code>)</p>
+<p><strong>New in v0.4 (over v0.3):</strong>
 - Virtual environment system (<code>txtcode env</code>) with 12 subcommands
 - Bytecode VM: <code>break</code>/<code>continue</code>, <code>for x in arr</code>, <code>repeat N</code>, <code>match</code>, string interpolation
 - Integer overflow guards (<code>checked_*</code>) in both AST VM and bytecode VM
 - Recursion depth limit (50) enforced across all VMs
 - User-defined functions with caller/callee scope isolation in bytecode VM
-- Module imports (<code>ImportModule</code>) in bytecode VM
-- <code>?.</code> / <code>?[]</code> / <code>?()</code> optional chaining — both VMs (returns <code>null</code> on null target)
-- <code>do…while</code> loop in bytecode VM
-- <code>f”...”</code> string interpolation prefix; raw strings <code>r”...”</code>, number separators <code>1_000_000</code>
-- Spread operator <code>[...arr]</code> in both VMs
-- Multi-return: <code>return → a, b</code> auto-wraps as <code>[a, b]</code>
-- Destructured function arguments: <code>define → f → ({x, y})</code>
-- <code>doc →</code> / <code>hint →</code> canonical annotation keywords
-- Pipe operator <code>|&gt;</code> with lambda/complex RHS in both VMs
-- Pattern matching: array <code>[a, b]</code> and struct <code>{x, y}</code> destructuring in <code>match</code>
-- <code>++</code>/<code>--</code> now errors cleanly on non-identifier targets
-- <code>txtcode inspect</code> command — disassemble compiled bytecode
-- Call depth unified to 50 across all VMs
-- <code>async</code>/<code>await</code> runs synchronously (passthrough; true async planned for v0.5)</p>
+- <code>?.</code> / <code>?[]</code> / <code>?()</code> optional chaining — both VMs (returns <code>null</code> on null target)</p>
 <p><strong>Still not fully implemented:</strong>
 - Generic type enforcement at runtime (type params are parsed but erased at execution)
 - <code>++arr[0]</code> / <code>--arr[0]</code> on non-identifier targets — use <code>store → arr[0] → arr[0] + 1</code> instead
 - AST identifier obfuscation (<code>Obfuscator::obfuscate</code> is a no-op placeholder)
-- WebSocket support — planned for v0.5
+- WebSocket support — planned for v0.6
 - macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only</p>
 </blockquote>
 <hr />
@@ -4310,12 +4311,12 @@ Functions with no explicit <code>return</code> return <code>null</code>.</p>
 <a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a>print → add5(3)    # 8
 </code></pre></div>
 <p>The captured environment is a snapshot: mutations to <code>n</code> after <code>make_adder</code> returns do not affect existing closures.</p>
-<h3 id="46-async-functions-synchronous-mode-in-v04">4.6 Async Functions (synchronous mode in v0.4)</h3>
+<h3 id="46-async-functions">4.6 Async Functions</h3>
 <blockquote>
-<p><strong>v0.4 note:</strong> <code>async</code>/<code>await</code> syntax is fully parsed and accepted. In the current
-implementation both VMs execute async functions <strong>synchronously</strong> — <code>await</code> evaluates
-the expression and returns its value immediately without any blocking or parallelism.
-Full Tokio-backed async I/O is planned for v0.5.</p>
+<p><strong>v0.5:</strong> <code>async define → fn → (args)</code> now spawns a real OS thread when called without <code>await</code>.
+The return value is <code>Value::Future</code>. Calling <code>await future</code> blocks the calling thread until the
+spawned task finishes. Non-future values passed to <code>await</code> are returned unchanged (identity).
+The child thread receives a snapshot of the parent's global scope.</p>
 </blockquote>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>async → define → fetch → (url: string) → string
 <a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>  # In v0.4 this runs synchronously — http_get blocks
@@ -4326,7 +4327,8 @@ Full Tokio-backed async I/O is planned for v0.5.</p>
 <a id="__codelineno-37-7" name="__codelineno-37-7" href="#__codelineno-37-7"></a>store → result → fetch(&quot;https://example.com&quot;)
 </code></pre></div>
 <ul>
-<li><code>async → define</code> is accepted; the function runs synchronously.</li>
+<li><code>async define → fn → (args)</code> spawns an OS thread; returns <code>Value::Future</code>.</li>
+<li><code>await expr</code> — if <code>expr</code> is a <code>Future</code>, blocks until the thread finishes; otherwise identity.</li>
 <li><code>await → expr</code> evaluates <code>expr</code> and returns the result directly.</li>
 <li>No <code>Future&lt;T&gt;</code> type at runtime — the value is returned as-is.</li>
 <li><code>await_all</code> is not built-in; model parallel execution with sequential calls for now.</li>
@@ -4723,7 +4725,7 @@ informed decisions about running Txt-code scripts.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="f2-not-yet-enforced-v04-status">F.2 Not Yet Enforced (v0.4 status)</h3>
+<h3 id="f2-not-yet-enforced-v05-status">F.2 Not Yet Enforced (v0.5 status)</h3>
 <table>
 <thead>
 <tr>
@@ -4736,22 +4738,22 @@ informed decisions about running Txt-code scripts.</p>
 <tr>
 <td><strong>Memory limits</strong></td>
 <td>No explicit heap limit; bounded by host OS only</td>
-<td>Future</td>
+<td>v0.6</td>
 </tr>
 <tr>
 <td><strong><code>?()</code> optional call on non-null non-function</strong></td>
 <td>Raises RuntimeError in bytecode VM</td>
-<td>v0.5</td>
+<td>v0.6</td>
 </tr>
 <tr>
 <td><strong>Source comments in migrate</strong></td>
 <td><code>#</code> comments are not preserved through AST printer</td>
-<td>v0.4</td>
+<td>v0.6</td>
 </tr>
 <tr>
 <td><strong><code>return →</code> inside nested blocks</strong></td>
 <td>Does not propagate through <code>match</code>, <code>if</code>, or <code>for</code> to caller</td>
-<td>v0.5</td>
+<td>v0.6</td>
 </tr>
 </tbody>
 </table>

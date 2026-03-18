@@ -1031,63 +1031,26 @@
 </tr>
 <tr>
 <td><code>sys.exec</code></td>
-<td><code>exec()</code>, <code>spawn()</code>, <code>pipe_exec()</code>, <code>kill()</code>, <code>signal_send()</code></td>
+<td><code>exec()</code>, <code>exec_json()</code>, <code>exec_lines()</code>, <code>exec_status()</code>, <code>spawn()</code>, <code>pipe_exec()</code>, <code>kill()</code>, <code>signal_send()</code></td>
 <td>—</td>
 </tr>
 <tr>
 <td><code>sys.env</code></td>
-<td><code>getenv()</code>, <code>setenv()</code></td>
+<td><code>getenv()</code>, <code>setenv()</code>, <code>env_list()</code></td>
 <td>—</td>
 </tr>
 <tr>
-<td><code>wifi.scan</code></td>
-<td>Passive interface enumeration and probe responses</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>wifi.capture</code></td>
-<td>Raw frame capture via monitor mode</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>wifi.deauth</code></td>
-<td>Deauthentication frame injection (requires auth)</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>wifi.inject</code></td>
-<td>Arbitrary packet injection (requires auth)</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>ble.scan</code></td>
-<td>BLE advertisement scanning / device discovery</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>ble.connect</code></td>
-<td>GATT connection to a remote BLE device</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>ble.fuzz</code></td>
-<td>Malformed PDU injection (requires auth)</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>ble.read</code></td>
-<td>Read GATT characteristic values</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>ble.write</code></td>
-<td>Write GATT characteristic values</td>
+<td><code>sys.info</code></td>
+<td><code>cpu_count()</code>, <code>memory_available()</code>, <code>disk_space()</code></td>
 <td>—</td>
 </tr>
 </tbody>
 </table>
-<p>Aliases: <code>filesystem</code> = <code>fs</code>, <code>network</code> = <code>net</code>, <code>system</code> = <code>sys</code>,
-<code>bluetooth</code> = <code>ble</code>, <code>proc</code> = <code>process</code>.</p>
+<p>Aliases: <code>filesystem</code> = <code>fs</code>, <code>network</code> = <code>net</code>, <code>system</code> = <code>sys</code>, <code>proc</code> = <code>process</code>.</p>
+<blockquote>
+<p><strong>Removed in v0.4.1</strong>: <code>wifi.*</code> and <code>ble.*</code> permission resources have been removed.
+Attempting to use <code>wifi.*</code> or <code>ble.*</code> strings now returns a clear error.</p>
+</blockquote>
 <hr />
 <h2 id="2-granting-permissions">2. Granting Permissions</h2>
 <h3 id="at-the-cli-before-execution">At the CLI (before execution)</h3>
@@ -1099,14 +1062,22 @@
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Deny all privileged access — safest mode</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>txtcode<span class="w"> </span>run<span class="w"> </span>untrusted.tc<span class="w"> </span>--sandbox
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># Print all permissions the script would request, then exit (no execution)</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>txtcode<span class="w"> </span>run<span class="w"> </span>untrusted.tc<span class="w"> </span>--permissions-report
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># Permissions report as JSON (for CI / tooling)</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>txtcode<span class="w"> </span>run<span class="w"> </span>untrusted.tc<span class="w"> </span>--permissions-report<span class="w"> </span>--json
 </code></pre></div>
 <p><code>--sandbox</code> is equivalent to denying all resources. Individual <code>--allow-*</code>
 flags still apply on top.</p>
+<p><code>--permissions-report</code> is a read-only inspection mode: the script is parsed
+but never executed. It prints each permission string and the function calls
+that would request it.</p>
 <h3 id="in-a-script">In a script</h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>grant_permission(&quot;fs.read&quot;,    &quot;/tmp/*&quot;)      # scoped to /tmp subtree
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>grant_permission(&quot;net.connect&quot;, &quot;*.corp.lan&quot;) # scoped to corp.lan domain
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>grant_permission(&quot;wifi.scan&quot;,  null)          # no scope restriction
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>grant_permission(&quot;ble.scan&quot;,   null)
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>grant_permission(&quot;sys.exec&quot;,   null)          # allow all exec calls
 </code></pre></div>
 <p>Grants added in a script are cumulative. A <code>deny_permission</code> call overrides
 any grant:</p>
@@ -1114,7 +1085,7 @@ any grant:</p>
 </code></pre></div>
 <h3 id="in-envtoml">In env.toml</h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">[permissions]</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">granted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;fs.read:/data/*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;net.connect:*.api.io&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;wifi.scan&quot;</span><span class="p">]</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">granted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;fs.read:/data/*&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;net.connect:*.api.io&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;sys.info&quot;</span><span class="p">]</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">denied</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;sys.exec&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;fs.delete&quot;</span><span class="p">]</span>
 </code></pre></div>
 <hr />
@@ -1180,7 +1151,7 @@ before any other statements:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>define → scan_ports → (host: string) → array
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  intent   → &quot;TCP reachability probe only&quot;
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  allowed  → [&quot;net.connect&quot;]
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  forbidden → [&quot;sys.exec&quot;, &quot;fs.write&quot;, &quot;wifi.inject&quot;, &quot;ble.fuzz&quot;]
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>  forbidden → [&quot;sys.exec&quot;, &quot;fs.write&quot;]
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>  store → open_ports → []
 <a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>  for → port in [22, 80, 443, 3389, 8080]
@@ -1223,20 +1194,20 @@ is <strong>caught by the validator</strong> — the script exits before any code
 <hr />
 <h2 id="6-audit-trail">6. Audit Trail</h2>
 <p>Every permission check is logged regardless of outcome.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>[2026-03-13 14:23:01.847ms] wifi.scan      scope=&quot;&quot;           ALLOWED  capability:tok-001
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>[2026-03-13 14:23:01.851ms] net.connect    scope=&quot;10.0.0.1&quot;   DENIED   Permission not granted: net.connect
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>[2026-03-13 14:23:01.853ms] security.startup level=full platform=linux secure=true
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>[2026-03-18 10:12:01.847ms] fs.read        scope=&quot;/var/log/*&quot;  ALLOWED  permission:grant
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>[2026-03-18 10:12:01.851ms] net.connect    scope=&quot;10.0.0.1&quot;    DENIED   Permission not granted: net.connect
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>[2026-03-18 10:12:01.853ms] security.startup level=full platform=linux secure=true
 </code></pre></div>
 <p>Each entry includes:
 - Monotonic nanosecond timestamp
-- Action category (<code>wifi.scan</code>, <code>fs.read</code>, etc.)
+- Action category (<code>fs.read</code>, <code>net.connect</code>, <code>sys.exec</code>, etc.)
 - Scope value (path, hostname, etc.)
 - Result: <code>Allowed</code> or <code>Denied</code>
 - Source: <code>capability:&lt;id&gt;</code>, permission grant, or intent violation</p>
 <hr />
 <h2 id="7-permission-check-order">7. Permission Check Order</h2>
-<p>When <code>wifi_scan()</code> (or any privileged call) is invoked, the runtime runs
-these steps in order:</p>
+<p>When a privileged call (e.g. <code>exec_json()</code>, <code>read_file()</code>, <code>http_get()</code>) is invoked,
+the runtime runs these steps in order:</p>
 <ol>
 <li><strong>Max execution time</strong> — if exceeded, fail immediately.</li>
 <li><strong>Intent check</strong> — if the enclosing function has an <code>intent</code> or <code>allowed</code>
@@ -1259,7 +1230,7 @@ these steps in order:</p>
 <tbody>
 <tr>
 <td>No grant for the resource</td>
-<td><code>Permission not granted: wifi.scan</code></td>
+<td><code>Permission not granted: fs.read</code></td>
 </tr>
 <tr>
 <td>Resource explicitly denied</td>
@@ -1270,8 +1241,20 @@ these steps in order:</p>
 <td><code>Function 'fn' forbids 'sys.exec' but its body calls 'exec'</code></td>
 </tr>
 <tr>
+<td>Capability token not found</td>
+<td><code>Capability denied: capability token not found</code></td>
+</tr>
+<tr>
 <td>Capability token revoked</td>
-<td><code>Capability error: token revoked</code></td>
+<td><code>Capability denied: capability token 'cap_abc' has been revoked</code></td>
+</tr>
+<tr>
+<td>Capability token expired</td>
+<td><code>Capability denied: capability token 'cap_abc' has expired</code></td>
+</tr>
+<tr>
+<td>Unknown resource string</td>
+<td><code>Permission resource 'wifi.scan' is not supported. WiFi/Bluetooth capabilities were removed in v0.4.1.</code></td>
 </tr>
 <tr>
 <td>Intent violation</td>
@@ -1280,6 +1263,14 @@ these steps in order:</p>
 <tr>
 <td>Rate limit exceeded</td>
 <td><code>Rate limit exceeded for net.connect: 100 per 3600s</code></td>
+</tr>
+<tr>
+<td>Struct field type mismatch</td>
+<td><code>Struct field type mismatch: 'Point.x' expected Int, got string</code> (E0016)</td>
+</tr>
+<tr>
+<td>Async without experimental</td>
+<td><code>[WARNING] async function 'fn': executes synchronously (E0051)</code></td>
 </tr>
 </tbody>
 </table>
