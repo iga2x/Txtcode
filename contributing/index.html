@@ -759,10 +759,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#v05-planned" class="md-nav__link">
+  <a href="#v050-released-ecosystem-performance" class="md-nav__link">
     <span class="md-ellipsis">
       
-        v0.5+ (planned)
+        v0.5.0 (released) — Ecosystem &amp; performance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v06-planned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6+ (planned)
       
     </span>
   </a>
@@ -953,10 +964,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#v05-planned" class="md-nav__link">
+  <a href="#v050-released-ecosystem-performance" class="md-nav__link">
     <span class="md-ellipsis">
       
-        v0.5+ (planned)
+        v0.5.0 (released) — Ecosystem &amp; performance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v06-planned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6+ (planned)
       
     </span>
   </a>
@@ -1021,7 +1043,7 @@
 <li><strong>Lexer</strong>: Tokenizes source code</li>
 <li><strong>Parser</strong>: Builds Abstract Syntax Tree (AST)</li>
 <li><strong>Type Checker</strong>: Performs type checking and inference</li>
-<li><strong>Compiler</strong>: Compiles AST to bytecode (<code>.txtc</code>); native and WASM targets planned for v0.5</li>
+<li><strong>Compiler</strong>: Compiles AST to bytecode (<code>.txtc</code>); native and WASM targets planned for v0.6/v0.8</li>
 <li><strong>Runtime</strong>: Executes programs</li>
 <li><strong>Standard Library</strong>: Core functions and modules</li>
 </ul>
@@ -1133,14 +1155,24 @@
 <li>✅ Validator wired into <code>txtcode repl</code> (<code>:load</code> and inline input), <code>txtcode debug</code>, <code>txtcode test</code></li>
 <li>✅ Validator upgraded: all AST expression/statement variants covered; break/continue-outside-loop detection; expanded <code>required_capability</code> map; injection check covers all exec/spawn/pipe_exec args</li>
 </ul>
-<h3 id="v05-planned">v0.5+ (planned)</h3>
+<h3 id="v050-released-ecosystem-performance">v0.5.0 (released) — Ecosystem &amp; performance</h3>
 <ul>
-<li>True async/await with Tokio runtime integration</li>
+<li>✅ Real async/await: <code>async define</code> + <code>await</code>; <code>Value::Future</code>; <code>Instruction::Await</code> in bytecode VM</li>
+<li>✅ LSP server: <code>txtcode lsp</code> — JSON-RPC over stdio, diagnostics, 100+ completions</li>
+<li>✅ 20 core packages in <code>packages/</code> + <code>registry/index.json</code> with <code>local_path</code> offline installs</li>
+<li>✅ TextMate grammar: <code>editors/txtcode.tmLanguage.json</code> + language configuration for VS Code/Zed/Sublime</li>
+<li>✅ Stdlib additions: <code>file_open</code>/<code>file_read_line</code>/<code>file_write_line</code>/<code>file_close</code>, <code>format_datetime</code>/<code>datetime_add</code>/<code>datetime_diff</code>/<code>now</code>, <code>csv_write</code>, <code>exec_pipe</code>, <code>http_serve</code></li>
+<li>✅ <code>docs/performance.md</code> — real Criterion.rs benchmark numbers</li>
+<li>✅ <code>--type-check</code> / <code>--strict-types</code> flags wire static type checker as advisory/hard-error step</li>
+<li>✅ SHA-256 manifest verification in <code>package install</code>; <code>scripts/sign_release.sh</code>; <code>fuzz/</code> targets</li>
+</ul>
+<h3 id="v06-planned">v0.6+ (planned)</h3>
+<ul>
 <li>Native binary compilation (<code>-t native</code>) via LLVM</li>
 <li>WebAssembly compilation target</li>
 <li>WebSocket stdlib (<code>websocket_connect</code>)</li>
-<li>Generic type enforcement at runtime</li>
-<li>AST identifier obfuscation (Obfuscator currently a no-op stub)</li>
+<li>Generic type enforcement at runtime (type params parsed but erased today)</li>
+<li>Arena allocator for improved memory throughput</li>
 </ul>
 <h2 id="questions">Questions?</h2>
 <p>Feel free to open an issue or contact the maintainers.</p>

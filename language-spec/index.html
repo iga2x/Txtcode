@@ -1525,22 +1525,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#appendix-f-security-guarantees-v04" class="md-nav__link">
+  <a href="#appendix-f-security-guarantees-v05" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Appendix F — Security Guarantees (v0.4)
+        Appendix F — Security Guarantees (v0.5)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Appendix F — Security Guarantees (v0.4)">
+    <nav class="md-nav" aria-label="Appendix F — Security Guarantees (v0.5)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#f1-enforced-in-v04" class="md-nav__link">
+  <a href="#f1-enforced-in-v05" class="md-nav__link">
     <span class="md-ellipsis">
       
-        F.1 Enforced in v0.4
+        F.1 Enforced in v0.5
       
     </span>
   </a>
@@ -2899,22 +2899,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#appendix-f-security-guarantees-v04" class="md-nav__link">
+  <a href="#appendix-f-security-guarantees-v05" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Appendix F — Security Guarantees (v0.4)
+        Appendix F — Security Guarantees (v0.5)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Appendix F — Security Guarantees (v0.4)">
+    <nav class="md-nav" aria-label="Appendix F — Security Guarantees (v0.5)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#f1-enforced-in-v04" class="md-nav__link">
+  <a href="#f1-enforced-in-v05" class="md-nav__link">
     <span class="md-ellipsis">
       
-        F.1 Enforced in v0.4
+        F.1 Enforced in v0.5
       
     </span>
   </a>
@@ -3152,18 +3152,19 @@ The public API, permission model, stdlib function names, and core language synta
 for the v0.5 series. Breaking changes will not be introduced before v0.6.0.
 All changes are documented in the <a href="https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md">CHANGELOG</a>.</p>
 <p><strong>New in v0.5 (over v0.4):</strong>
-- <strong>Real async/await</strong> — <code>async define → fn → (args)</code> spawns an OS thread; <code>await</code> blocks until result; <code>Value::Future</code> type
-- <strong>Package registry backend</strong> — <code>registry/index.json</code> single source of truth; <code>RegistryIndex</code> type; SHA-256 verification; <code>package search</code> / <code>package info</code> use index
-- <strong>Starter packages</strong> — <code>npl-math</code>, <code>npl-strings</code>, <code>npl-collections</code>, <code>npl-datetime</code> ship in <code>packages/</code>
-- <strong><code>txtcode package install-local &lt;PATH&gt;</code></strong> — install from local directory
-- <strong>Semver resolver</strong> — 11 new unit tests covering <code>^</code>, <code>~</code>, <code>&gt;=</code>, exact, non-semver
+- <strong>Real async/await</strong> — <code>async define → fn → (args)</code> spawns an OS thread; <code>await</code> blocks until result; <code>Value::Future</code> type; <code>Instruction::Await</code> in bytecode VM
+- <strong>LSP server</strong> — <code>txtcode lsp</code> starts a JSON-RPC LSP server over stdio; diagnostics on open/change, 100+ completions
+- <strong>20 core packages</strong> — <code>npl-math</code>, <code>npl-strings</code>, <code>npl-collections</code>, <code>npl-datetime</code>, <code>npl-http-client</code>, <code>npl-http-server</code>, <code>npl-json-schema</code>, <code>npl-csv</code>, <code>npl-env</code>, <code>npl-template</code>, <code>npl-semver</code>, <code>npl-base64</code>, <code>npl-uuid</code>, <code>npl-retry</code>, <code>npl-assert</code>, <code>npl-cli-args</code>, <code>npl-colors</code>, <code>npl-table</code>, <code>npl-hash</code>, <code>npl-path</code>
+- <strong>Package registry backend</strong> — <code>registry/index.json</code> single source of truth; <code>local_path</code> offline installs; SHA-256 verification; <code>package search</code> / <code>package info</code>
+- <strong>TextMate grammar</strong> — <code>editors/txtcode.tmLanguage.json</code> + <code>editors/txtcode-language-configuration.json</code> for VS Code / Sublime / Zed
+- <strong>Full stdlib additions</strong> — <code>file_open</code>/<code>file_read_line</code>/<code>file_write_line</code>/<code>file_close</code> streaming I/O; <code>format_datetime</code>/<code>datetime_add</code>/<code>datetime_diff</code>/<code>now</code> datetime; <code>csv_write</code>; <code>exec_pipe</code>; <code>http_serve</code>; <code>xml_decode</code>
+- <strong>Performance documented</strong> — <code>docs/performance.md</code> with real Criterion.rs benchmark numbers
 - <strong><code>txtcode run --permissions-report</code></strong> — list privileged calls without running
+- <strong><code>txtcode run --type-check</code> / <code>--strict-types</code></strong> — static type checker as advisory or hard-error pre-execution step
 - <strong><code>CapabilityResult</code> enum</strong> (<code>Granted</code>, <code>NotFound</code>, <code>Revoked</code>, <code>Expired</code>) — typed denial reasons
 - <strong>Struct field type checking</strong> — construction and bracket-assign validate against declared types; advisory (<code>[WARNING]</code>) or strict (<code>E0016</code>)
 - <strong><code>Value::type_name()</code></strong> — human-readable type name for error messages
-- <strong><code>xml_decode</code></strong> canonical alias; <code>json_encode</code>/<code>json_decode</code> protected from obfuscation
-- <strong>FFI stdlib</strong> (<code>--features ffi</code>) — <code>ffi_load</code>, <code>ffi_call</code>, <code>ffi_close</code>; <code>sys.ffi</code> permission gate
-- <strong>Performance baselines</strong> — <code>cargo bench</code> covers lexer/fib, lexer/loop, parser/complex, vm/ast_loop (+ bytecode variants with <code>--features bytecode</code>)</p>
+- <strong>FFI stdlib</strong> (<code>--features ffi</code>) — <code>ffi_load</code>, <code>ffi_call</code>, <code>ffi_close</code>; <code>sys.ffi</code> permission gate</p>
 <p><strong>New in v0.4 (over v0.3):</strong>
 - Virtual environment system (<code>txtcode env</code>) with 12 subcommands
 - Bytecode VM: <code>break</code>/<code>continue</code>, <code>for x in arr</code>, <code>repeat N</code>, <code>match</code>, string interpolation
@@ -3172,11 +3173,11 @@ All changes are documented in the <a href="https://github.com/iga2x/txtcode/blob
 - User-defined functions with caller/callee scope isolation in bytecode VM
 - <code>?.</code> / <code>?[]</code> / <code>?()</code> optional chaining — both VMs (returns <code>null</code> on null target)</p>
 <p><strong>Still not fully implemented:</strong>
-- Generic type enforcement at runtime (type params are parsed but erased at execution)
+- Generic type enforcement at runtime (type params are parsed but erased at execution; full enforcement planned v0.8)
 - <code>++arr[0]</code> / <code>--arr[0]</code> on non-identifier targets — use <code>store → arr[0] → arr[0] + 1</code> instead
-- AST identifier obfuscation (<code>Obfuscator::obfuscate</code> is a no-op placeholder)
 - WebSocket support — planned for v0.6
-- macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only</p>
+- macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only
+- LLVM / WASM compilation backends — planned for v0.6/v0.8; bytecode (<code>.txtc</code>) is the only non-AST output today</p>
 </blockquote>
 <hr />
 <h2 id="table-of-contents">Table of Contents</h2>
@@ -4319,7 +4320,7 @@ spawned task finishes. Non-future values passed to <code>await</code> are return
 The child thread receives a snapshot of the parent's global scope.</p>
 </blockquote>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>async → define → fetch → (url: string) → string
-<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>  # In v0.4 this runs synchronously — http_get blocks
+<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>  # In v0.5 async define spawns an OS thread — http_get runs concurrently
 <a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>  store → body → await → http_get(url)
 <a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>  return → body
 <a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a>end
@@ -4366,19 +4367,11 @@ The child thread receives a snapshot of the parent's global scope.</p>
 <td><code>exec</code>, <code>env</code>, <code>*</code></td>
 <td>Process execution, environment</td>
 </tr>
-<tr>
-<td><code>wifi</code></td>
-<td><code>scan</code>, <code>capture</code>, <code>deauth</code>, <code>inject</code></td>
-<td>WiFi operations (enforced, v0.4.1+)</td>
-</tr>
-<tr>
-<td><code>ble</code></td>
-<td><code>scan</code>, <code>connect</code>, <code>fuzz</code>, <code>read</code>, <code>write</code></td>
-<td>Bluetooth LE (enforced, v0.4.1+)</td>
-</tr>
 </tbody>
 </table>
-<p>Alias: <code>"bluetooth"</code> is accepted as a synonym for <code>"ble"</code>.</p>
+<blockquote>
+<p><strong>Note:</strong> <code>wifi.*</code> and <code>ble.*</code> resources were removed in v0.4.1. Passing them raises a <code>RuntimeError</code> with an explanatory message.</p>
+</blockquote>
 <p>Wildcard forms: <code>"fs.*"</code> (any fs action), <code>"*.*"</code> (unrestricted).</p>
 <p>Scoped form: <code>"fs.read:/tmp/*"</code> restricts the action to a specific path/host pattern.</p>
 <p>The runtime enforces capability declarations. Violating a <code>forbidden</code> capability raises a <code>RuntimeError</code>.</p>
@@ -4486,8 +4479,8 @@ If the version is declared <strong>incompatible</strong>, loading raises a <code
 </code></pre></div>
 <p>Design functions to stay within this budget. Deeply recursive algorithms should be rewritten iteratively.</p>
 <h3 id="64-memory">6.4 Memory</h3>
-<p>Memory is managed by Rust's ownership system combined with reference counting for shared values. There is <strong>no explicit memory limit</strong> in v0.4. The process is bounded by the host OS.</p>
-<p><code>MemoryManager</code> (stub in v0.4) is a placeholder for future GC integration.</p>
+<p>Memory is managed by Rust's ownership system combined with reference counting for shared values. There is <strong>no explicit memory limit</strong> in v0.5. The process is bounded by the host OS.</p>
+<p><code>AllocationTracker</code> (in <code>src/runtime/gc.rs</code>) tracks allocations and enforces a configurable soft memory limit. A full arena-allocator-based GC is planned for v0.8.</p>
 <h3 id="65-integer-overflow">6.5 Integer Overflow</h3>
 <p>Integer arithmetic uses Rust <code>i64</code>. All arithmetic (<code>+</code>, <code>-</code>, <code>*</code>, <code>**</code>) in both the AST VM and bytecode VM uses Rust's <code>checked_*</code> methods as of v0.4, returning a <code>RuntimeError</code> on overflow instead of wrapping or panicking.</p>
 <h3 id="66-float-semantics">6.6 Float Semantics</h3>
@@ -4665,10 +4658,10 @@ If the version is declared <strong>incompatible</strong>, loading raises a <code
 <p>A native <code>Result&lt;T, E&gt;</code> type is planned for a future release.</p>
 <hr />
 <hr />
-<h2 id="appendix-f-security-guarantees-v04">Appendix F — Security Guarantees (v0.4)</h2>
-<p>This section documents what the v0.4 runtime does and does not enforce, so users can make
+<h2 id="appendix-f-security-guarantees-v05">Appendix F — Security Guarantees (v0.5)</h2>
+<p>This section documents what the v0.5 runtime does and does not enforce, so users can make
 informed decisions about running Txt-code scripts.</p>
-<h3 id="f1-enforced-in-v04">F.1 Enforced in v0.4</h3>
+<h3 id="f1-enforced-in-v05">F.1 Enforced in v0.5</h3>
 <table>
 <thead>
 <tr>

@@ -922,8 +922,11 @@
 <li><strong>Execution Transparency</strong> — Full trace logging and replayable execution graphs</li>
 <li><strong>Policy Enforcement</strong> — Intent declarations, capability scoping, and rate limiting</li>
 <li><strong>AI-Safe Design</strong> — Structured error output and deterministic execution for AI agents</li>
-<li><strong>Developer Tooling</strong> — REPL, formatter, linter, debugger, and execution tracer</li>
-<li><strong>Package Manager</strong> — Built-in dependency management via <code>Txtcode.toml</code></li>
+<li><strong>Developer Tooling</strong> — REPL, formatter, linter, debugger, LSP server (<code>txtcode lsp</code>), TextMate grammar</li>
+<li><strong>Package Manager</strong> — 20 core packages, <code>registry/index.json</code>, <code>Txtcode.lock</code> lockfile</li>
+<li><strong>Async/Await</strong> — thread-based <code>Value::Future</code>, <code>await</code> in both AST and Bytecode VMs</li>
+<li><strong>Full Stdlib</strong> — HTTP server/client, datetime (UTC/local), CSV, streaming file I/O, process piping</li>
+<li><strong>Performance Documented</strong> — see <a href="performance/">docs/performance.md</a> for real benchmark numbers</li>
 </ul>
 <hr />
 <h2 id="goals">Goals</h2>
@@ -1001,16 +1004,26 @@
 <h2 id="cli-commands">CLI Commands</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>txtcode                        Start REPL (no args)
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>txtcode &lt;file&gt;                 Run a file
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>txtcode run &lt;file&gt;             Run with AST VM (full policy/audit)
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>txtcode repl                   Start interactive shell
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>txtcode compile &lt;file&gt; [opts]  Compile to bytecode (.txtc)
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>txtcode format &lt;paths&gt;         Format source files
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>txtcode lint &lt;paths&gt;           Run static analysis
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>txtcode debug &lt;file&gt;           Launch interactive debugger
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>txtcode test [path]            Run tests
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>txtcode bench &lt;file&gt;           Benchmark a program
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>txtcode doctor                 Check environment setup
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>txtcode init [name]            Initialize a new project
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>txtcode run &lt;file&gt;             Run a Txt-code program (full policy/audit)
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  --timeout 30s                Maximum execution time
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  --sandbox                    Deny all fs writes, network, exec
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  --allow-fs PATH              Permit filesystem access under PATH
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  --allow-net HOST             Permit network access to HOST
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  --type-check / --strict-types  Static type checker (advisory / hard errors)
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>  --permissions-report         List privileged calls without running
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>txtcode repl                   Start interactive shell
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>txtcode compile &lt;file&gt;         Compile to bytecode (.txtc)
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>txtcode lsp                    Start LSP server on stdin/stdout
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>txtcode format &lt;paths&gt;         Format source files (--write for in-place)
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>txtcode lint &lt;paths&gt;           Run static analysis
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>txtcode debug &lt;file&gt;           Launch interactive debugger
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>txtcode test [path]            Run tests (default: tests/)
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>txtcode bench &lt;file&gt;           Benchmark a program
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>txtcode doctor                 Check environment setup
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>txtcode init [name]            Initialize a new project
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>txtcode package install        Install dependencies
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>txtcode package install-local  Install from local directory
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>txtcode package search &lt;query&gt; Search the registry
 </code></pre></div>
 <blockquote>
 <p><strong>Engine note:</strong> Both <code>txtcode run</code> (AST VM) and compiled <code>.txtc</code> files (Bytecode VM) enforce
@@ -1025,6 +1038,7 @@ permission grants/denials, audit trail logging, and runtime integrity verificati
 <li><a href="syntax-reference/">Syntax Reference</a></li>
 <li><a href="permissions/">Permissions Reference</a></li>
 <li><a href="security-features/">Security Features</a></li>
+<li><a href="performance/">Performance Baseline</a></li>
 <li><a href="contributing/">Contributing Guide</a></li>
 </ul>
 <hr />

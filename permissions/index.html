@@ -1011,12 +1011,12 @@
 <tbody>
 <tr>
 <td><code>fs.read</code></td>
-<td>Read files, check existence, list dirs</td>
+<td>Read files, check existence, list dirs, <code>file_open</code>/<code>file_read_line</code>/<code>file_close</code></td>
 <td><code>/var/log/*</code></td>
 </tr>
 <tr>
 <td><code>fs.write</code></td>
-<td>Write, append, copy, move, create dirs</td>
+<td>Write, append, copy, move, create dirs, <code>csv_write</code>, <code>file_write_line</code></td>
 <td><code>/tmp/*</code></td>
 </tr>
 <tr>
@@ -1026,12 +1026,12 @@
 </tr>
 <tr>
 <td><code>net.connect</code></td>
-<td>Outbound HTTP, TCP, UDP, DNS</td>
+<td>Outbound HTTP, TCP, UDP, DNS, <code>http_get</code>, <code>http_post</code>, <code>http_serve</code></td>
 <td><code>*.example.com</code></td>
 </tr>
 <tr>
 <td><code>sys.exec</code></td>
-<td><code>exec()</code>, <code>exec_json()</code>, <code>exec_lines()</code>, <code>exec_status()</code>, <code>spawn()</code>, <code>pipe_exec()</code>, <code>kill()</code>, <code>signal_send()</code></td>
+<td><code>exec()</code>, <code>exec_json()</code>, <code>exec_lines()</code>, <code>exec_status()</code>, <code>exec_pipe()</code>, <code>spawn()</code>, <code>kill()</code>, <code>signal_send()</code></td>
 <td>—</td>
 </tr>
 <tr>

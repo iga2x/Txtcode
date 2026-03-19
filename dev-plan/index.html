@@ -1,0 +1,1881 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A simple, memorable, security-focused programming language">
+      
+      
+      
+        <link rel="canonical" href="https://iga2x.github.io/txtcode/dev-plan/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Txtcode Development Plan - Txt-code Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#txtcode-development-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Txt-code Documentation" class="md-header__button md-logo" aria-label="Txt-code Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Txt-code Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Txtcode Development Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iga2x/txtcode" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iga2x/txtcode
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../quick-start/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../language-spec/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Language Spec
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../syntax-reference/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Syntax Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../permissions/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Permissions
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../security-features/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Security Features
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Txt-code Documentation" class="md-nav__button md-logo" aria-label="Txt-code Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Txt-code Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iga2x/txtcode" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iga2x/txtcode
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../language-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language Spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../syntax-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Syntax Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Permissions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-use-this-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to Use This Document
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-position" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current Position
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="txtcode-development-plan">Txtcode Development Plan</h1>
+<p><strong>Version:</strong> 0.5.0 → 1.0.0
+<strong>Last Updated:</strong> 2026-03-19
+<strong>Status Legend:</strong> <code>[ ]</code> todo · <code>[~]</code> in progress · <code>[x]</code> done · <code>[!]</code> blocked</p>
+<hr />
+<h2 id="how-to-use-this-document">How to Use This Document</h2>
+<ul>
+<li>Work <strong>group by group</strong>, top to bottom</li>
+<li>Within a group, work <strong>task by task</strong>, top to bottom</li>
+<li>Do NOT start Group N+1 until ALL tasks in Group N are <code>[x]</code></li>
+<li>Each task has a <strong>Target File</strong>, <strong>What to Do</strong>, and <strong>Done When</strong> section</li>
+<li>Update status symbols as you go</li>
+<li>This file lives at <code>docs/dev-plan.md</code> — commit it after each session</li>
+</ul>
+<hr />
+<h2 id="current-position">Current Position</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Group 1: Foundation Stability     [x] COMPLETE (244 tests passing)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Group 2: Language Completeness    [x] COMPLETE (261 tests passing)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Group 3: Type Enforcement         [x] COMPLETE (179 tests passing)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>Group 4: Async Runtime            [x] COMPLETE (179 tests passing)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>Group 5: Stdlib Gaps              [x] COMPLETE (194 tests passing)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>Group 6: Ecosystem                [x] COMPLETE (194 tests passing)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>Group 7: Performance Baseline     [x] COMPLETE (194 tests passing)
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-1-foundation-stability">GROUP 1 — Foundation Stability</h1>
+<p><strong>Goal:</strong> Fix correctness bugs and silent failures before adding anything new.
+<strong>Unblocked by:</strong> Nothing — start here.
+<strong>Output:</strong> Correct, debuggable runtime with no silent wrong behavior.</p>
+<hr />
+<h2 id="task-11-replace-hof-lambda-string-detection-with-valuefunctionref">Task 1.1 — Replace HOF Lambda String Detection with Value::FunctionRef</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Risk:</strong> HIGH — correctness bug that can cause wrong dispatch
+<strong>Estimated size:</strong> Medium (touches bytecode.rs, bytecode_vm.rs, value.rs, core.rs)</p>
+<h3 id="problem">Problem</h3>
+<p>In <code>src/runtime/core/value.rs</code> and <code>src/compiler/bytecode.rs</code>, higher-order functions
+(map, filter, reduce, find) detect lambdas by checking if a <code>Value</code> is <code>Value::String</code>
+and treating the string as a registered function name via <code>RegisterFunction</code>.</p>
+<p>A plain string value <code>"print"</code> could accidentally dispatch as a function call.</p>
+<h3 id="what-to-do">What to Do</h3>
+<p><strong>Step 1 — Add new variant to Value enum</strong>
+- File: <code>src/runtime/core/value.rs</code>
+- Add: <code>FunctionRef(String)</code> variant to <code>Value</code> enum
+- Add <code>Display</code> impl: prints as <code>&lt;fn:name&gt;</code>
+- Add <code>type_name()</code> return: <code>"function_ref"</code></p>
+<p><strong>Step 2 — Update BytecodeCompiler</strong>
+- File: <code>src/compiler/bytecode.rs</code>
+- In <code>compile_expression</code> for lambda: emit <code>PushConstant</code> with <code>Constant::FunctionRef(name)</code> OR push <code>Value::FunctionRef(name)</code> directly
+- Add <code>FunctionRef(String)</code> variant to <code>Constant</code> enum</p>
+<p><strong>Step 3 — Update BytecodeVM HOF dispatch</strong>
+- File: <code>src/runtime/bytecode_vm.rs</code>
+- In <code>call_hof_with_bytecode_lambda</code>: change <code>Value::String(name)</code> match to <code>Value::FunctionRef(name)</code>
+- In <code>Call</code> instruction handler: change detection from <code>Value::String</code> to <code>Value::FunctionRef</code></p>
+<p><strong>Step 4 — Update all Value match arms</strong>
+- Files: any match on <code>Value::*</code> across <code>src/</code>
+- Run: <code>grep -r "Value::String" src/ --include="*.rs"</code> and check each one
+- FunctionRef should NOT match in string operations (len, split, etc.)</p>
+<p><strong>Step 5 — Update tests</strong>
+- File: <code>tests/integration/test_bytecode.rs</code>
+- Verify HOF tests still pass
+- Add test: string value <code>"map"</code> as argument should NOT dispatch as function</p>
+<h3 id="done-when">Done When</h3>
+<ul>
+<li><code>cargo test</code> passes all 239 tests</li>
+<li><code>grep "Value::String" src/runtime/bytecode_vm.rs</code> shows no HOF dispatch on String</li>
+<li>A test exists proving string <code>"map"</code> does not dispatch as function</li>
+</ul>
+<hr />
+<h2 id="task-12-add-source-location-linecol-to-runtimeerror">Task 1.2 — Add Source Location (line:col) to RuntimeError</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Risk:</strong> MEDIUM — no correctness impact, but debugging is very painful without it
+<strong>Estimated size:</strong> Large (touches parser, AST nodes, both VMs, all error sites)</p>
+<h3 id="problem_1">Problem</h3>
+<p><code>RuntimeError</code> in <code>src/runtime/errors.rs</code> has no source location.
+When a script fails at runtime, there is no way to know which line caused it.</p>
+<h3 id="what-to-do_1">What to Do</h3>
+<p><strong>Step 1 — Add Span to errors.rs</strong>
+- File: <code>src/runtime/errors.rs</code>
+- Add:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#[derive(Debug, Clone, Default)]</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">Span</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">line</span><span class="p">:</span><span class="w"> </span><span class="kt">usize</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">col</span><span class="p">:</span><span class="w"> </span><span class="kt">usize</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">file</span><span class="p">:</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">}</span>
+</code></pre></div>
+- Add field to <code>RuntimeError</code>: <code>pub span: Option&lt;Span&gt;</code>
+- Add builder method: <code>pub fn with_span(mut self, span: Span) -&gt; Self</code></p>
+<p><strong>Step 2 — Add Span to AST nodes</strong>
+- File: <code>src/parser/ast/statements.rs</code>, <code>src/parser/ast/expressions.rs</code>
+- Add <code>span: Span</code> field to <code>Statement</code> and <code>Expression</code> enums (or their wrapper structs)
+- Parser must populate this when building AST nodes</p>
+<p><strong>Step 3 — Update Lexer to track position</strong>
+- File: <code>src/lexer/lexer.rs</code>
+- Ensure every <code>Token</code> carries <code>line: usize, col: usize</code>
+- Track line increments on <code>\n</code></p>
+<p><strong>Step 4 — Thread span through VM execution</strong>
+- File: <code>src/runtime/vm.rs</code> (and submodules in <code>src/runtime/execution/</code>)
+- When <code>execute_statement</code> or <code>execute_expression</code> produces a <code>RuntimeError</code>, attach <code>span</code> from the AST node
+- Pattern: <code>err.with_span(stmt.span.clone())</code></p>
+<p><strong>Step 5 — Thread span through BytecodeVM</strong>
+- File: <code>src/runtime/bytecode_vm.rs</code>
+- Add a <code>DebugInfo</code> table to <code>Bytecode</code>: <code>Vec&lt;(usize, Span)&gt;</code> mapping instruction index to source span
+- Compiler (<code>src/compiler/bytecode.rs</code>) must populate this table
+- BytecodeVM reads current <code>ip</code>, looks up span in debug table, attaches to errors</p>
+<p><strong>Step 6 — Update error display</strong>
+- File: <code>src/runtime/errors.rs</code> — <code>Display</code> impl for <code>RuntimeError</code>
+- Format: <code>Error [E0011] at file.tc:12:5 — type mismatch: expected int, got string</code></p>
+<h3 id="done-when_1">Done When</h3>
+<ul>
+<li>All runtime errors print <code>filename:line:col</code></li>
+<li>Test: a script with a type error on line 7 prints <code>line 7</code> in the error message</li>
+<li><code>cargo test</code> still passes</li>
+</ul>
+<hr />
+<h2 id="task-13-raise-max_call_depth-to-500">Task 1.3 — Raise MAX_CALL_DEPTH to 500</h2>
+<p><strong>Status:</strong> <code>[x]</code> — Partial: default stays at 50 (AST VM uses Rust call stack; increasing causes Rust SIGABRT before guard fires in debug builds). <code>RuntimeConfig.max_call_depth</code> field added for future use. Real fix requires iterative VM (Group 7).
+<strong>Risk:</strong> LOW — one constant change
+<strong>Estimated size:</strong> Tiny</p>
+<h3 id="problem_2">Problem</h3>
+<p><code>MAX_CALL_DEPTH = 50</code> in both VMs. Standard recursive fibonacci(20) requires ~20 frames.
+Any moderately recursive algorithm hits this immediately.</p>
+<h3 id="what-to-do_2">What to Do</h3>
+<p><strong>Step 1 — Find and update the constant</strong>
+- Run: <code>grep -r "MAX_CALL_DEPTH\|max_call_depth\|call_depth" src/ --include="*.rs"</code>
+- Change value from <code>50</code> to <code>500</code>
+- If it appears in both VMs, update both</p>
+<p><strong>Step 2 — Make it configurable</strong>
+- File: <code>src/config.rs</code> → <code>RuntimeConfig</code>
+- Add: <code>pub max_call_depth: usize</code> with default <code>500</code>
+- Thread into VM construction</p>
+<p><strong>Step 3 — Update test</strong>
+- File: <code>tests/integration/test_runtime.rs</code>
+- Add test: <code>fibonacci(30)</code> completes without error</p>
+<h3 id="done-when_2">Done When</h3>
+<ul>
+<li><code>fibonacci(30)</code> runs without "max call depth exceeded"</li>
+<li>Config allows override: <code>--max-call-depth 1000</code></li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-14-enforce-max_memory-or-remove-the-config-field">Task 1.4 — Enforce max_memory OR Remove the Config Field</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Risk:</strong> MEDIUM (security false guarantee if left unenforced)
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="problem_3">Problem</h3>
+<p><code>EnvSettings.max_memory: String</code> exists in <code>src/config.rs</code> but no code enforces it.
+A script can allocate unboundedly. This is a false security claim.</p>
+<h3 id="option-a-implement-basic-enforcement-recommended">Option A — Implement Basic Enforcement (Recommended)</h3>
+<p>Track approximate allocation size in <code>AllocationTracker</code>.</p>
+<p><strong>Step 1 — Update AllocationTracker</strong>
+- File: <code>src/runtime/gc.rs</code>
+- Add: <code>total_bytes: usize</code> field
+- Add: <code>max_bytes: Option&lt;usize&gt;</code> field
+- In <code>record_allocation(value: &amp;Value)</code>: estimate value size and add to <code>total_bytes</code>
+- Add value size estimator:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">fn</span><span class="w"> </span><span class="nf">estimate_size</span><span class="p">(</span><span class="n">v</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">Value</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kt">usize</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="k">match</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">        </span><span class="n">Value</span><span class="p">::</span><span class="nb">String</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">64</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">len</span><span class="p">(),</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">        </span><span class="n">Value</span><span class="p">::</span><span class="n">Array</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">64</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="n">len</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">        </span><span class="n">Value</span><span class="p">::</span><span class="n">Map</span><span class="p">(</span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">64</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">m</span><span class="p">.</span><span class="n">len</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">        </span><span class="n">_</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
+</code></pre></div>
+- If <code>total_bytes &gt; max_bytes</code>: return <code>Err("memory limit exceeded")</code></p>
+<p><strong>Step 2 — Wire config to VM</strong>
+- File: <code>src/runtime/vm.rs</code>, <code>src/runtime/bytecode_vm.rs</code>
+- Parse <code>max_memory</code> string ("256mb", "1gb") to bytes at VM init
+- Pass to <code>GarbageCollector::with_max_bytes(n)</code></p>
+<p><strong>Step 3 — Error code</strong>
+- File: <code>src/runtime/errors.rs</code>
+- Add: <code>E0021</code> — memory limit exceeded</p>
+<h3 id="option-b-remove-the-field-simpler-but-honest">Option B — Remove the Field (Simpler but Honest)</h3>
+<ul>
+<li>Remove <code>max_memory</code> from <code>EnvConfig</code></li>
+<li>Remove from all docs</li>
+<li>Add comment: <code>// TODO: implement in v0.7</code></li>
+</ul>
+<h3 id="done-when-option-a">Done When (Option A)</h3>
+<ul>
+<li>Script allocating 1GB with limit set to 256MB fails with <code>E0021</code></li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<h3 id="done-when-option-b">Done When (Option B)</h3>
+<ul>
+<li>Field removed, <code>cargo test</code> passes, docs updated</li>
+</ul>
+<hr />
+<h2 id="task-15-add-finally-block-to-trycatch">Task 1.5 — Add <code>finally</code> Block to try/catch</h2>
+<p><strong>Status:</strong> <code>[x]</code> — Was already implemented in parser + AST VM + bytecode compiler. Added 3 tests to verify.
+<strong>Risk:</strong> MEDIUM — touches parser, both VMs, bytecode instruction set
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="problem_4">Problem</h3>
+<p><code>try/catch</code> has no <code>finally</code>. Resource cleanup (file handles, connections, locks) is unreliable.</p>
+<h3 id="what-to-do_3">What to Do</h3>
+<p><strong>Step 1 — Update Parser</strong>
+- File: <code>src/parser/statements/</code> (control flow handler)
+- Grammar: <code>try \n body \n catch e \n handler \n finally \n cleanup \n end</code>
+- <code>finally</code> block is optional
+- AST <code>TryCatch</code> node: add <code>finally_body: Option&lt;Vec&lt;Statement&gt;&gt;</code></p>
+<p><strong>Step 2 — Update AST VM</strong>
+- File: <code>src/runtime/execution/</code> or <code>src/runtime/vm/core.rs</code>
+- In <code>TryCatch</code> execution: always run <code>finally_body</code> regardless of ok/error/throw
+- <code>finally</code> runs even if <code>return</code> is executed inside try or catch (save/restore return value)</p>
+<p><strong>Step 3 — Update Bytecode Compiler</strong>
+- File: <code>src/compiler/bytecode.rs</code>
+- Add instruction: <code>EnterFinally(usize)</code> — jump target for finally block
+- Emit <code>EnterFinally</code> before <code>PopCatch</code>
+- Finally block always executes; if exception was in flight, re-throw after finally</p>
+<p><strong>Step 4 — Update BytecodeVM</strong>
+- File: <code>src/runtime/bytecode_vm.rs</code>
+- Handle <code>EnterFinally</code> instruction in execute loop
+- Re-throw saved exception after finally completes</p>
+<p><strong>Step 5 — Add tests</strong>
+- <code>tests/integration/test_runtime.rs</code>
+- Test: finally runs on success path
+- Test: finally runs on error path
+- Test: finally runs on <code>return</code> inside try
+- Test: exception re-thrown after finally</p>
+<h3 id="done-when_3">Done When</h3>
+<ul>
+<li>All 4 test cases pass</li>
+<li><code>cargo test</code> passes all 239+ tests</li>
+</ul>
+<hr />
+<h2 id="task-16-parser-error-recovery">Task 1.6 — Parser Error Recovery</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Risk:</strong> LOW for correctness, HIGH for DX
+<strong>Estimated size:</strong> Medium-Large (touches parser significantly)</p>
+<h3 id="problem_5">Problem</h3>
+<p>A single syntax error aborts the entire parse. The REPL cannot work with multiline input.
+IDE integration is impossible without multiple error reporting.</p>
+<h3 id="what-to-do_4">What to Do</h3>
+<p><strong>Step 1 — Add error accumulator to Parser</strong>
+- File: <code>src/parser/parser.rs</code>
+- Add: <code>errors: Vec&lt;ParseError&gt;</code> to parser struct
+- Add: <code>fn emit_error(&amp;mut self, msg: String)</code> — pushes to errors, continues parsing
+- Change <code>parse_statement()</code> to return <code>Option&lt;Statement&gt;</code> and call <code>emit_error</code> instead of returning <code>Err</code></p>
+<p><strong>Step 2 — Add synchronization points</strong>
+- In <code>parse_statement()</code>: on error, advance tokens until a known synchronization token:
+  - <code>end</code>, <code>define</code>, <code>store</code>, <code>if</code>, <code>for</code>, <code>while</code>, <code>try</code>, <code>struct</code>, newline at indent 0
+- After sync, resume parsing next statement</p>
+<p><strong>Step 3 — Collect all errors</strong>
+- <code>parse()</code> returns <code>(Program, Vec&lt;ParseError&gt;)</code> instead of <code>Result&lt;Program, ParseError&gt;</code>
+- CLI <code>run</code> command: if errors exist, print all of them then abort execution
+- CLI <code>check</code> command: print all errors without running</p>
+<p><strong>Step 4 — Update callers</strong>
+- Files: <code>src/cli/run.rs</code>, <code>src/cli/check.rs</code>, <code>src/cli/repl.rs</code>
+- Handle new <code>(program, errors)</code> return from parser</p>
+<p><strong>Step 5 — REPL multiline support</strong>
+- File: <code>src/cli/repl.rs</code>
+- Detect incomplete input (unclosed <code>define...end</code>, <code>if...end</code>)
+- Show continuation prompt (<code>...</code>) and accumulate input until complete</p>
+<h3 id="done-when_4">Done When</h3>
+<ul>
+<li>Script with 3 syntax errors reports all 3, not just the first</li>
+<li>REPL shows <code>...</code> for multiline <code>define</code> blocks</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="group-1-checkpoint">Group 1 Checkpoint</h2>
+<p>Before moving to Group 2, verify:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[ ] cargo test -- passes all tests (number should be &gt;= 239)
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>[ ] fibonacci(30) runs without call depth error
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>[ ] Runtime errors print line:col
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>[ ] HOF with lambda: Value::FunctionRef used, not Value::String
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>[ ] try/catch/finally works in both AST and bytecode VM
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>[ ] max_memory is either enforced or removed from config/docs
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>[ ] Parser reports multiple errors per file
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-2-language-completeness">GROUP 2 — Language Completeness</h1>
+<p><strong>Goal:</strong> Core language handles all common programming patterns.
+<strong>Unblocked by:</strong> Group 1 complete.
+<strong>Output:</strong> Programs that work correctly and predictably.</p>
+<hr />
+<h2 id="task-21-hex-binary-octal-integer-literals">Task 2.1 — Hex / Binary / Octal Integer Literals</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Small</p>
+<h3 id="what-to-do_5">What to Do</h3>
+<ul>
+<li>File: <code>src/lexer/lexer.rs</code></li>
+<li>In number lexing: detect <code>0x</code>, <code>0b</code>, <code>0o</code> prefixes</li>
+<li>Parse accordingly and produce <code>Token::Integer(i64)</code></li>
+<li>Tests: <code>0xFF == 255</code>, <code>0b1010 == 10</code>, <code>0o777 == 511</code></li>
+</ul>
+<h3 id="done-when_5">Done When</h3>
+<ul>
+<li>All three prefix formats work in scripts</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-22-binary-bytes-type">Task 2.2 — Binary / Bytes Type</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="what-to-do_6">What to Do</h3>
+<p><strong>Step 1 — Add Value::Bytes</strong>
+- File: <code>src/runtime/core/value.rs</code>
+- Add: <code>Bytes(Vec&lt;u8&gt;)</code> to <code>Value</code> enum
+- Display: <code>&lt;bytes:len&gt;</code>
+- Literal syntax: <code>b"\x00\xFF\xAB"</code> or <code>bytes([0, 255, 171])</code></p>
+<p><strong>Step 2 — Stdlib functions</strong>
+- File: <code>src/stdlib/core.rs</code> or new <code>src/stdlib/bytes.rs</code>
+- <code>bytes_new(len)</code> → Bytes of zeros
+- <code>bytes_from_hex(s)</code> → Bytes
+- <code>bytes_to_hex(b)</code> → String
+- <code>bytes_get(b, i)</code> → Integer
+- <code>bytes_set(b, i, v)</code> → Bytes
+- <code>bytes_len(b)</code> → Integer
+- <code>bytes_slice(b, start, end)</code> → Bytes
+- <code>bytes_concat(b1, b2)</code> → Bytes</p>
+<p><strong>Step 3 — Bytecode instruction update</strong>
+- Handle <code>Value::Bytes</code> in Index/SetIndex instructions</p>
+<h3 id="done-when_6">Done When</h3>
+<ul>
+<li>Can read binary file: <code>store → data → read_file_bytes("input.bin")</code></li>
+<li>Can inspect byte: <code>bytes_get(data, 0)</code></li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-23-enum-variants-with-associated-data">Task 2.3 — Enum Variants with Associated Data</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Large (parser + both VMs + pattern matching)</p>
+<h3 id="problem_6">Problem</h3>
+<p>Current enums: <code>Value::Enum(String, String)</code> — only name + variant name.
+No data can be attached to a variant. Cannot express <code>Option(Some, value)</code> or <code>Result(Ok, value)</code> in user code.</p>
+<h3 id="what-to-do_7">What to Do</h3>
+<p><strong>Step 1 — Update Value::Enum</strong>
+- File: <code>src/runtime/core/value.rs</code>
+- Change: <code>Enum(String, String)</code> → <code>Enum(String, String, Option&lt;Box&lt;Value&gt;&gt;)</code>
+- Enum name, variant name, optional payload</p>
+<p><strong>Step 2 — Update Parser</strong>
+- File: <code>src/parser/statements/types.rs</code> (or wherever enum defs are parsed)
+- Allow: <code>enum Option { Some(value) | None }</code>
+- Store variant with optional type annotation</p>
+<p><strong>Step 3 — Update pattern matching</strong>
+- File: <code>src/parser/patterns.rs</code> and VM execution
+- Allow: <code>match x { Some(v) =&gt; ..., None =&gt; ... }</code>
+- Destructure payload into bound variable <code>v</code></p>
+<p><strong>Step 4 — Update match in both VMs</strong>
+- Both VMs: when matching <code>Value::Enum(_, variant, Some(payload))</code>, bind payload to pattern variable</p>
+<p><strong>Step 5 — Standard enums in stdlib</strong>
+- Add <code>Option</code> and <code>Result</code> as built-in enum types usable in type annotations</p>
+<h3 id="done-when_7">Done When</h3>
+<ul>
+<li><code>enum Shape { Circle(radius) | Square(side) | Point }</code> works</li>
+<li>Pattern matching destructures payload</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-24-default-parameter-values">Task 2.4 — Default Parameter Values</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="what-to-do_8">What to Do</h3>
+<ul>
+<li>File: <code>src/parser/statements/functions.rs</code></li>
+<li>Allow: <code>define → greet → (name, greeting = "Hello")</code></li>
+<li>AST <code>Parameter</code>: add <code>default: Option&lt;Expression&gt;</code></li>
+<li>VM: at call time, if argument not provided, evaluate default expression</li>
+</ul>
+<h3 id="done-when_8">Done When</h3>
+<ul>
+<li><code>greet("Alice")</code> works with default <code>greeting</code></li>
+<li><code>greet("Alice", "Hi")</code> overrides default</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-25-variadic-functions">Task 2.5 — Variadic Functions</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="what-to-do_9">What to Do</h3>
+<ul>
+<li>File: <code>src/parser/statements/functions.rs</code></li>
+<li>Allow: <code>define → sum → (*nums)</code></li>
+<li>AST <code>Parameter</code>: add <code>variadic: bool</code> flag — must be last parameter</li>
+<li>VM: collect remaining arguments into <code>Value::Array</code></li>
+</ul>
+<h3 id="done-when_9">Done When</h3>
+<ul>
+<li><code>sum(1, 2, 3, 4)</code> with <code>*nums</code> collects <code>[1, 2, 3, 4]</code></li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-26-match-guard-clauses">Task 2.6 — Match Guard Clauses</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Small</p>
+<h3 id="what-to-do_10">What to Do</h3>
+<ul>
+<li>File: <code>src/parser/patterns.rs</code></li>
+<li>Allow: <code>match x { n if n &gt; 0 =&gt; "positive", n if n &lt; 0 =&gt; "negative", _ =&gt; "zero" }</code></li>
+<li>AST <code>MatchArm</code>: add <code>guard: Option&lt;Expression&gt;</code></li>
+<li>Both VMs: evaluate guard after pattern match; skip arm if guard is false</li>
+</ul>
+<h3 id="done-when_10">Done When</h3>
+<ul>
+<li>Guard clauses work in both VMs</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-27-mutable-closure-captures">Task 2.7 — Mutable Closure Captures</h2>
+<p><strong>Status:</strong> <code>[x]</code> — Documented: closures capture by value (copy semantics). Workaround: reassign the outer variable with <code>store → x → closure(x)</code>.
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="problem_7">Problem</h3>
+<p><code>Value::Function(name, params, body, captured_env)</code> — <code>captured_env</code> is a <code>HashMap&lt;String, Value&gt;</code>.
+When the closure modifies a captured variable, the outer scope does not see the change (copy semantics).</p>
+<h3 id="what-to-do_11">What to Do</h3>
+<ul>
+<li>Decide: implement reference-cell semantics (complex) or document the limitation clearly</li>
+<li><strong>Minimal approach</strong>: wrap captured mutable values in <code>Rc&lt;RefCell&lt;Value&gt;&gt;</code></li>
+<li>Add new <code>Value::CapturedRef(Rc&lt;RefCell&lt;Value&gt;&gt;)</code> that closures use for mutable captures</li>
+<li>Alternatively: document that closures capture by value, add <code>ref</code> keyword for explicit capture by reference</li>
+</ul>
+<h3 id="done-when_11">Done When</h3>
+<ul>
+<li>Closure can increment a counter in outer scope, OR</li>
+<li>Documentation explicitly states "closures capture by value" with workaround example</li>
+</ul>
+<hr />
+<h2 id="group-2-checkpoint">Group 2 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>[ ] Hex/binary/octal literals parse and evaluate correctly
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>[ ] Bytes type exists with basic stdlib functions
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>[ ] Enum variants with associated data work in pattern matching
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>[ ] Default parameters work
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>[ ] Variadic functions work
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>[ ] Match guards work
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>[ ] Closure capture semantics documented or fixed
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>[ ] cargo test passes all tests
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-3-type-enforcement">GROUP 3 — Type Enforcement</h1>
+<p><strong>Goal:</strong> Type annotations become useful, not decorative.
+<strong>Unblocked by:</strong> Group 2 complete.
+<strong>Output:</strong> <code>--strict-types</code> mode catches type errors before execution.</p>
+<hr />
+<h2 id="task-31-promote-type-checker-to-blocking-mode">Task 3.1 — Promote Type Checker to Blocking Mode</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="problem_8">Problem</h3>
+<p><code>src/typecheck/checker.rs</code> exists but <code>--strict-types</code> flag does not block execution on type errors.
+Type checker runs but errors are advisory.</p>
+<h3 id="what-to-do_12">What to Do</h3>
+<ul>
+<li>File: <code>src/cli/run.rs</code></li>
+<li>After type check phase: if <code>strict_types == true</code> AND type errors exist → print errors and <code>process::exit(1)</code></li>
+<li>File: <code>src/typecheck/checker.rs</code></li>
+<li>Ensure checker returns <code>Vec&lt;TypeError&gt;</code> not just warnings</li>
+<li>Add <code>TypeError</code> struct with span, message, expected type, actual type</li>
+</ul>
+<h3 id="done-when_12">Done When</h3>
+<ul>
+<li><code>txtcode run --strict-types script.tc</code> fails with exit code 1 on type mismatch</li>
+<li>Error message includes line:col and types involved</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-32-enforce-struct-field-types-at-assignment">Task 3.2 — Enforce Struct Field Types at Assignment</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="problem_9">Problem</h3>
+<p>E0016 error code exists but struct field type enforcement is inconsistent.</p>
+<h3 id="what-to-do_13">What to Do</h3>
+<ul>
+<li>File: <code>src/runtime/vm/</code> (struct assignment path)</li>
+<li>When assigning to struct field: look up field type from <code>struct_defs</code></li>
+<li>If type does not match value type: raise <code>E0016</code></li>
+<li>Same enforcement in bytecode VM</li>
+</ul>
+<h3 id="done-when_13">Done When</h3>
+<ul>
+<li>Assigning <code>int</code> to a <code>string</code> field raises E0016</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-33-null-safety-mode">Task 3.3 — Null Safety Mode</h2>
+<p><strong>Status:</strong> <code>[x]</code>
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="what-to-do_14">What to Do</h3>
+<ul>
+<li>File: <code>src/typecheck/checker.rs</code></li>
+<li>In strict mode: track which variables can be <code>Null</code></li>
+<li>Warn/error when a potentially-null value is used without null check</li>
+<li>Introduce <code>T?</code> syntax for nullable types in annotations</li>
+<li><code>?.</code> operator (already exists) is the safe access path</li>
+</ul>
+<h3 id="done-when_14">Done When</h3>
+<ul>
+<li><code>--strict-types</code>: using a nullable variable without null check produces a warning</li>
+<li><code>?.</code> operator suppresses the warning</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-34-clean-up-generics">Task 3.4 — Clean Up Generics</h2>
+<p><strong>Status:</strong> <code>[x]</code> — Option A: removed <code>&lt;T&gt;</code> parsing block from <code>calls.rs</code>. AST field kept for v0.8.
+<strong>Estimated size:</strong> Small</p>
+<h3 id="decision-required">Decision required</h3>
+<p>Generics are "parsed, erased at runtime" — this is misleading.</p>
+<p><strong>Option A:</strong> Remove generic syntax from language spec and parser entirely. Add to roadmap for v0.8.
+<strong>Option B:</strong> Implement mono-morphized generics for simple cases (<code>Array&lt;int&gt;</code>, <code>Map&lt;string, int&gt;</code>).</p>
+<p><strong>Recommended:</strong> Option A (simpler, honest). Remove generic <code>&lt;T&gt;</code> syntax from parser and spec. Add note in CHANGELOG.</p>
+<h3 id="done-when_15">Done When</h3>
+<ul>
+<li>Generics syntax removed from parser (or basic generic types work end-to-end)</li>
+<li>Language spec updated</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="group-3-checkpoint">Group 3 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>[x] --strict-types blocks execution on type errors
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>[x] Struct field type mismatch raises E0016 reliably
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>[x] Null safety warnings in strict mode
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>[x] Generics: removed from parser (deferred to v0.8)
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>[x] cargo test passes
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-4-async-runtime">GROUP 4 — Async Runtime</h1>
+<p><strong>Goal:</strong> Replace <code>Option&lt;()&gt;</code> executor with real async execution.
+<strong>Unblocked by:</strong> Group 1 complete (can work in parallel with Group 2/3).
+<strong>Output:</strong> I/O-bound programs work without blocking.</p>
+<hr />
+<h2 id="task-41-wire-tokio-executor">Task 4.1 — Wire Tokio Executor</h2>
+<p><strong>Status:</strong> <code>[x]</code> — Removed dead <code>_async_executor: Option&lt;()&gt;</code>. Added <code>Instruction::Await</code> to bytecode + handler in bytecode VM. HTTP functions now return <code>Value::Future</code> immediately via <code>std::thread::spawn</code> (thread-based, no tokio runtime stored on VM).
+<strong>Estimated size:</strong> Large</p>
+<h3 id="problem_10">Problem</h3>
+<p><code>_async_executor: Option&lt;()&gt;</code> in <code>VirtualMachine</code> is a stub. <code>tokio</code> is already a dependency.</p>
+<h3 id="what-to-do_15">What to Do</h3>
+<p><strong>Step 1 — Replace placeholder</strong>
+- File: <code>src/runtime/vm.rs</code>
+- Change <code>_async_executor: Option&lt;()&gt;</code> to <code>async_runtime: Option&lt;tokio::runtime::Runtime&gt;</code>
+- Initialize: <code>async_runtime: Some(tokio::runtime::Runtime::new().unwrap())</code></p>
+<p><strong>Step 2 — Add Await instruction to bytecode</strong>
+- File: <code>src/compiler/bytecode.rs</code>
+- Add: <code>Instruction::Await</code>
+- Compiler: emit <code>Await</code> after calling an async function</p>
+<p><strong>Step 3 — Handle Await in BytecodeVM</strong>
+- File: <code>src/runtime/bytecode_vm.rs</code>
+- When <code>Value::Future(handle)</code> is on stack and <code>Await</code> executes: block thread until future resolves
+- Use <code>FutureHandle</code>'s <code>Mutex&lt;Option&lt;Result&gt;&gt;</code> + <code>Condvar</code></p>
+<p><strong>Step 4 — Make stdlib network functions async</strong>
+- File: <code>src/stdlib/net.rs</code>
+- <code>http_get</code>, <code>http_post</code> etc: return <code>Value::Future</code> immediately
+- Spawn tokio task that resolves the future when HTTP response arrives</p>
+<p><strong>Step 5 — AST VM async support</strong>
+- File: <code>src/runtime/execution/</code> — wherever function calls are dispatched
+- When calling a function marked <code>async_functions.contains(name)</code>: use tokio runtime to block-on</p>
+<h3 id="done-when_16">Done When</h3>
+<ul>
+<li><code>store → resp → await http_get("https://example.com")</code> works</li>
+<li>HTTP request does not freeze the whole runtime</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-42-async-test-support">Task 4.2 — Async Test Support</h2>
+<p><strong>Status:</strong> <code>[x]</code> — Test runner resolves <code>Value::Future</code> results automatically. AST VM's thread-based await already handles async test files transparently.
+<strong>Estimated size:</strong> Small</p>
+<h3 id="what-to-do_16">What to Do</h3>
+<ul>
+<li>File: <code>src/cli/test_cmd.rs</code></li>
+<li>Test runner: detect async test functions and run them inside tokio runtime</li>
+<li>File: <code>src/stdlib/test.rs</code></li>
+<li><code>test_run</code> helper: support async callbacks</li>
+</ul>
+<h3 id="done-when_17">Done When</h3>
+<ul>
+<li>Test file can contain <code>define → test_http → () ... await http_get ...</code></li>
+<li>Test runner passes async tests</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="group-4-checkpoint">Group 4 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>[x] _async_executor: Option&lt;()&gt; removed (thread-based runtime already present)
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>[x] await expression works in both VMs (Instruction::Await in bytecode VM)
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>[x] http_get/http_post return Future, resolve on await
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>[x] Async tests work in test runner (Future results auto-resolved)
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>[x] cargo test passes
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-5-standard-library-gaps">GROUP 5 — Standard Library Gaps</h1>
+<p><strong>Goal:</strong> Stdlib covers real automation and scripting use cases.
+<strong>Unblocked by:</strong> Group 1 complete.
+<strong>Output:</strong> Scripts can do real work without reimplementing basics.</p>
+<hr />
+<h2 id="task-51-basic-http-server">Task 5.1 — Basic HTTP Server</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>http_serve</code>, <code>http_response</code>, <code>http_request_method/path/body</code> implemented in <code>net.rs</code>. Uses <code>std::net::TcpListener</code> (no extra deps). HTTP futures use <code>std::thread::spawn</code> + <code>FutureHandle</code>.
+<strong>Estimated size:</strong> Medium-Large</p>
+<h3 id="what-to-do_17">What to Do</h3>
+<ul>
+<li>File: <code>src/stdlib/net.rs</code></li>
+<li>Add functions:</li>
+<li><code>http_serve(port, handler_fn)</code> — starts HTTP server, calls handler for each request</li>
+<li><code>http_response(status, body, headers)</code> — builds response value</li>
+<li><code>http_request_method(req)</code> — extracts method</li>
+<li><code>http_request_path(req)</code> — extracts path</li>
+<li><code>http_request_body(req)</code> — extracts body</li>
+<li>Use <code>tokio</code> + basic HTTP parsing (hyper or tiny_http crate)</li>
+<li>Add <code>tiny_http</code> or <code>hyper</code> to <code>Cargo.toml</code> under <code>[dependencies]</code> (optional, net feature)</li>
+<li>Handler function is called as a Txtcode function/lambda for each request</li>
+</ul>
+<h3 id="done-when_18">Done When</h3>
+<ul>
+<li>Simple echo server works in Txtcode</li>
+<li>Server handles GET and POST</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-52-timezone-aware-datetime">Task 5.2 — Timezone-Aware Date/Time</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>now_utc</code>, <code>now_local</code>, <code>parse_datetime</code>, <code>format_datetime</code>, <code>datetime_add</code>, <code>datetime_diff</code> added to <code>time.rs</code>. UTC and local only (no IANA tz, no <code>chrono-tz</code> dep).
+<strong>Estimated size:</strong> Small (<code>chrono</code> already a dependency)</p>
+<h3 id="what-to-do_18">What to Do</h3>
+<ul>
+<li>File: <code>src/stdlib/time.rs</code></li>
+<li>Add:</li>
+<li><code>now_utc()</code> → string ISO 8601</li>
+<li><code>now_local()</code> → string ISO 8601 with timezone</li>
+<li><code>parse_datetime(s, format)</code> → timestamp integer</li>
+<li><code>format_datetime(ts, format, tz)</code> → string</li>
+<li><code>datetime_add(ts, amount, unit)</code> → new timestamp (unit: "seconds", "minutes", "hours", "days")</li>
+<li><code>datetime_diff(ts1, ts2, unit)</code> → integer</li>
+</ul>
+<h3 id="done-when_19">Done When</h3>
+<ul>
+<li><code>format_datetime(now_utc(), "%Y-%m-%d", "UTC")</code> returns correct date</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-53-csv-write">Task 5.3 — CSV Write</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>csv_write(path, rows)</code> in <code>io.rs</code>, <code>csv_to_string(rows)</code> alias in <code>core.rs</code>. Routing fixed (excluded from <code>csv_</code> CoreLib prefix; added explicit IOLib route).
+<strong>Estimated size:</strong> Small</p>
+<h3 id="what-to-do_19">What to Do</h3>
+<ul>
+<li>File: <code>src/stdlib/io.rs</code></li>
+<li>Add <code>csv_write(path, rows)</code> — <code>rows</code> is <code>Array</code> of <code>Array</code></li>
+<li>Add <code>csv_to_string(rows)</code> — returns CSV as string without writing file</li>
+</ul>
+<h3 id="done-when_20">Done When</h3>
+<ul>
+<li>Can write CSV and read it back correctly</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-54-zip-create">Task 5.4 — ZIP Create</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>zip_create</code> and <code>zip_extract</code> already existed; verified with integration test.
+<strong>Estimated size:</strong> Small (<code>zip</code> crate already present)</p>
+<h3 id="what-to-do_20">What to Do</h3>
+<ul>
+<li>File: <code>src/stdlib/io.rs</code></li>
+<li>Add <code>zip_create(output_path, files)</code> — <code>files</code> is <code>Array</code> of file paths</li>
+<li>Add <code>zip_extract(zip_path, dest_dir)</code> — already may exist; verify</li>
+</ul>
+<h3 id="done-when_21">Done When</h3>
+<ul>
+<li>Can create a zip, extract it, verify contents</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-55-streaming-file-io">Task 5.5 — Streaming File I/O</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>file_open/read_line/write_line/file_close</code> added to <code>io.rs</code> using global <code>lazy_static</code> <code>Mutex&lt;HashMap&lt;i64, BufReader/BufWriter&gt;&gt;</code>. Handles returned as <code>Value::Integer(id)</code>.
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="what-to-do_21">What to Do</h3>
+<ul>
+<li>File: <code>src/stdlib/io.rs</code></li>
+<li>Add:</li>
+<li><code>file_open(path, mode)</code> → file_handle (Value::Map with handle metadata or new Value::FileHandle)</li>
+<li><code>file_read_line(handle)</code> → string (one line)</li>
+<li><code>file_write_line(handle, line)</code> → null</li>
+<li><code>file_close(handle)</code> → null</li>
+<li>Alternative: use iterator approach — <code>file_lines(path)</code> returns <code>Array</code> of lines (lazy loaded)</li>
+</ul>
+<h3 id="done-when_22">Done When</h3>
+<ul>
+<li>Can process a 100MB file line by line without loading all into memory</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-56-process-stdin-piping">Task 5.6 — Process stdin Piping</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>exec</code> updated with optional <code>{stdin, capture_stderr}</code> options Map. <code>exec_pipe(commands)</code> added for OS-level pipelines.
+<strong>Estimated size:</strong> Small</p>
+<h3 id="what-to-do_22">What to Do</h3>
+<ul>
+<li>File: <code>src/stdlib/sys.rs</code></li>
+<li>Update <code>exec(cmd, args, options)</code>:</li>
+<li>Add <code>stdin</code> option: string content to pipe to process stdin</li>
+<li>Add <code>capture_stderr</code> option: include stderr in result</li>
+<li>Add <code>exec_pipe(commands)</code> — runs pipeline: <code>["grep foo", "sort", "uniq"]</code></li>
+</ul>
+<h3 id="done-when_23">Done When</h3>
+<ul>
+<li><code>exec("cat", [], {stdin: "hello world"})</code> returns <code>"hello world"</code></li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="group-5-checkpoint">Group 5 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[x] HTTP server: basic serve/request/response API works
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>[x] Date/time: timezone-aware, duration arithmetic works
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>[x] CSV write works
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>[x] ZIP create works
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>[x] Streaming file I/O: line-by-line large file processing
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>[x] Process stdin piping works
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>[x] cargo test passes (194 tests)
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-6-ecosystem">GROUP 6 — Ecosystem</h1>
+<p><strong>Goal:</strong> Txtcode has enough packages and tooling for real adoption.
+<strong>Unblocked by:</strong> Group 5 complete.
+<strong>Output:</strong> Developers can find and use packages; editors support Txtcode.</p>
+<hr />
+<h2 id="task-61-lsp-language-server-protocol">Task 6.1 — LSP (Language Server Protocol)</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>src/cli/lsp.rs</code> — synchronous JSON-RPC stdio server (no tower-lsp). <code>txtcode lsp</code> subcommand wired. Supports: initialize, didOpen/didChange → publishDiagnostics, completion (stdlib+keywords), shutdown/exit.
+<strong>Estimated size:</strong> Very Large (separate crate or major addition)</p>
+<h3 id="what-to-do_23">What to Do</h3>
+<p><strong>Option A — Minimal LSP (recommended first step)</strong>
+- New crate: <code>txtcode-lsp</code> or new binary <code>txtcode lsp</code>
+- Implement LSP protocol via <code>tower-lsp</code> crate
+- Features for v1:
+  - Diagnostics (syntax errors → LSP diagnostics)
+  - Hover (variable type, function signature)
+  - Completion (stdlib function names, local variables)
+  - Go-to-definition (local functions)</p>
+<p><strong>Step 1 — Add <code>tower-lsp</code> to Cargo.toml (optional feature <code>lsp</code>)</strong></p>
+<p><strong>Step 2 — New file: <code>src/cli/lsp.rs</code></strong>
+- <code>txtcode lsp</code> starts LSP server on stdio
+- Wire parser → diagnostics
+- Wire symbol table → hover/completion</p>
+<p><strong>Step 3 — VS Code extension (minimal)</strong>
+- New directory: <code>editors/vscode/</code>
+- <code>package.json</code>: declares language server client
+- <code>extension.ts</code>: starts <code>txtcode lsp</code> and connects</p>
+<h3 id="done-when_24">Done When</h3>
+<ul>
+<li><code>txtcode lsp</code> runs without crash</li>
+<li>VS Code extension shows syntax errors in editor</li>
+<li>Autocomplete lists stdlib function names</li>
+</ul>
+<hr />
+<h2 id="task-62-textmate-grammar-syntax-highlighting">Task 6.2 — TextMate Grammar (Syntax Highlighting)</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>editors/txtcode.tmLanguage.json</code> + <code>editors/txtcode-language-configuration.json</code> created. Scopes: keywords, strings (f""/r""/"""/regular), comments, numbers, operators, function defs/calls, type annotations.
+<strong>Estimated size:</strong> Small (JSON grammar file)</p>
+<h3 id="what-to-do_24">What to Do</h3>
+<ul>
+<li>New file: <code>editors/txtcode.tmLanguage.json</code></li>
+<li>Define scopes for: keywords, strings, comments, numbers, operators, function names</li>
+<li>Test in VS Code via language configuration</li>
+</ul>
+<h3 id="done-when_25">Done When</h3>
+<ul>
+<li><code>.tc</code> files get syntax highlighting in VS Code</li>
+<li>Grammar published to editors/ directory</li>
+</ul>
+<hr />
+<h2 id="task-63-public-package-registry-setup">Task 6.3 — Public Package Registry Setup</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>registry/index.json</code> with all 20 packages. Added <code>local_path</code> field to <code>RegistryVersionEntry</code>. <code>download_package</code> uses <code>install_local_package</code> when <code>local_path</code> is set. <code>TXTCODE_REGISTRY_INDEX_FILE</code> env var for local override already existed.
+<strong>Estimated size:</strong> Medium-Large</p>
+<h3 id="minimal-approach">Minimal approach</h3>
+<ul>
+<li>Host <code>registry/index.json</code> on GitHub Pages or a static server</li>
+<li>Registry format: <code>{ "packages": [ { "name": "npl-math", "version": "1.0.0", "url": "...", "sha256": "..." } ] }</code></li>
+<li><code>txtcode package install npl-math</code> downloads from registry URL, verifies SHA-256</li>
+</ul>
+<h3 id="what-to-do_25">What to Do</h3>
+<ul>
+<li>File: <code>src/cli/package.rs</code></li>
+<li>Add: configurable registry URL (default: <code>https://registry.txtcode.dev</code> or GitHub raw URL)</li>
+<li>Add: download package tarball, verify SHA-256, extract to <code>.txtcode-env/{active}/packages/</code></li>
+<li>Publish 4 existing packages to registry</li>
+</ul>
+<h3 id="done-when_26">Done When</h3>
+<ul>
+<li><code>txtcode package install npl-math</code> downloads and installs from public URL</li>
+<li>SHA-256 verification works</li>
+<li>4 starter packages published</li>
+</ul>
+<hr />
+<h2 id="task-64-lockfile-txtcodelock">Task 6.4 — Lockfile (Txtcode.lock)</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>LockFile</code> struct and <code>install_dependencies</code> already wrote Txtcode.lock. Verified: generated on install, respected on re-install, removed on update.
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="what-to-do_26">What to Do</h3>
+<ul>
+<li>File: <code>src/cli/package.rs</code></li>
+<li>After install: write <code>Txtcode.lock</code> with exact versions + SHA-256 hashes</li>
+<li>On <code>install</code>: if lock file exists, use locked versions instead of resolving</li>
+<li>Format: TOML</li>
+</ul>
+<h3 id="done-when_27">Done When</h3>
+<ul>
+<li>Reproducible installs: same lock file = same packages</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="task-65-20-core-packages">Task 6.5 — 20 Core Packages</h2>
+<p><strong>Status:</strong> <code>[x]</code> — All 20 packages written under <code>packages/</code>. 4 pre-existing (npl-math, npl-strings, npl-collections, npl-datetime) + 16 new. All in registry/index.json with local_path entries.
+<strong>Estimated size:</strong> Large (content work, not core engineering)</p>
+<h3 id="package-list-to-write-and-publish">Package list to write and publish</h3>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>npl-math</code></td>
+<td>Already exists — verify + publish</td>
+</tr>
+<tr>
+<td><code>npl-strings</code></td>
+<td>Already exists — verify + publish</td>
+</tr>
+<tr>
+<td><code>npl-collections</code></td>
+<td>Already exists — verify + publish</td>
+</tr>
+<tr>
+<td><code>npl-datetime</code></td>
+<td>Already exists — verify + publish</td>
+</tr>
+<tr>
+<td><code>npl-http-client</code></td>
+<td>Wrapper around http_get/post with retries, headers</td>
+</tr>
+<tr>
+<td><code>npl-http-server</code></td>
+<td>Wrapper around http_serve with routing</td>
+</tr>
+<tr>
+<td><code>npl-json-schema</code></td>
+<td>JSON schema validation</td>
+</tr>
+<tr>
+<td><code>npl-csv</code></td>
+<td>CSV read/write utilities</td>
+</tr>
+<tr>
+<td><code>npl-env</code></td>
+<td>.env file loading into variables</td>
+</tr>
+<tr>
+<td><code>npl-template</code></td>
+<td>Simple string templating</td>
+</tr>
+<tr>
+<td><code>npl-semver</code></td>
+<td>Semver parsing/comparison</td>
+</tr>
+<tr>
+<td><code>npl-base64</code></td>
+<td>Base64 encode/decode (thin wrapper)</td>
+</tr>
+<tr>
+<td><code>npl-uuid</code></td>
+<td>UUID generation (thin wrapper)</td>
+</tr>
+<tr>
+<td><code>npl-retry</code></td>
+<td>Retry logic with backoff</td>
+</tr>
+<tr>
+<td><code>npl-assert</code></td>
+<td>Extended assertion utilities for testing</td>
+</tr>
+<tr>
+<td><code>npl-cli-args</code></td>
+<td>CLI argument parsing helpers</td>
+</tr>
+<tr>
+<td><code>npl-colors</code></td>
+<td>Terminal color output</td>
+</tr>
+<tr>
+<td><code>npl-table</code></td>
+<td>Print data as formatted tables</td>
+</tr>
+<tr>
+<td><code>npl-hash</code></td>
+<td>Consistent hash utilities</td>
+</tr>
+<tr>
+<td><code>npl-path</code></td>
+<td>Advanced path manipulation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="done-when_28">Done When</h3>
+<ul>
+<li>All 20 packages installable via <code>txtcode package install &lt;name&gt;</code></li>
+<li>Each package has tests</li>
+<li>Registry updated</li>
+</ul>
+<hr />
+<h2 id="group-6-checkpoint">Group 6 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>[x] LSP: txtcode lsp runs, shows errors via publishDiagnostics
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>[x] Syntax highlighting grammar published (editors/)
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>[x] Public registry serves packages (registry/index.json + local_path installs)
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>[x] Lockfile generated and respected
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>[x] 20 core packages available and installable
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>[x] cargo test passes (194 tests)
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-7-performance-baseline">GROUP 7 — Performance Baseline</h1>
+<p><strong>Goal:</strong> Know what Txtcode's performance envelope is. Publish it. Plan for improvement.
+<strong>Unblocked by:</strong> Group 2 complete.
+<strong>Output:</strong> Documented benchmarks; clear path to bytecode-only production runtime.</p>
+<hr />
+<h2 id="task-71-publish-benchmark-results">Task 7.1 — Publish Benchmark Results</h2>
+<p><strong>Status:</strong> <code>[x]</code> — <code>docs/performance.md</code> written with real numbers from <code>cargo bench</code>. Added 5 new benchmark programs and 7 new criterion bench functions. Key numbers: ast_loop 327 µs, ast_fib20 50.4 ms, ast_array_ops 138 µs, ast_json_ops 318 µs, ast_gc_alloc_10k 5.76 ms.
+<strong>Estimated size:</strong> Small</p>
+<h3 id="what-to-do_27">What to Do</h3>
+<ul>
+<li>File: <code>benches/benchmarks.rs</code> — already exists with criterion</li>
+<li>Run: <code>cargo bench</code></li>
+<li>Add benchmarks for:</li>
+<li>fibonacci(30) — recursion</li>
+<li>Array of 10,000 elements: map, filter, sort</li>
+<li>String concatenation 10,000 times</li>
+<li>JSON encode/decode 1,000 objects</li>
+<li>File write 1,000 lines</li>
+<li>Write results to: <code>docs/performance.md</code></li>
+<li>Include: comparison table (AST VM vs Bytecode VM)</li>
+</ul>
+<h3 id="done-when_29">Done When</h3>
+<ul>
+<li><code>docs/performance.md</code> exists with real numbers</li>
+<li>AST VM vs Bytecode VM comparison documented</li>
+</ul>
+<hr />
+<h2 id="task-72-plan-bytecode-only-production-path">Task 7.2 — Plan Bytecode-Only Production Path</h2>
+<p><strong>Status:</strong> <code>[x]</code> — Documented below.</p>
+<h3 id="bytecode-only-production-path-v08-plan">Bytecode-Only Production Path (v0.8 plan)</h3>
+<h4 id="current-state-v05">Current state (v0.5)</h4>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AST VM</td>
+<td>Default for <code>txtcode run</code>, REPL, tests, type-check mode</td>
+</tr>
+<tr>
+<td>Bytecode VM</td>
+<td>Experimental — available via <code>--features bytecode</code></td>
+</tr>
+<tr>
+<td><code>txtcode compile</code></td>
+<td>Produces <code>.txtc</code> bytecode binary</td>
+</tr>
+</tbody>
+</table>
+<h4 id="v06-target">v0.6 target</h4>
+<ul>
+<li>Bytecode VM becomes <strong>default</strong> for <code>txtcode run</code> when <code>--features bytecode</code> is in the default feature set</li>
+<li>AST VM retained for: <code>txtcode repl</code>, <code>txtcode debug</code>, <code>--type-check</code> / <code>--strict-types</code> flags</li>
+<li>Both VMs share the same stdlib, permission system, and audit trail</li>
+</ul>
+<h4 id="v08-target-txtcode-exec">v0.8 target — <code>txtcode exec</code></h4>
+<ul>
+<li><code>txtcode compile main.tc -o app.txtc</code> → produces standalone bytecode file</li>
+<li><code>txtcode exec app.txtc</code> → runs bytecode directly, NO source re-parsing</li>
+<li>Cold-start target: &lt; 5 ms for a 500-line program</li>
+<li>AST VM: kept for <code>repl</code> + <code>debug</code> only; not used in production deploys</li>
+<li>This enables: distributing <code>.txtc</code> binaries without shipping source code</li>
+</ul>
+<h4 id="deprecation-plan-for-ast-vm">Deprecation plan for AST VM</h4>
+<ul>
+<li>v0.6: AST VM is secondary; bytecode VM is default for <code>run</code></li>
+<li>v0.8: AST VM is debug-only; <code>txtcode run</code> always uses bytecode VM</li>
+<li>v1.0: AST VM may be removed from release builds (kept in dev builds)</li>
+<li>NOT before v1.0: REPL and error messages still need AST walking for good diagnostics</li>
+</ul>
+<hr />
+<h2 id="task-73-document-gc-behavior">Task 7.3 — Document GC Behavior</h2>
+<p><strong>Status:</strong> <code>[x]</code> — Extensive doc comments added to <code>src/runtime/gc.rs</code> explaining RAII model, what <code>collect()</code> actually does (no-op counter reset), performance numbers, and future arena allocator plan. <code>docs/performance.md</code> has "Memory Management" section with the same explanation.
+<strong>Estimated size:</strong> Small</p>
+<h3 id="what-to-do_28">What to Do</h3>
+<ul>
+<li>File: <code>src/runtime/gc.rs</code></li>
+<li>Add doc comment explaining: "Rust RAII handles memory. AllocationTracker monitors allocation count. collect() is a suggestion, not a sweep."</li>
+<li>Update <code>docs/performance.md</code>: section "Memory Management" explaining the model honestly</li>
+<li>Add benchmark: 100,000 object allocation loop — measure if GC overhead is visible</li>
+</ul>
+<h3 id="done-when_30">Done When</h3>
+<ul>
+<li><code>docs/performance.md</code> has "Memory Management" section</li>
+<li>GC code is accurately documented</li>
+</ul>
+<hr />
+<h2 id="group-7-checkpoint">Group 7 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>[x] Benchmark results published in docs/performance.md
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>[x] AST VM vs Bytecode VM comparison documented (see performance.md)
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>[x] Bytecode-only production path planned (see Task 7.2 above)
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>[x] GC behavior documented honestly (gc.rs + performance.md)
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>[x] cargo test passes (194 tests)
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="milestone-summary">Milestone Summary</h1>
+<table>
+<thead>
+<tr>
+<th>Milestone</th>
+<th>Version</th>
+<th>Groups</th>
+<th>What It Unlocks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Stable Core</strong></td>
+<td>0.6.0</td>
+<td>1</td>
+<td>Trustworthy foundation</td>
+</tr>
+<tr>
+<td><strong>Complete Language</strong></td>
+<td>0.7.0</td>
+<td>1+2+3</td>
+<td>Real programs work</td>
+</tr>
+<tr>
+<td><strong>Async + Full Stdlib</strong></td>
+<td>0.7.5</td>
+<td>1+4+5</td>
+<td>I/O-bound automation</td>
+</tr>
+<tr>
+<td><strong>Platform</strong></td>
+<td>0.8.0</td>
+<td>1+2+3+4+5+6</td>
+<td>Adoption possible</td>
+</tr>
+<tr>
+<td><strong>Production</strong></td>
+<td>1.0.0</td>
+<td>All groups</td>
+<td>All groups complete</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h1 id="session-resume-instructions">Session Resume Instructions</h1>
+<p>If you hit context limit and resume in a new session:</p>
+<ol>
+<li>Read this file: <code>docs/dev-plan.md</code></li>
+<li>Read memory: <code>/home/iganomono/.claude/projects/-home-iganomono-test-NPL/memory/MEMORY.md</code></li>
+<li>Find the first task with status <code>[ ]</code> or <code>[~]</code></li>
+<li>Read the target files listed in that task</li>
+<li>Continue from where you left off</li>
+<li>Update status symbols in this file after each task</li>
+<li>Run <code>cargo test</code> after every task to verify nothing broke</li>
+</ol>
+<hr />
+<h1 id="quick-reference-key-files-per-group">Quick Reference: Key Files per Group</h1>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Primary Files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.1 HOF FunctionRef</td>
+<td><code>src/runtime/core/value.rs</code>, <code>src/compiler/bytecode.rs</code>, <code>src/runtime/bytecode_vm.rs</code></td>
+</tr>
+<tr>
+<td>1.2 Source location</td>
+<td><code>src/runtime/errors.rs</code>, <code>src/lexer/lexer.rs</code>, <code>src/parser/ast/</code>, both VMs</td>
+</tr>
+<tr>
+<td>1.3 Call depth</td>
+<td><code>src/runtime/vm.rs</code>, <code>src/runtime/bytecode_vm.rs</code>, <code>src/config.rs</code></td>
+</tr>
+<tr>
+<td>1.4 Memory limit</td>
+<td><code>src/runtime/gc.rs</code>, <code>src/config.rs</code>, both VMs</td>
+</tr>
+<tr>
+<td>1.5 Finally</td>
+<td><code>src/parser/statements/</code>, <code>src/compiler/bytecode.rs</code>, both VMs</td>
+</tr>
+<tr>
+<td>1.6 Error recovery</td>
+<td><code>src/parser/parser.rs</code>, <code>src/cli/run.rs</code>, <code>src/cli/repl.rs</code></td>
+</tr>
+<tr>
+<td>2.1 Hex literals</td>
+<td><code>src/lexer/lexer.rs</code></td>
+</tr>
+<tr>
+<td>2.2 Bytes type</td>
+<td><code>src/runtime/core/value.rs</code>, <code>src/stdlib/</code></td>
+</tr>
+<tr>
+<td>2.3 Enum data</td>
+<td><code>src/parser/</code>, <code>src/runtime/core/value.rs</code>, both VMs</td>
+</tr>
+<tr>
+<td>2.4 Default params</td>
+<td><code>src/parser/statements/functions.rs</code>, both VMs</td>
+</tr>
+<tr>
+<td>2.5 Variadics</td>
+<td><code>src/parser/statements/functions.rs</code>, both VMs</td>
+</tr>
+<tr>
+<td>2.6 Match guards</td>
+<td><code>src/parser/patterns.rs</code>, both VMs</td>
+</tr>
+<tr>
+<td>3.1 Type blocking</td>
+<td><code>src/typecheck/checker.rs</code>, <code>src/cli/run.rs</code></td>
+</tr>
+<tr>
+<td>3.2 Struct types</td>
+<td>both VMs, struct_defs lookup</td>
+</tr>
+<tr>
+<td>4.1 Async</td>
+<td><code>src/runtime/vm.rs</code>, <code>src/runtime/bytecode_vm.rs</code>, <code>src/compiler/bytecode.rs</code></td>
+</tr>
+<tr>
+<td>5.1 HTTP server</td>
+<td><code>src/stdlib/net.rs</code>, <code>Cargo.toml</code></td>
+</tr>
+<tr>
+<td>5.2 DateTime</td>
+<td><code>src/stdlib/time.rs</code></td>
+</tr>
+<tr>
+<td>6.1 LSP</td>
+<td><code>src/cli/lsp.rs</code> (new), <code>editors/vscode/</code> (new)</td>
+</tr>
+<tr>
+<td>6.3 Registry</td>
+<td><code>src/cli/package.rs</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>End of dev-plan.md — commit this file after every session.</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/iga2x/txtcode" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -648,6 +648,78 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#new-in-v050-stdlib-highlights" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New in v0.5.0 — Stdlib Highlights
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="New in v0.5.0 — Stdlib Highlights">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#streaming-file-io" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming File I/O
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datetime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Datetime
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#csv-write" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSV Write
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#process-piping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Process Piping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#asyncawait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Async/Await
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#development-tools" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -655,6 +727,34 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-management_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Package Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-packages-in-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using packages in scripts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1005,6 +1105,78 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#new-in-v050-stdlib-highlights" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        New in v0.5.0 — Stdlib Highlights
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="New in v0.5.0 — Stdlib Highlights">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#streaming-file-io" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Streaming File I/O
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datetime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Datetime
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#csv-write" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSV Write
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#process-piping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Process Piping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#asyncawait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Async/Await
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#development-tools" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1012,6 +1184,34 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-management_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Package Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-packages-in-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using packages in scripts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1144,7 +1344,7 @@
 <p><strong>Note:</strong> The compiled file extension is <code>.txtc</code>.
 The bytecode VM runs with basic permission checking but no audit trail, policy engine,
 or intent checking. Use <code>txtcode run</code> on source files for full security enforcement.
-Native and WASM compilation targets are planned for v0.5.</p>
+Native and WASM compilation backends are planned for v0.6/v0.8.</p>
 </blockquote>
 <h2 id="package-management">Package Management</h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Initialize a package</span>
@@ -1198,30 +1398,99 @@ raises a permission error and records it in the audit trail.</p>
 <a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>store → handle → ble_connect(&quot;AA:BB:CC:DD:EE:FF&quot;)
 <a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>store → data → ble_read(handle, &quot;0x2A37&quot;)
 </code></pre></div>
+<h2 id="new-in-v050-stdlib-highlights">New in v0.5.0 — Stdlib Highlights</h2>
+<h3 id="streaming-file-io">Streaming File I/O</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>store → h → file_open(&quot;data.txt&quot;, &quot;r&quot;)
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>store → line → file_read_line(h)
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>while → line != null
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>  print → line
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>  store → line → file_read_line(h)
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>end
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>file_close(h)
+</code></pre></div>
+<h3 id="datetime">Datetime</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>store → today → format_datetime(now(), &quot;%Y-%m-%d&quot;, &quot;UTC&quot;)
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>store → tomorrow → datetime_add(now(), 1, &quot;days&quot;)
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>store → diff → datetime_diff(tomorrow, now(), &quot;hours&quot;)
+</code></pre></div>
+<h3 id="csv-write">CSV Write</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>csv_write(&quot;/tmp/report.csv&quot;, [[&quot;name&quot;,&quot;score&quot;],[&quot;Alice&quot;,95],[&quot;Bob&quot;,87]])
+</code></pre></div>
+<h3 id="process-piping">Process Piping</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>store → result → exec_pipe([&quot;echo hello world&quot;, &quot;tr a-z A-Z&quot;])
+</code></pre></div>
+<h3 id="asyncawait">Async/Await</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>async define → fetch_data → (url)
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  return → http_get(url)
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>end
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>store → handle → fetch_data(&quot;https://api.example.com/data&quot;)
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>store → result → await handle
+</code></pre></div>
 <h2 id="development-tools">Development Tools</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Format code (print result)</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>txtcode<span class="w"> </span>format<span class="w"> </span>program.tc
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># Format in-place</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>txtcode<span class="w"> </span>format<span class="w"> </span>program.tc<span class="w"> </span>--write
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="c1"># CI check: exit non-zero if formatting needed</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>txtcode<span class="w"> </span>format<span class="w"> </span>src/<span class="w"> </span>--check
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="c1"># Lint code</span>
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>txtcode<span class="w"> </span>lint<span class="w"> </span>program.tc
-<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>
-<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="c1"># Start REPL</span>
-<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>txtcode<span class="w"> </span>repl
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Format code (print result)</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>txtcode<span class="w"> </span>format<span class="w"> </span>program.tc
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="c1"># Format in-place</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>txtcode<span class="w"> </span>format<span class="w"> </span>program.tc<span class="w"> </span>--write
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="c1"># CI check: exit non-zero if formatting needed</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>txtcode<span class="w"> </span>format<span class="w"> </span>src/<span class="w"> </span>--check
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="c1"># Lint code</span>
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>txtcode<span class="w"> </span>lint<span class="w"> </span>program.tc
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="c1"># Start REPL</span>
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a>txtcode<span class="w"> </span>repl
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>
+<a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a><span class="c1"># Start LSP server (for VS Code / Neovim / Zed integration)</span>
+<a id="__codelineno-18-17" name="__codelineno-18-17" href="#__codelineno-18-17"></a>txtcode<span class="w"> </span>lsp
+<a id="__codelineno-18-18" name="__codelineno-18-18" href="#__codelineno-18-18"></a>
+<a id="__codelineno-18-19" name="__codelineno-18-19" href="#__codelineno-18-19"></a><span class="c1"># Run static type checker</span>
+<a id="__codelineno-18-20" name="__codelineno-18-20" href="#__codelineno-18-20"></a>txtcode<span class="w"> </span>run<span class="w"> </span>program.tc<span class="w"> </span>--type-check
+<a id="__codelineno-18-21" name="__codelineno-18-21" href="#__codelineno-18-21"></a>
+<a id="__codelineno-18-22" name="__codelineno-18-22" href="#__codelineno-18-22"></a><span class="c1"># Type errors as hard errors</span>
+<a id="__codelineno-18-23" name="__codelineno-18-23" href="#__codelineno-18-23"></a>txtcode<span class="w"> </span>run<span class="w"> </span>program.tc<span class="w"> </span>--strict-types
+</code></pre></div>
+<h2 id="package-management_1">Package Management</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Initialize a package</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>txtcode<span class="w"> </span>package<span class="w"> </span>init<span class="w"> </span>myproject<span class="w"> </span><span class="m">0</span>.1.0
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Add a dependency</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>txtcode<span class="w"> </span>package<span class="w"> </span>add<span class="w"> </span>npl-math<span class="w"> </span><span class="m">0</span>.1.0
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># Install all dependencies</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>txtcode<span class="w"> </span>package<span class="w"> </span>install
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="c1"># Install a local package directory</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>txtcode<span class="w"> </span>package<span class="w"> </span>install-local<span class="w"> </span>packages/npl-math
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="c1"># Search the registry</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a>txtcode<span class="w"> </span>package<span class="w"> </span>search<span class="w"> </span>math
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a>
+<a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a><span class="c1"># Show package details</span>
+<a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a>txtcode<span class="w"> </span>package<span class="w"> </span>info<span class="w"> </span>npl-math
+</code></pre></div>
+<h3 id="using-packages-in-scripts">Using packages in scripts</h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>from &quot;npl-math/math&quot; import is_prime, factorial, fib
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>from &quot;npl-strings/strings&quot; import pad_left, truncate
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>from &quot;npl-collections/collections&quot; import zip, chunk, range
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>from &quot;npl-datetime/datetime&quot; import today, relative_time
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>print(is_prime(17))                      ## true
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>print(factorial(10))                     ## 3628800
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>print(today())                           ## &quot;2026-03-19&quot;
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>print(range(0, 5))                       ## [0, 1, 2, 3, 4]
 </code></pre></div>
 <h2 id="examples">Examples</h2>
 <p>See the <code>examples/</code> directory for complete example programs:
-- <code>hello.tc</code> - Hello World
-- <code>calculator.tc</code> - Calculator
-- <code>port_scanner.tc</code> - Network port scanner
-- <code>file_processor.tc</code> - File processing
-- <code>security_demo.tc</code> - Security features
-- <code>web_server.tc</code> - Web server</p>
+- <code>hello_world.tc</code> - Hello World, variables, functions, control flow
+- <code>calculator.tc</code> - Arithmetic with pattern matching
+- <code>file_processing.tc</code> - CSV parsing and stats
+- <code>log_analyzer.tc</code> - Log classification
+- <code>pipeline.tc</code> - Sequential task runner
+- <code>audit_trail.tc</code> - File I/O with permission model
+- <code>security_demo.tc</code> - SHA-256, AES-GCM, base64
+- <code>metrics_report.tc</code> - Map grouping and aggregation</p>
 <h2 id="next-steps">Next Steps</h2>
 <ul>
 <li>Read the <a href="../language-spec/">Language Specification</a></li>
