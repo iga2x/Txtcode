@@ -104,6 +104,43 @@ pub enum Commands {
         /// Print all permissions the script would request and exit without running.
         #[arg(long)]
         permissions_report: bool,
+        /// Require a valid .tc.sig sidecar file before running — abort if missing or invalid.
+        #[arg(long)]
+        require_sig: bool,
+    },
+    /// Sign a Txt-code script with an Ed25519 private key (produces a .tc.sig sidecar)
+    Sign {
+        /// Script file to sign
+        file: PathBuf,
+        /// Path to the PKCS#8 private key file (hex-encoded, from `txtcode keygen`)
+        #[arg(long, value_name = "FILE")]
+        key: PathBuf,
+        /// Signer identity (e.g. author@example.com or a key fingerprint label)
+        #[arg(long, default_value = "unknown")]
+        signer: String,
+        /// Write signature to this file instead of <file>.sig
+        #[arg(long, value_name = "FILE")]
+        output: Option<PathBuf>,
+    },
+    /// Verify a Txt-code script against its .tc.sig sidecar
+    Verify {
+        /// Script file to verify
+        file: PathBuf,
+        /// Signature file (default: <file>.sig)
+        #[arg(long, value_name = "FILE")]
+        sig: Option<PathBuf>,
+        /// Trusted public key file (hex-encoded); if omitted, use key embedded in signature
+        #[arg(long, value_name = "FILE")]
+        trusted_key: Option<PathBuf>,
+    },
+    /// Generate a new Ed25519 keypair for script signing
+    Keygen {
+        /// Write private key (PKCS#8 hex) to this file (default: txtcode-signing-key.hex)
+        #[arg(long, value_name = "FILE")]
+        key_out: Option<PathBuf>,
+        /// Write public key (raw hex) to this file (default: txtcode-signing-pub.hex)
+        #[arg(long, value_name = "FILE")]
+        pub_out: Option<PathBuf>,
     },
     /// Inspect / disassemble a compiled bytecode file
     Inspect {
@@ -427,6 +464,31 @@ pub fn main() {
         }
         (Some(cmd), _) => {
             match cmd {
+                Commands::Sign { file, key, signer, output } => {
+                    if let Err(e) = cmd_sign(file, key, signer, output.as_ref()) {
+                        eprintln!("Error: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+                Commands::Verify { file, sig, trusted_key } => {
+                    match cmd_verify(file, sig.as_ref(), trusted_key.as_ref()) {
+                        Ok(true) => println!("Signature valid."),
+                        Ok(false) => {
+                            eprintln!("Signature INVALID — file may have been tampered with.");
+                            std::process::exit(2);
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Commands::Keygen { key_out, pub_out } => {
+                    if let Err(e) = cmd_keygen(key_out.as_ref(), pub_out.as_ref()) {
+                        eprintln!("Error: {}", e);
+                        std::process::exit(1);
+                    }
+                }
                 Commands::Run {
                     file,
                     timeout,
@@ -440,6 +502,7 @@ pub fn main() {
                     type_check,
                     strict_types,
                     permissions_report,
+                    require_sig,
                 } => {
                     if *no_color || std::env::var_os("NO_COLOR").is_some() {
                         std::env::set_var("NO_COLOR", "1");
@@ -456,6 +519,30 @@ pub fn main() {
                     }
                     let effective_safe = safe_mode || *sandbox;
                     let effective_allow_exec = if *sandbox { false } else { allow_exec };
+
+                    // --require-sig: verify .tc.sig sidecar before execution.
+                    if *require_sig {
+                        match cmd_verify(file, None, None) {
+                            Ok(true) => {}
+                            Ok(false) => {
+                                if *json {
+                                    eprintln!("{{\"error\":\"Signature INVALID\",\"type\":\"SignatureError\"}}");
+                                } else {
+                                    eprintln!("Error: Signature INVALID — refusing to run unsigned or tampered script.");
+                                }
+                                std::process::exit(2);
+                            }
+                            Err(e) => {
+                                if *json {
+                                    let msg = e.to_string().replace('"', "\\\"");
+                                    eprintln!("{{\"error\":\"{}\",\"type\":\"SignatureError\"}}", msg);
+                                } else {
+                                    eprintln!("Error: {}", e);
+                                }
+                                std::process::exit(1);
+                            }
+                        }
+                    }
 
                     // --permissions-report: parse the script, print all stdlib calls
                     // that require a permission, then exit without running.
@@ -860,4 +947,101 @@ fn package_info(name: &str) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| PathBuf::from(".txtcode/packages"));
     let registry = package::PackageRegistry::new(packages_dir);
     registry.print_info(name)
+}
+
+// ── Script signing helpers ─────────────────────────────────────────────────────
+
+fn cmd_sign(
+    file: &PathBuf,
+    key_file: &PathBuf,
+    signer: &str,
+    output: Option<&PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use txtcode::security::auth::ScriptAuth;
+
+    let content = std::fs::read(file)?;
+    let key_hex = std::fs::read_to_string(key_file)?.trim().to_string();
+    let key_bytes = hex::decode(&key_hex)
+        .map_err(|e| format!("Invalid key hex in '{}': {}", key_file.display(), e))?;
+
+    let sig = ScriptAuth::sign(&content, signer, &key_bytes)
+        .map_err(|e| format!("Signing failed: {}", e))?;
+    let sig_b64 = sig.to_base64();
+
+    let sig_path = output
+        .cloned()
+        .unwrap_or_else(|| file.with_extension("tc.sig"));
+    std::fs::write(&sig_path, &sig_b64)?;
+
+    println!("Signed: {}", file.display());
+    println!("Signature written to: {}", sig_path.display());
+    println!("Content fingerprint: {}", sig.fingerprint());
+    Ok(())
+}
+
+fn cmd_verify(
+    file: &PathBuf,
+    sig_file: Option<&PathBuf>,
+    trusted_key_file: Option<&PathBuf>,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    use txtcode::security::auth::{ScriptAuth, ScriptSignature};
+
+    let default_sig = file.with_extension("tc.sig");
+    let sig_path = sig_file.unwrap_or(&default_sig);
+
+    if !sig_path.exists() {
+        return Err(format!("Signature file not found: {}", sig_path.display()).into());
+    }
+
+    let content = std::fs::read(file)?;
+    let sig_b64 = std::fs::read_to_string(sig_path)?;
+    let sig = ScriptSignature::from_base64(sig_b64.trim())
+        .map_err(|e| format!("Failed to parse signature file: {}", e))?;
+
+    let ok = if let Some(key_file) = trusted_key_file {
+        let key_hex = std::fs::read_to_string(key_file)?.trim().to_string();
+        let key_bytes = hex::decode(&key_hex)
+            .map_err(|e| format!("Invalid key hex in '{}': {}", key_file.display(), e))?;
+        ScriptAuth::verify_with_key(&content, &sig, &key_bytes)
+            .map_err(|e| format!("Verification error: {}", e))?
+    } else {
+        ScriptAuth::verify(&content, &sig)
+            .map_err(|e| format!("Verification error: {}", e))?
+    };
+
+    if ok {
+        println!("Signer:     {}", sig.signer_id);
+        println!("Signed at:  {}", sig.signed_at);
+        println!("Fingerprint:{}", sig.fingerprint());
+    }
+
+    Ok(ok)
+}
+
+fn cmd_keygen(
+    key_out: Option<&PathBuf>,
+    pub_out: Option<&PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use txtcode::security::auth::ScriptAuth;
+
+    let (priv_pkcs8, pub_key) = ScriptAuth::generate_keypair()
+        .map_err(|e| format!("Key generation failed: {}", e))?;
+
+    let priv_hex = hex::encode(&priv_pkcs8);
+    let pub_hex = hex::encode(&pub_key);
+
+    let default_priv = PathBuf::from("txtcode-signing-key.hex");
+    let default_pub  = PathBuf::from("txtcode-signing-pub.hex");
+    let key_path = key_out.unwrap_or(&default_priv);
+    let pub_path = pub_out.unwrap_or(&default_pub);
+
+    std::fs::write(key_path, &priv_hex)?;
+    std::fs::write(pub_path, &pub_hex)?;
+
+    println!("Private key (PKCS#8 hex): {}", key_path.display());
+    println!("Public key  (raw hex):    {}", pub_path.display());
+    println!("Fingerprint: {}", ScriptAuth::key_fingerprint(&pub_key));
+    println!();
+    println!("IMPORTANT: Keep {} secret — never commit it to version control.", key_path.display());
+    Ok(())
 }
