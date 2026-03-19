@@ -19,1073 +19,1222 @@
 ## Current Position
 
 ```
-Group 1: Foundation Stability     [x] COMPLETE (244 tests passing)
-Group 2: Language Completeness    [x] COMPLETE (261 tests passing)
-Group 3: Type Enforcement         [x] COMPLETE (179 tests passing)
-Group 4: Async Runtime            [x] COMPLETE (179 tests passing)
-Group 5: Stdlib Gaps              [x] COMPLETE (194 tests passing)
-Group 6: Ecosystem                [x] COMPLETE (194 tests passing)
-Group 7: Performance Baseline     [x] COMPLETE (194 tests passing)
+Group 1: Foundation Stability          [x] COMPLETE (244 tests passing)
+Group 2: Language Completeness         [x] COMPLETE (261 tests passing)
+Group 3: Type Enforcement              [x] COMPLETE (179 tests passing)
+Group 4: Async Runtime                 [x] COMPLETE (179 tests passing)
+Group 5: Stdlib Gaps                   [x] COMPLETE (194 tests passing)
+Group 6: Ecosystem                     [x] COMPLETE (194 tests passing)
+Group 7: Performance Baseline          [x] COMPLETE (194 tests passing)
+─────────────────────────────────────────────────────────────────────
+Group 8: Security Correctness          [ ] NEXT — start here
+Group 9: Module System Overhaul        [ ] blocked by Group 8
+Group 10: Type System Promotion        [ ] blocked by Group 9
+Group 11: Developer Experience         [ ] blocked by Group 8 (can parallel 9/10)
+Group 12: Platform & Compilation       [ ] blocked by Groups 9+10
 ```
 
 ---
 
+## Audit Findings Summary (what drove Groups 8–12)
+
+The v0.5.0 senior audit (2026-03-19) found these blocking issues:
+
+| # | Issue | Severity | Group |
+|---|-------|----------|-------|
+| A1 | `exec_allowed: true` default contradicts "security-first" | Critical | 8 |
+| A2 | `const` keyword has no runtime enforcement | Critical | 8 |
+| A3 | Script signing not exposed as CLI flag | High | 8 |
+| A4 | Module imports pollute caller namespace | Critical | 9 |
+| A5 | No circular import detection | High | 9 |
+| A6 | Transitive dep resolution missing | High | 9 |
+| A7 | `Txtcode.lock` not verified on load | High | 9 |
+| A8 | Type errors advisory by default — most users never see them | Critical | 10 |
+| A9 | Generics parse-and-erase — constraints never enforced | High | 10 |
+| A10 | No pre-built binaries — `install.sh` requires Rust toolchain | Critical | 11 |
+| A11 | Debugger not wired to interactive CLI (bytecode addresses only) | High | 11 |
+| A12 | `txtcode doc` is effectively absent | Medium | 11 |
+| A13 | LSP missing go-to-definition, hover, rename | Medium | 11 |
+| A14 | No native/WASM compilation path | Medium | 12 |
+| A15 | Async uses OS threads — no event loop, no scale | Medium | 12 |
+| A16 | Struct methods (impl blocks) missing | Medium | 12 |
+| A17 | `ffi_load` allows any path — no allowlist | High | 8 |
+| A18 | HashMap iteration order non-deterministic — breaks "determinism" claim | Medium | 9 |
+
 ---
 
-# GROUP 1 — Foundation Stability
-**Goal:** Fix correctness bugs and silent failures before adding anything new.
+---
+
+# GROUPS 1–7 — COMPLETE (v0.4 → v0.5.0)
+
+> All tasks in Groups 1–7 are `[x]`. See git history for implementation details.
+> Groups 1–7 delivered: lexer, parser, AST VM, bytecode VM, 6-layer security pipeline,
+> 100+ stdlib functions, 20 packages, LSP server, TextMate grammar, performance docs.
+
+---
+
+---
+
+# GROUP 8 — Security Correctness
+**Goal:** Every security claim in the README and docs is actually true in the code.
 **Unblocked by:** Nothing — start here.
-**Output:** Correct, debuggable runtime with no silent wrong behavior.
+**Output:** Default-deny exec; const enforced; signing as CLI flag; FFI path guard.
+**Target version:** 0.5.1
 
 ---
 
-## Task 1.1 — Replace HOF Lambda String Detection with Value::FunctionRef
+## Task 8.1 — Fix `exec_allowed: true` Default (CRITICAL)
 
-**Status:** `[x]`
-**Risk:** HIGH — correctness bug that can cause wrong dispatch
-**Estimated size:** Medium (touches bytecode.rs, bytecode_vm.rs, value.rs, core.rs)
+**Status:** `[ ]`
+**Risk:** CRITICAL — directly contradicts the "security-first, default-deny" positioning
+**Estimated size:** Small (1–3 files)
 
 ### Problem
-In `src/runtime/core/value.rs` and `src/compiler/bytecode.rs`, higher-order functions
-(map, filter, reduce, find) detect lambdas by checking if a `Value` is `Value::String`
-and treating the string as a registered function name via `RegisterFunction`.
 
-A plain string value `"print"` could accidentally dispatch as a function call.
-
-### What to Do
-
-**Step 1 — Add new variant to Value enum**
-- File: `src/runtime/core/value.rs`
-- Add: `FunctionRef(String)` variant to `Value` enum
-- Add `Display` impl: prints as `<fn:name>`
-- Add `type_name()` return: `"function_ref"`
-
-**Step 2 — Update BytecodeCompiler**
-- File: `src/compiler/bytecode.rs`
-- In `compile_expression` for lambda: emit `PushConstant` with `Constant::FunctionRef(name)` OR push `Value::FunctionRef(name)` directly
-- Add `FunctionRef(String)` variant to `Constant` enum
-
-**Step 3 — Update BytecodeVM HOF dispatch**
-- File: `src/runtime/bytecode_vm.rs`
-- In `call_hof_with_bytecode_lambda`: change `Value::String(name)` match to `Value::FunctionRef(name)`
-- In `Call` instruction handler: change detection from `Value::String` to `Value::FunctionRef`
-
-**Step 4 — Update all Value match arms**
-- Files: any match on `Value::*` across `src/`
-- Run: `grep -r "Value::String" src/ --include="*.rs"` and check each one
-- FunctionRef should NOT match in string operations (len, split, etc.)
-
-**Step 5 — Update tests**
-- File: `tests/integration/test_bytecode.rs`
-- Verify HOF tests still pass
-- Add test: string value `"map"` as argument should NOT dispatch as function
-
-### Done When
-- `cargo test` passes all 239 tests
-- `grep "Value::String" src/runtime/bytecode_vm.rs` shows no HOF dispatch on String
-- A test exists proving string `"map"` does not dispatch as function
-
----
-
-## Task 1.2 — Add Source Location (line:col) to RuntimeError
-
-**Status:** `[x]`
-**Risk:** MEDIUM — no correctness impact, but debugging is very painful without it
-**Estimated size:** Large (touches parser, AST nodes, both VMs, all error sites)
-
-### Problem
-`RuntimeError` in `src/runtime/errors.rs` has no source location.
-When a script fails at runtime, there is no way to know which line caused it.
+`src/runtime/vm/core.rs` line 37: `exec_allowed: true` in `VirtualMachine::new()`.
+Any script can call `exec()`, `exec_json()`, `exec_lines()`, `exec_pipe()`, `spawn()` without
+any permission grant unless `safe_mode = true` or `--safe-mode` is explicitly passed.
+The 6-layer security pipeline is bypassed for process execution by default.
 
 ### What to Do
 
-**Step 1 — Add Span to errors.rs**
-- File: `src/runtime/errors.rs`
-- Add:
-```rust
-#[derive(Debug, Clone, Default)]
-pub struct Span {
-    pub line: usize,
-    pub col: usize,
-    pub file: Option<String>,
-}
-```
-- Add field to `RuntimeError`: `pub span: Option<Span>`
-- Add builder method: `pub fn with_span(mut self, span: Span) -> Self`
-
-**Step 2 — Add Span to AST nodes**
-- File: `src/parser/ast/statements.rs`, `src/parser/ast/expressions.rs`
-- Add `span: Span` field to `Statement` and `Expression` enums (or their wrapper structs)
-- Parser must populate this when building AST nodes
-
-**Step 3 — Update Lexer to track position**
-- File: `src/lexer/lexer.rs`
-- Ensure every `Token` carries `line: usize, col: usize`
-- Track line increments on `\n`
-
-**Step 4 — Thread span through VM execution**
-- File: `src/runtime/vm.rs` (and submodules in `src/runtime/execution/`)
-- When `execute_statement` or `execute_expression` produces a `RuntimeError`, attach `span` from the AST node
-- Pattern: `err.with_span(stmt.span.clone())`
-
-**Step 5 — Thread span through BytecodeVM**
-- File: `src/runtime/bytecode_vm.rs`
-- Add a `DebugInfo` table to `Bytecode`: `Vec<(usize, Span)>` mapping instruction index to source span
-- Compiler (`src/compiler/bytecode.rs`) must populate this table
-- BytecodeVM reads current `ip`, looks up span in debug table, attaches to errors
-
-**Step 6 — Update error display**
-- File: `src/runtime/errors.rs` — `Display` impl for `RuntimeError`
-- Format: `Error [E0011] at file.tc:12:5 — type mismatch: expected int, got string`
-
-### Done When
-- All runtime errors print `filename:line:col`
-- Test: a script with a type error on line 7 prints `line 7` in the error message
-- `cargo test` still passes
-
----
-
-## Task 1.3 — Raise MAX_CALL_DEPTH to 500
-
-**Status:** `[x]` — Partial: default stays at 50 (AST VM uses Rust call stack; increasing causes Rust SIGABRT before guard fires in debug builds). `RuntimeConfig.max_call_depth` field added for future use. Real fix requires iterative VM (Group 7).
-**Risk:** LOW — one constant change
-**Estimated size:** Tiny
-
-### Problem
-`MAX_CALL_DEPTH = 50` in both VMs. Standard recursive fibonacci(20) requires ~20 frames.
-Any moderately recursive algorithm hits this immediately.
-
-### What to Do
-
-**Step 1 — Find and update the constant**
-- Run: `grep -r "MAX_CALL_DEPTH\|max_call_depth\|call_depth" src/ --include="*.rs"`
-- Change value from `50` to `500`
-- If it appears in both VMs, update both
-
-**Step 2 — Make it configurable**
-- File: `src/config.rs` → `RuntimeConfig`
-- Add: `pub max_call_depth: usize` with default `500`
-- Thread into VM construction
-
-**Step 3 — Update test**
-- File: `tests/integration/test_runtime.rs`
-- Add test: `fibonacci(30)` completes without error
-
-### Done When
-- `fibonacci(30)` runs without "max call depth exceeded"
-- Config allows override: `--max-call-depth 1000`
-- `cargo test` passes
-
----
-
-## Task 1.4 — Enforce max_memory OR Remove the Config Field
-
-**Status:** `[x]`
-**Risk:** MEDIUM (security false guarantee if left unenforced)
-**Estimated size:** Small-Medium
-
-### Problem
-`EnvSettings.max_memory: String` exists in `src/config.rs` but no code enforces it.
-A script can allocate unboundedly. This is a false security claim.
-
-### Option A — Implement Basic Enforcement (Recommended)
-Track approximate allocation size in `AllocationTracker`.
-
-**Step 1 — Update AllocationTracker**
-- File: `src/runtime/gc.rs`
-- Add: `total_bytes: usize` field
-- Add: `max_bytes: Option<usize>` field
-- In `record_allocation(value: &Value)`: estimate value size and add to `total_bytes`
-- Add value size estimator:
-```rust
-fn estimate_size(v: &Value) -> usize {
-    match v {
-        Value::String(s) => 64 + s.len(),
-        Value::Array(a) => 64 + a.len() * 32,
-        Value::Map(m) => 64 + m.len() * 64,
-        _ => 32,
-    }
-}
-```
-- If `total_bytes > max_bytes`: return `Err("memory limit exceeded")`
-
-**Step 2 — Wire config to VM**
-- File: `src/runtime/vm.rs`, `src/runtime/bytecode_vm.rs`
-- Parse `max_memory` string ("256mb", "1gb") to bytes at VM init
-- Pass to `GarbageCollector::with_max_bytes(n)`
-
-**Step 3 — Error code**
-- File: `src/runtime/errors.rs`
-- Add: `E0021` — memory limit exceeded
-
-### Option B — Remove the Field (Simpler but Honest)
-- Remove `max_memory` from `EnvConfig`
-- Remove from all docs
-- Add comment: `// TODO: implement in v0.7`
-
-### Done When (Option A)
-- Script allocating 1GB with limit set to 256MB fails with `E0021`
-- `cargo test` passes
-
-### Done When (Option B)
-- Field removed, `cargo test` passes, docs updated
-
----
-
-## Task 1.5 — Add `finally` Block to try/catch
-
-**Status:** `[x]` — Was already implemented in parser + AST VM + bytecode compiler. Added 3 tests to verify.
-**Risk:** MEDIUM — touches parser, both VMs, bytecode instruction set
-**Estimated size:** Medium
-
-### Problem
-`try/catch` has no `finally`. Resource cleanup (file handles, connections, locks) is unreliable.
-
-### What to Do
-
-**Step 1 — Update Parser**
-- File: `src/parser/statements/` (control flow handler)
-- Grammar: `try \n body \n catch e \n handler \n finally \n cleanup \n end`
-- `finally` block is optional
-- AST `TryCatch` node: add `finally_body: Option<Vec<Statement>>`
-
-**Step 2 — Update AST VM**
-- File: `src/runtime/execution/` or `src/runtime/vm/core.rs`
-- In `TryCatch` execution: always run `finally_body` regardless of ok/error/throw
-- `finally` runs even if `return` is executed inside try or catch (save/restore return value)
-
-**Step 3 — Update Bytecode Compiler**
-- File: `src/compiler/bytecode.rs`
-- Add instruction: `EnterFinally(usize)` — jump target for finally block
-- Emit `EnterFinally` before `PopCatch`
-- Finally block always executes; if exception was in flight, re-throw after finally
-
-**Step 4 — Update BytecodeVM**
-- File: `src/runtime/bytecode_vm.rs`
-- Handle `EnterFinally` instruction in execute loop
-- Re-throw saved exception after finally completes
-
-**Step 5 — Add tests**
-- `tests/integration/test_runtime.rs`
-- Test: finally runs on success path
-- Test: finally runs on error path
-- Test: finally runs on `return` inside try
-- Test: exception re-thrown after finally
-
-### Done When
-- All 4 test cases pass
-- `cargo test` passes all 239+ tests
-
----
-
-## Task 1.6 — Parser Error Recovery
-
-**Status:** `[x]`
-**Risk:** LOW for correctness, HIGH for DX
-**Estimated size:** Medium-Large (touches parser significantly)
-
-### Problem
-A single syntax error aborts the entire parse. The REPL cannot work with multiline input.
-IDE integration is impossible without multiple error reporting.
-
-### What to Do
-
-**Step 1 — Add error accumulator to Parser**
-- File: `src/parser/parser.rs`
-- Add: `errors: Vec<ParseError>` to parser struct
-- Add: `fn emit_error(&mut self, msg: String)` — pushes to errors, continues parsing
-- Change `parse_statement()` to return `Option<Statement>` and call `emit_error` instead of returning `Err`
-
-**Step 2 — Add synchronization points**
-- In `parse_statement()`: on error, advance tokens until a known synchronization token:
-  - `end`, `define`, `store`, `if`, `for`, `while`, `try`, `struct`, newline at indent 0
-- After sync, resume parsing next statement
-
-**Step 3 — Collect all errors**
-- `parse()` returns `(Program, Vec<ParseError>)` instead of `Result<Program, ParseError>`
-- CLI `run` command: if errors exist, print all of them then abort execution
-- CLI `check` command: print all errors without running
-
-**Step 4 — Update callers**
-- Files: `src/cli/run.rs`, `src/cli/check.rs`, `src/cli/repl.rs`
-- Handle new `(program, errors)` return from parser
-
-**Step 5 — REPL multiline support**
-- File: `src/cli/repl.rs`
-- Detect incomplete input (unclosed `define...end`, `if...end`)
-- Show continuation prompt (`...`) and accumulate input until complete
-
-### Done When
-- Script with 3 syntax errors reports all 3, not just the first
-- REPL shows `...` for multiline `define` blocks
-- `cargo test` passes
-
----
-
-## Group 1 Checkpoint
-
-Before moving to Group 2, verify:
-
-```
-[ ] cargo test -- passes all tests (number should be >= 239)
-[ ] fibonacci(30) runs without call depth error
-[ ] Runtime errors print line:col
-[ ] HOF with lambda: Value::FunctionRef used, not Value::String
-[ ] try/catch/finally works in both AST and bytecode VM
-[ ] max_memory is either enforced or removed from config/docs
-[ ] Parser reports multiple errors per file
-```
-
----
-
----
-
-# GROUP 2 — Language Completeness
-**Goal:** Core language handles all common programming patterns.
-**Unblocked by:** Group 1 complete.
-**Output:** Programs that work correctly and predictably.
-
----
-
-## Task 2.1 — Hex / Binary / Octal Integer Literals
-
-**Status:** `[x]`
-**Estimated size:** Small
-
-### What to Do
-- File: `src/lexer/lexer.rs`
-- In number lexing: detect `0x`, `0b`, `0o` prefixes
-- Parse accordingly and produce `Token::Integer(i64)`
-- Tests: `0xFF == 255`, `0b1010 == 10`, `0o777 == 511`
-
-### Done When
-- All three prefix formats work in scripts
-- `cargo test` passes
-
----
-
-## Task 2.2 — Binary / Bytes Type
-
-**Status:** `[x]`
-**Estimated size:** Medium
-
-### What to Do
-
-**Step 1 — Add Value::Bytes**
-- File: `src/runtime/core/value.rs`
-- Add: `Bytes(Vec<u8>)` to `Value` enum
-- Display: `<bytes:len>`
-- Literal syntax: `b"\x00\xFF\xAB"` or `bytes([0, 255, 171])`
-
-**Step 2 — Stdlib functions**
-- File: `src/stdlib/core.rs` or new `src/stdlib/bytes.rs`
-- `bytes_new(len)` → Bytes of zeros
-- `bytes_from_hex(s)` → Bytes
-- `bytes_to_hex(b)` → String
-- `bytes_get(b, i)` → Integer
-- `bytes_set(b, i, v)` → Bytes
-- `bytes_len(b)` → Integer
-- `bytes_slice(b, start, end)` → Bytes
-- `bytes_concat(b1, b2)` → Bytes
-
-**Step 3 — Bytecode instruction update**
-- Handle `Value::Bytes` in Index/SetIndex instructions
-
-### Done When
-- Can read binary file: `store → data → read_file_bytes("input.bin")`
-- Can inspect byte: `bytes_get(data, 0)`
-- `cargo test` passes
-
----
-
-## Task 2.3 — Enum Variants with Associated Data
-
-**Status:** `[x]`
-**Estimated size:** Large (parser + both VMs + pattern matching)
-
-### Problem
-Current enums: `Value::Enum(String, String)` — only name + variant name.
-No data can be attached to a variant. Cannot express `Option(Some, value)` or `Result(Ok, value)` in user code.
-
-### What to Do
-
-**Step 1 — Update Value::Enum**
-- File: `src/runtime/core/value.rs`
-- Change: `Enum(String, String)` → `Enum(String, String, Option<Box<Value>>)`
-- Enum name, variant name, optional payload
-
-**Step 2 — Update Parser**
-- File: `src/parser/statements/types.rs` (or wherever enum defs are parsed)
-- Allow: `enum Option { Some(value) | None }`
-- Store variant with optional type annotation
-
-**Step 3 — Update pattern matching**
-- File: `src/parser/patterns.rs` and VM execution
-- Allow: `match x { Some(v) => ..., None => ... }`
-- Destructure payload into bound variable `v`
-
-**Step 4 — Update match in both VMs**
-- Both VMs: when matching `Value::Enum(_, variant, Some(payload))`, bind payload to pattern variable
-
-**Step 5 — Standard enums in stdlib**
-- Add `Option` and `Result` as built-in enum types usable in type annotations
-
-### Done When
-- `enum Shape { Circle(radius) | Square(side) | Point }` works
-- Pattern matching destructures payload
-- `cargo test` passes
-
----
-
-## Task 2.4 — Default Parameter Values
-
-**Status:** `[x]`
-**Estimated size:** Small-Medium
-
-### What to Do
-- File: `src/parser/statements/functions.rs`
-- Allow: `define → greet → (name, greeting = "Hello")`
-- AST `Parameter`: add `default: Option<Expression>`
-- VM: at call time, if argument not provided, evaluate default expression
-
-### Done When
-- `greet("Alice")` works with default `greeting`
-- `greet("Alice", "Hi")` overrides default
-- `cargo test` passes
-
----
-
-## Task 2.5 — Variadic Functions
-
-**Status:** `[x]`
-**Estimated size:** Small-Medium
-
-### What to Do
-- File: `src/parser/statements/functions.rs`
-- Allow: `define → sum → (*nums)`
-- AST `Parameter`: add `variadic: bool` flag — must be last parameter
-- VM: collect remaining arguments into `Value::Array`
-
-### Done When
-- `sum(1, 2, 3, 4)` with `*nums` collects `[1, 2, 3, 4]`
-- `cargo test` passes
-
----
-
-## Task 2.6 — Match Guard Clauses
-
-**Status:** `[x]`
-**Estimated size:** Small
-
-### What to Do
-- File: `src/parser/patterns.rs`
-- Allow: `match x { n if n > 0 => "positive", n if n < 0 => "negative", _ => "zero" }`
-- AST `MatchArm`: add `guard: Option<Expression>`
-- Both VMs: evaluate guard after pattern match; skip arm if guard is false
-
-### Done When
-- Guard clauses work in both VMs
-- `cargo test` passes
-
----
-
-## Task 2.7 — Mutable Closure Captures
-
-**Status:** `[x]` — Documented: closures capture by value (copy semantics). Workaround: reassign the outer variable with `store → x → closure(x)`.
-**Estimated size:** Medium
-
-### Problem
-`Value::Function(name, params, body, captured_env)` — `captured_env` is a `HashMap<String, Value>`.
-When the closure modifies a captured variable, the outer scope does not see the change (copy semantics).
-
-### What to Do
-- Decide: implement reference-cell semantics (complex) or document the limitation clearly
-- **Minimal approach**: wrap captured mutable values in `Rc<RefCell<Value>>`
-- Add new `Value::CapturedRef(Rc<RefCell<Value>>)` that closures use for mutable captures
-- Alternatively: document that closures capture by value, add `ref` keyword for explicit capture by reference
-
-### Done When
-- Closure can increment a counter in outer scope, OR
-- Documentation explicitly states "closures capture by value" with workaround example
-
----
-
-## Group 2 Checkpoint
-
-```
-[ ] Hex/binary/octal literals parse and evaluate correctly
-[ ] Bytes type exists with basic stdlib functions
-[ ] Enum variants with associated data work in pattern matching
-[ ] Default parameters work
-[ ] Variadic functions work
-[ ] Match guards work
-[ ] Closure capture semantics documented or fixed
-[ ] cargo test passes all tests
-```
-
----
-
----
-
-# GROUP 3 — Type Enforcement
-**Goal:** Type annotations become useful, not decorative.
-**Unblocked by:** Group 2 complete.
-**Output:** `--strict-types` mode catches type errors before execution.
-
----
-
-## Task 3.1 — Promote Type Checker to Blocking Mode
-
-**Status:** `[x]`
-**Estimated size:** Medium
-
-### Problem
-`src/typecheck/checker.rs` exists but `--strict-types` flag does not block execution on type errors.
-Type checker runs but errors are advisory.
-
-### What to Do
+**Step 1 — Change default**
+- File: `src/runtime/vm/core.rs`
+- Change `exec_allowed: true` → `exec_allowed: false`
+- File: `src/runtime/vm/core.rs` — `with_all_options()` constructor
+- Same change: default `exec_allowed: false`
+
+**Step 2 — Add --allow-exec CLI flag**
+- File: `src/bin/txtcode.rs`
+- Add `RunArgs`: `--allow-exec` flag
 - File: `src/cli/run.rs`
-- After type check phase: if `strict_types == true` AND type errors exist → print errors and `process::exit(1)`
-- File: `src/typecheck/checker.rs`
-- Ensure checker returns `Vec<TypeError>` not just warnings
-- Add `TypeError` struct with span, message, expected type, actual type
+- Wire: if `--allow-exec` passed, call `vm.set_exec_allowed(true)` before execution
+
+**Step 3 — Update permission_map**
+- File: `src/runtime/permission_map.rs`
+- Ensure `exec`, `exec_json`, `exec_lines`, `exec_pipe`, `exec_status`, `spawn`, `kill`,
+  `signal_send`, `pipe_exec` all map to `PermissionResource::System("exec")`
+- These should fail with clear `PermissionError` if `exec_allowed == false` and no grant
+
+**Step 4 — Update tests**
+- File: `tests/integration/test_runtime.rs`
+- Add test: calling `exec("echo", [])` without `--allow-exec` or `grant_permission` → error
+- Add test: calling `exec` after `grant_permission("sys.exec", null)` → succeeds
+
+**Step 5 — Update docs**
+- File: `README.md`, `docs/permissions.md`, `docs/security-features.md`
+- Change: `exec_allowed` default is now `false`; add `--allow-exec` to CLI reference
 
 ### Done When
-- `txtcode run --strict-types script.tc` fails with exit code 1 on type mismatch
-- Error message includes line:col and types involved
-- `cargo test` passes
+- `txtcode run untrusted.tc` (containing `exec("rm", ["-rf", "/tmp/test"])`) → permission error
+- `txtcode run --allow-exec script.tc` → exec works
+- `grant_permission("sys.exec", null)` in script → exec works
+- All 284+ existing tests pass (update exec-using tests to grant `sys.exec` first)
 
 ---
 
-## Task 3.2 — Enforce Struct Field Types at Assignment
+## Task 8.2 — Enforce `const` at Runtime
 
-**Status:** `[x]`
+**Status:** `[ ]`
+**Risk:** MEDIUM — silent mutation of "constants" is a correctness hazard
 **Estimated size:** Small-Medium
 
 ### Problem
-E0016 error code exists but struct field type enforcement is inconsistent.
+`const x → 5` parses and stores the variable but a subsequent `store → x → 6` succeeds
+silently. `const` is currently pure syntactic sugar with no enforcement in either VM.
 
 ### What to Do
-- File: `src/runtime/vm/` (struct assignment path)
-- When assigning to struct field: look up field type from `struct_defs`
-- If type does not match value type: raise `E0016`
-- Same enforcement in bytecode VM
+
+**Step 1 — Track constants in scope**
+- File: `src/runtime/core.rs` (ScopeManager or Scope struct)
+- Add: `constants: HashSet<String>` to the scope that owns the variable
+- When `Statement::Const { name, value }` executes: add `name` to `constants` after storing
+
+**Step 2 — Guard reassignment**
+- File: `src/runtime/execution/statements/` (assignment handler)
+- In `execute_assignment`: before overwriting a variable, check if it is in `constants`
+- If const: return `RuntimeError` with `E0030` — "cannot reassign const 'x'"
+
+**Step 3 — Bytecode VM**
+- File: `src/runtime/bytecode_vm.rs`
+- `StoreVar` instruction: check constants set before writing
+- `Instruction::Const { name, value }`: new instruction variant, or reuse `StoreVar` with a
+  const flag in the frame
+
+**Step 4 — Error code**
+- File: `src/runtime/errors.rs`
+- Add: `E0030` — "cannot reassign const variable"
+
+**Step 5 — Tests**
+- Test: `const x → 5` followed by `store → x → 6` raises `E0030`
+- Test: `const x → 5` followed by `print → x` works normally
 
 ### Done When
-- Assigning `int` to a `string` field raises E0016
+- Reassigning a `const` raises `E0030` in both VMs
 - `cargo test` passes
 
 ---
 
-## Task 3.3 — Null Safety Mode
+## Task 8.3 — Expose Script Signing as CLI Flag
 
-**Status:** `[x]`
-**Estimated size:** Medium
-
-### What to Do
-- File: `src/typecheck/checker.rs`
-- In strict mode: track which variables can be `Null`
-- Warn/error when a potentially-null value is used without null check
-- Introduce `T?` syntax for nullable types in annotations
-- `?.` operator (already exists) is the safe access path
-
-### Done When
-- `--strict-types`: using a nullable variable without null check produces a warning
-- `?.` operator suppresses the warning
-- `cargo test` passes
-
----
-
-## Task 3.4 — Clean Up Generics
-
-**Status:** `[x]` — Option A: removed `<T>` parsing block from `calls.rs`. AST field kept for v0.8.
+**Status:** `[ ]`
+**Risk:** MEDIUM — signing infrastructure exists but is unreachable without Rust API
 **Estimated size:** Small
 
-### Decision required
-Generics are "parsed, erased at runtime" — this is misleading.
+### Problem
+`src/security/auth.rs` — Ed25519 signing/verification exists but there is no CLI surface.
+Users cannot sign or verify scripts from the command line. The security feature is invisible.
 
-**Option A:** Remove generic syntax from language spec and parser entirely. Add to roadmap for v0.8.
-**Option B:** Implement mono-morphized generics for simple cases (`Array<int>`, `Map<string, int>`).
+### What to Do
 
-**Recommended:** Option A (simpler, honest). Remove generic `<T>` syntax from parser and spec. Add note in CHANGELOG.
+**Step 1 — Add `txtcode sign` subcommand**
+- File: `src/bin/txtcode.rs`
+- Add `Commands::Sign { file: PathBuf, key: PathBuf, output: Option<PathBuf> }`
+- Description: "Sign a .tc script with an Ed25519 private key"
+- File: `src/cli/sign.rs` (new)
+- `pub fn run(file, key_path, output)`:
+  - Read source bytes
+  - Load private key from `key_path`
+  - Call `ScriptAuth::sign(source_bytes, signer_id, &priv_key)`
+  - Write signature to `output` (default: `file.sig`)
+
+**Step 2 — Add `txtcode verify` subcommand**
+- File: `src/bin/txtcode.rs`
+- Add `Commands::Verify { file: PathBuf, sig: PathBuf }`
+- File: `src/cli/sign.rs` (extend)
+- `pub fn verify(file, sig_path)`:
+  - Read source and sig
+  - Call `ScriptAuth::verify(source_bytes, &sig)`
+  - Print `OK` or `TAMPERED` with exit code
+
+**Step 3 — Add `--require-sig` to `txtcode run`**
+- File: `src/bin/txtcode.rs`, `src/cli/run.rs`
+- `--require-sig <KEY_FILE>` — before execution, verify `.tc.sig` sidecar with the given public key
+- If sig missing or invalid: abort with error
+
+**Step 4 — Add `txtcode keygen` subcommand**
+- `txtcode keygen --output keys/` — generates `private.key` + `public.key` in the output dir
+- Prints warning: "Keep private.key secret. Distribute public.key with your package."
 
 ### Done When
-- Generics syntax removed from parser (or basic generic types work end-to-end)
-- Language spec updated
+- Full round-trip: `txtcode keygen`, `txtcode sign script.tc`, `txtcode run --require-sig public.key script.tc` all work
 - `cargo test` passes
 
 ---
 
-## Group 3 Checkpoint
+## Task 8.4 — FFI Path Allowlisting
+
+**Status:** `[ ]`
+**Risk:** HIGH — `ffi_load` with attacker-controlled path = arbitrary code execution
+**Estimated size:** Small
+
+### Problem
+`src/stdlib/ffi.rs` — `ffi_load(path)` accepts any filesystem path. If a script can
+control the path argument, it can load any shared library and execute arbitrary C code.
+The `sys.ffi` permission gate is necessary but not sufficient — there is no path restriction.
+
+### What to Do
+
+**Step 1 — Add FFI path allowlist to permission grant**
+- File: `src/runtime/permissions.rs`
+- `PermissionResource::System("ffi")` gains optional scope (like FileSystem)
+- Scope is a path prefix: `grant_permission("sys.ffi", "/usr/lib/*")` only allows libs under `/usr/lib/`
+
+**Step 2 — Enforce in ffi_load**
+- File: `src/stdlib/ffi.rs`
+- Before `Library::new(path)`: call `vm.check_permission(System("ffi"), Some(path))`
+- The scope matching in PermissionManager already handles glob patterns
+
+**Step 3 — CLI flag**
+- File: `src/bin/txtcode.rs`
+- Add `--allow-ffi PATH` alongside `--allow-fs`, `--allow-net`
+
+**Step 4 — Tests**
+- Test: `ffi_load("/evil/lib.so")` without allowlist grant → error
+- Test: `ffi_load("/usr/lib/libm.so")` with `--allow-ffi /usr/lib/*` → succeeds
+
+### Done When
+- `ffi_load` with un-allowlisted path raises permission error
+- `cargo test` passes
+
+---
+
+## Task 8.5 — Audit Log Persistence
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — in-memory audit trail is lost on exit; security use-cases need durable logs
+**Estimated size:** Small-Medium
+
+### Problem
+`AuditTrail` is in-memory only. No persistence. For audited automation this is a gap.
+
+### What to Do
+
+**Step 1 — Add `--audit-log FILE` to `txtcode run`**
+- File: `src/bin/txtcode.rs`, `src/cli/run.rs`
+- On `--audit-log <path>`: after execution completes, serialize audit trail to JSON and write
+
+**Step 2 — AuditTrail serialization**
+- File: `src/runtime/audit.rs`
+- Add `#[derive(Serialize)]` to `AuditEvent`, `AuditTrail`
+- Add `fn to_json(&self) -> String` using `serde_json::to_string_pretty`
+
+**Step 3 — Streaming write (optional)**
+- For long-running scripts: write each audit event to the log file as it occurs
+- Use `BufWriter<File>` opened at startup and flushed after each event
+
+**Step 4 — Tests**
+- Test: `txtcode run --audit-log /tmp/audit.json script.tc` → audit file exists with correct events
+
+### Done When
+- `--audit-log` flag writes a valid JSON audit trail file
+- `cargo test` passes
+
+---
+
+## Group 8 Checkpoint
 
 ```
-[x] --strict-types blocks execution on type errors
-[x] Struct field type mismatch raises E0016 reliably
-[x] Null safety warnings in strict mode
-[x] Generics: removed from parser (deferred to v0.8)
-[x] cargo test passes
+[ ] exec_allowed defaults to false; exec requires explicit grant or --allow-exec
+[ ] const reassignment raises E0030 in both VMs
+[ ] txtcode sign / verify / keygen / run --require-sig all work end-to-end
+[ ] ffi_load requires path-scoped sys.ffi permission grant
+[ ] --audit-log flag writes persistent JSON audit trail
+[ ] cargo test passes (all existing tests updated where needed)
 ```
 
 ---
 
 ---
 
-# GROUP 4 — Async Runtime
-**Goal:** Replace `Option<()>` executor with real async execution.
-**Unblocked by:** Group 1 complete (can work in parallel with Group 2/3).
-**Output:** I/O-bound programs work without blocking.
+# GROUP 9 — Module System Overhaul
+**Goal:** Multi-file projects work correctly without namespace collisions or reproducibility risks.
+**Unblocked by:** Group 8 complete.
+**Output:** Isolated module namespaces; locked transitive deps; deterministic map iteration.
+**Target version:** 0.6.0
 
 ---
 
-## Task 4.1 — Wire Tokio Executor
+## Task 9.1 — Module Namespace Isolation (CRITICAL)
 
-**Status:** `[x]` — Removed dead `_async_executor: Option<()>`. Added `Instruction::Await` to bytecode + handler in bytecode VM. HTTP functions now return `Value::Future` immediately via `std::thread::spawn` (thread-based, no tokio runtime stored on VM).
+**Status:** `[ ]`
+**Risk:** CRITICAL — without this, any multi-file project risks silent name collisions
 **Estimated size:** Large
 
 ### Problem
-`_async_executor: Option<()>` in `VirtualMachine` is a stub. `tokio` is already a dependency.
+`src/runtime/module.rs` — When a module is imported, its definitions are executed in the
+caller's scope. Two modules that both define `format()` silently overwrite each other.
+There is no module-level namespace. `exported_symbols` set exists but is not enforced.
 
 ### What to Do
 
-**Step 1 — Replace placeholder**
-- File: `src/runtime/vm.rs`
-- Change `_async_executor: Option<()>` to `async_runtime: Option<tokio::runtime::Runtime>`
-- Initialize: `async_runtime: Some(tokio::runtime::Runtime::new().unwrap())`
+**Step 1 — Execute modules in isolated scope**
+- File: `src/runtime/module.rs`
+- `load_module(name)` must:
+  1. Create a fresh child VM with a NEW isolated scope (not the caller's scope)
+  2. Execute the module AST in that isolated VM
+  3. Collect only the symbols listed in `export` statements from the isolated scope
+  4. Return a `ModuleExports { symbols: HashMap<String, Value> }`
 
-**Step 2 — Add Await instruction to bytecode**
-- File: `src/compiler/bytecode.rs`
-- Add: `Instruction::Await`
-- Compiler: emit `Await` after calling an async function
+**Step 2 — Qualified import binding**
+- When `from "npl-math/math" import gcd, factorial` is executed:
+  - Extract only `gcd` and `factorial` from `ModuleExports`
+  - Bind them in the caller's scope under their imported names
+  - Wildcard `import *` binds all exports (with warning)
+- When `import "npl-math/math" as math` is executed:
+  - Create a `Value::Map` of all exports
+  - Bind it as `math` in the caller's scope
+  - Access via `math.gcd(a, b)`
 
-**Step 3 — Handle Await in BytecodeVM**
-- File: `src/runtime/bytecode_vm.rs`
-- When `Value::Future(handle)` is on stack and `Await` executes: block thread until future resolves
-- Use `FutureHandle`'s `Mutex<Option<Result>>` + `Condvar`
+**Step 3 — Export enforcement**
+- File: `src/runtime/execution/statements/` (export statement handler)
+- Only symbols declared with `export` in the module are visible to importers
+- Private module-internal functions/variables remain invisible
 
-**Step 4 — Make stdlib network functions async**
-- File: `src/stdlib/net.rs`
-- `http_get`, `http_post` etc: return `Value::Future` immediately
-- Spawn tokio task that resolves the future when HTTP response arrives
+**Step 4 — Circular import detection**
+- File: `src/runtime/module.rs`
+- The existing `import_stack: Vec<String>` in VirtualMachine is the right tool
+- Before loading module N: check if N is already in `import_stack`
+- If yes: return `RuntimeError` — "circular import: module 'A' → 'B' → 'A'"
 
-**Step 5 — AST VM async support**
-- File: `src/runtime/execution/` — wherever function calls are dispatched
-- When calling a function marked `async_functions.contains(name)`: use tokio runtime to block-on
+**Step 5 — Bytecode VM module parity**
+- File: `src/runtime/bytecode_vm.rs` — `ImportModule` instruction handler
+- Same isolation: sub-VM, collect exports, bind in caller scope
+- Currently sub-VM shares too much state — fix the isolation boundary
+
+**Step 6 — Tests**
+- Test: two modules both define `helper()` — no collision
+- Test: circular import raises RuntimeError
+- Test: unexported symbol not accessible in importer
+- Test: `import as` creates qualified access
 
 ### Done When
-- `store → resp → await http_get("https://example.com")` works
-- HTTP request does not freeze the whole runtime
+- Two modules with same function name coexist without collision
+- Circular imports raise an error instead of infinite loop/panic
+- Unexported symbols are not visible to importers
 - `cargo test` passes
 
 ---
 
-## Task 4.2 — Async Test Support
+## Task 9.2 — Transitive Dependency Resolution
 
-**Status:** `[x]` — Test runner resolves `Value::Future` results automatically. AST VM's thread-based await already handles async test files transparently.
-**Estimated size:** Small
-
-### What to Do
-- File: `src/cli/test_cmd.rs`
-- Test runner: detect async test functions and run them inside tokio runtime
-- File: `src/stdlib/test.rs`
-- `test_run` helper: support async callbacks
-
-### Done When
-- Test file can contain `define → test_http → () ... await http_get ...`
-- Test runner passes async tests
-- `cargo test` passes
-
----
-
-## Group 4 Checkpoint
-
-```
-[x] _async_executor: Option<()> removed (thread-based runtime already present)
-[x] await expression works in both VMs (Instruction::Await in bytecode VM)
-[x] http_get/http_post return Future, resolve on await
-[x] Async tests work in test runner (Future results auto-resolved)
-[x] cargo test passes
-```
-
----
-
----
-
-# GROUP 5 — Standard Library Gaps
-**Goal:** Stdlib covers real automation and scripting use cases.
-**Unblocked by:** Group 1 complete.
-**Output:** Scripts can do real work without reimplementing basics.
-
----
-
-## Task 5.1 — Basic HTTP Server
-
-**Status:** `[x]` — `http_serve`, `http_response`, `http_request_method/path/body` implemented in `net.rs`. Uses `std::net::TcpListener` (no extra deps). HTTP futures use `std::thread::spawn` + `FutureHandle`.
-**Estimated size:** Medium-Large
-
-### What to Do
-- File: `src/stdlib/net.rs`
-- Add functions:
-  - `http_serve(port, handler_fn)` — starts HTTP server, calls handler for each request
-  - `http_response(status, body, headers)` — builds response value
-  - `http_request_method(req)` — extracts method
-  - `http_request_path(req)` — extracts path
-  - `http_request_body(req)` — extracts body
-- Use `tokio` + basic HTTP parsing (hyper or tiny_http crate)
-- Add `tiny_http` or `hyper` to `Cargo.toml` under `[dependencies]` (optional, net feature)
-- Handler function is called as a Txtcode function/lambda for each request
-
-### Done When
-- Simple echo server works in Txtcode
-- Server handles GET and POST
-- `cargo test` passes
-
----
-
-## Task 5.2 — Timezone-Aware Date/Time
-
-**Status:** `[x]` — `now_utc`, `now_local`, `parse_datetime`, `format_datetime`, `datetime_add`, `datetime_diff` added to `time.rs`. UTC and local only (no IANA tz, no `chrono-tz` dep).
-**Estimated size:** Small (`chrono` already a dependency)
-
-### What to Do
-- File: `src/stdlib/time.rs`
-- Add:
-  - `now_utc()` → string ISO 8601
-  - `now_local()` → string ISO 8601 with timezone
-  - `parse_datetime(s, format)` → timestamp integer
-  - `format_datetime(ts, format, tz)` → string
-  - `datetime_add(ts, amount, unit)` → new timestamp (unit: "seconds", "minutes", "hours", "days")
-  - `datetime_diff(ts1, ts2, unit)` → integer
-
-### Done When
-- `format_datetime(now_utc(), "%Y-%m-%d", "UTC")` returns correct date
-- `cargo test` passes
-
----
-
-## Task 5.3 — CSV Write
-
-**Status:** `[x]` — `csv_write(path, rows)` in `io.rs`, `csv_to_string(rows)` alias in `core.rs`. Routing fixed (excluded from `csv_` CoreLib prefix; added explicit IOLib route).
-**Estimated size:** Small
-
-### What to Do
-- File: `src/stdlib/io.rs`
-- Add `csv_write(path, rows)` — `rows` is `Array` of `Array`
-- Add `csv_to_string(rows)` — returns CSV as string without writing file
-
-### Done When
-- Can write CSV and read it back correctly
-- `cargo test` passes
-
----
-
-## Task 5.4 — ZIP Create
-
-**Status:** `[x]` — `zip_create` and `zip_extract` already existed; verified with integration test.
-**Estimated size:** Small (`zip` crate already present)
-
-### What to Do
-- File: `src/stdlib/io.rs`
-- Add `zip_create(output_path, files)` — `files` is `Array` of file paths
-- Add `zip_extract(zip_path, dest_dir)` — already may exist; verify
-
-### Done When
-- Can create a zip, extract it, verify contents
-- `cargo test` passes
-
----
-
-## Task 5.5 — Streaming File I/O
-
-**Status:** `[x]` — `file_open/read_line/write_line/file_close` added to `io.rs` using global `lazy_static` `Mutex<HashMap<i64, BufReader/BufWriter>>`. Handles returned as `Value::Integer(id)`.
+**Status:** `[ ]`
+**Risk:** HIGH — `package install` silently skips transitive deps
 **Estimated size:** Medium
 
-### What to Do
-- File: `src/stdlib/io.rs`
-- Add:
-  - `file_open(path, mode)` → file_handle (Value::Map with handle metadata or new Value::FileHandle)
-  - `file_read_line(handle)` → string (one line)
-  - `file_write_line(handle, line)` → null
-  - `file_close(handle)` → null
-- Alternative: use iterator approach — `file_lines(path)` returns `Array` of lines (lazy loaded)
-
-### Done When
-- Can process a 100MB file line by line without loading all into memory
-- `cargo test` passes
-
----
-
-## Task 5.6 — Process stdin Piping
-
-**Status:** `[x]` — `exec` updated with optional `{stdin, capture_stderr}` options Map. `exec_pipe(commands)` added for OS-level pipelines.
-**Estimated size:** Small
-
-### What to Do
-- File: `src/stdlib/sys.rs`
-- Update `exec(cmd, args, options)`:
-  - Add `stdin` option: string content to pipe to process stdin
-  - Add `capture_stderr` option: include stderr in result
-- Add `exec_pipe(commands)` — runs pipeline: `["grep foo", "sort", "uniq"]`
-
-### Done When
-- `exec("cat", [], {stdin: "hello world"})` returns `"hello world"`
-- `cargo test` passes
-
----
-
-## Group 5 Checkpoint
-
-```
-[x] HTTP server: basic serve/request/response API works
-[x] Date/time: timezone-aware, duration arithmetic works
-[x] CSV write works
-[x] ZIP create works
-[x] Streaming file I/O: line-by-line large file processing
-[x] Process stdin piping works
-[x] cargo test passes (194 tests)
-```
-
----
-
----
-
-# GROUP 6 — Ecosystem
-**Goal:** Txtcode has enough packages and tooling for real adoption.
-**Unblocked by:** Group 5 complete.
-**Output:** Developers can find and use packages; editors support Txtcode.
-
----
-
-## Task 6.1 — LSP (Language Server Protocol)
-
-**Status:** `[x]` — `src/cli/lsp.rs` — synchronous JSON-RPC stdio server (no tower-lsp). `txtcode lsp` subcommand wired. Supports: initialize, didOpen/didChange → publishDiagnostics, completion (stdlib+keywords), shutdown/exit.
-**Estimated size:** Very Large (separate crate or major addition)
+### Problem
+`src/cli/package.rs` — `install_dependencies()` installs direct deps listed in `Txtcode.toml`
+but does not recursively install their dependencies. A package that depends on `npl-collections`
+will fail at import time if the user only installed the top-level package.
 
 ### What to Do
 
-**Option A — Minimal LSP (recommended first step)**
-- New crate: `txtcode-lsp` or new binary `txtcode lsp`
-- Implement LSP protocol via `tower-lsp` crate
-- Features for v1:
-  - Diagnostics (syntax errors → LSP diagnostics)
-  - Hover (variable type, function signature)
-  - Completion (stdlib function names, local variables)
-  - Go-to-definition (local functions)
-
-**Step 1 — Add `tower-lsp` to Cargo.toml (optional feature `lsp`)**
-
-**Step 2 — New file: `src/cli/lsp.rs`**
-- `txtcode lsp` starts LSP server on stdio
-- Wire parser → diagnostics
-- Wire symbol table → hover/completion
-
-**Step 3 — VS Code extension (minimal)**
-- New directory: `editors/vscode/`
-- `package.json`: declares language server client
-- `extension.ts`: starts `txtcode lsp` and connects
-
-### Done When
-- `txtcode lsp` runs without crash
-- VS Code extension shows syntax errors in editor
-- Autocomplete lists stdlib function names
-
----
-
-## Task 6.2 — TextMate Grammar (Syntax Highlighting)
-
-**Status:** `[x]` — `editors/txtcode.tmLanguage.json` + `editors/txtcode-language-configuration.json` created. Scopes: keywords, strings (f""/r""/"""/regular), comments, numbers, operators, function defs/calls, type annotations.
-**Estimated size:** Small (JSON grammar file)
-
-### What to Do
-- New file: `editors/txtcode.tmLanguage.json`
-- Define scopes for: keywords, strings, comments, numbers, operators, function names
-- Test in VS Code via language configuration
-
-### Done When
-- `.tc` files get syntax highlighting in VS Code
-- Grammar published to editors/ directory
-
----
-
-## Task 6.3 — Public Package Registry Setup
-
-**Status:** `[x]` — `registry/index.json` with all 20 packages. Added `local_path` field to `RegistryVersionEntry`. `download_package` uses `install_local_package` when `local_path` is set. `TXTCODE_REGISTRY_INDEX_FILE` env var for local override already existed.
-**Estimated size:** Medium-Large
-
-### Minimal approach
-- Host `registry/index.json` on GitHub Pages or a static server
-- Registry format: `{ "packages": [ { "name": "npl-math", "version": "1.0.0", "url": "...", "sha256": "..." } ] }`
-- `txtcode package install npl-math` downloads from registry URL, verifies SHA-256
-
-### What to Do
+**Step 1 — Recursive resolve function**
 - File: `src/cli/package.rs`
-- Add: configurable registry URL (default: `https://registry.txtcode.dev` or GitHub raw URL)
-- Add: download package tarball, verify SHA-256, extract to `.txtcode-env/{active}/packages/`
-- Publish 4 existing packages to registry
+- Add: `fn resolve_transitive(name, ver, registry, visited) -> Vec<(String, String)>`
+- Algorithm:
+  1. Look up package in registry
+  2. For each dep in `entry.dependencies`: if not in `visited`, recurse
+  3. Return flat list of all packages to install (deps before dependents)
+- Use `visited: HashSet<String>` to break cycles
+
+**Step 2 — Conflict detection**
+- If two packages require different incompatible versions of the same dep:
+  - Print warning: "conflict: pkg-A needs foo ^1.0, pkg-B needs foo ^2.0"
+  - For now: install latest compatible version; print warning
+
+**Step 3 — Update install flow**
+- `package install` calls `resolve_transitive` before installing anything
+- Prints: "Resolving dependencies... installing X packages"
+
+**Step 4 — Tests**
+- Test: installing a package with deps installs all transitive deps
+- Test: dep cycle in registry is detected and reported
 
 ### Done When
-- `txtcode package install npl-math` downloads and installs from public URL
-- SHA-256 verification works
-- 4 starter packages published
+- `txtcode package install npl-http-client` automatically installs `npl-retry` if it is a dep
+- `cargo test` passes
 
 ---
 
-## Task 6.4 — Lockfile (Txtcode.lock)
+## Task 9.3 — Lockfile Enforcement
 
-**Status:** `[x]` — `LockFile` struct and `install_dependencies` already wrote Txtcode.lock. Verified: generated on install, respected on re-install, removed on update.
+**Status:** `[ ]`
+**Risk:** HIGH — without lockfile verification, builds are not reproducible
 **Estimated size:** Small-Medium
 
+### Problem
+`Txtcode.lock` is written by `package install` but never read back to verify installed
+packages match the lock. Every install resolves fresh from the registry regardless.
+
 ### What to Do
+
+**Step 1 — Write lockfile with transitive deps and hashes**
 - File: `src/cli/package.rs`
-- After install: write `Txtcode.lock` with exact versions + SHA-256 hashes
-- On `install`: if lock file exists, use locked versions instead of resolving
-- Format: TOML
+- After `resolve_transitive`: write `Txtcode.lock` (TOML format)
+```toml
+[[package]]
+name = "npl-math"
+version = "0.1.0"
+sha256 = "abc123..."
+source = "local:packages/npl-math"
+
+[[package]]
+name = "npl-collections"
+version = "0.1.0"
+sha256 = "def456..."
+source = "local:packages/npl-collections"
+```
+
+**Step 2 — Verify on install (lock mode)**
+- `package install` (no args): if `Txtcode.lock` exists, read locked versions
+  - Do NOT resolve from registry — install exactly what lock says
+  - Verify SHA-256 of each installed package against lock entry
+  - If hash mismatch: abort with error "lockfile hash mismatch for npl-math"
+- `package update`: re-resolve, update lock file
+
+**Step 3 — Verify on module import (optional strict mode)**
+- `--strict-lock` flag on `txtcode run`: verify loaded modules are in lock
+- If a module is loaded that is not in `Txtcode.lock`: error (possible tampered install)
+
+**Step 4 — Tests**
+- Test: install with lock → subsequent install uses lock, not fresh resolve
+- Test: modified package fails hash check
 
 ### Done When
-- Reproducible installs: same lock file = same packages
+- `Txtcode.lock` read and verified on `package install`
+- `package update` regenerates lock
 - `cargo test` passes
 
 ---
 
-## Task 6.5 — 20 Core Packages
+## Task 9.4 — Deterministic Map Iteration
 
-**Status:** `[x]` — All 20 packages written under `packages/`. 4 pre-existing (npl-math, npl-strings, npl-collections, npl-datetime) + 16 new. All in registry/index.json with local_path entries.
-**Estimated size:** Large (content work, not core engineering)
-
-### Package list to write and publish
-
-| Package | Contents |
-|---------|----------|
-| `npl-math` | Already exists — verify + publish |
-| `npl-strings` | Already exists — verify + publish |
-| `npl-collections` | Already exists — verify + publish |
-| `npl-datetime` | Already exists — verify + publish |
-| `npl-http-client` | Wrapper around http_get/post with retries, headers |
-| `npl-http-server` | Wrapper around http_serve with routing |
-| `npl-json-schema` | JSON schema validation |
-| `npl-csv` | CSV read/write utilities |
-| `npl-env` | .env file loading into variables |
-| `npl-template` | Simple string templating |
-| `npl-semver` | Semver parsing/comparison |
-| `npl-base64` | Base64 encode/decode (thin wrapper) |
-| `npl-uuid` | UUID generation (thin wrapper) |
-| `npl-retry` | Retry logic with backoff |
-| `npl-assert` | Extended assertion utilities for testing |
-| `npl-cli-args` | CLI argument parsing helpers |
-| `npl-colors` | Terminal color output |
-| `npl-table` | Print data as formatted tables |
-| `npl-hash` | Consistent hash utilities |
-| `npl-path` | Advanced path manipulation |
-
-### Done When
-- All 20 packages installable via `txtcode package install <name>`
-- Each package has tests
-- Registry updated
-
----
-
-## Group 6 Checkpoint
-
-```
-[x] LSP: txtcode lsp runs, shows errors via publishDiagnostics
-[x] Syntax highlighting grammar published (editors/)
-[x] Public registry serves packages (registry/index.json + local_path installs)
-[x] Lockfile generated and respected
-[x] 20 core packages available and installable
-[x] cargo test passes (194 tests)
-```
-
----
-
----
-
-# GROUP 7 — Performance Baseline
-**Goal:** Know what Txtcode's performance envelope is. Publish it. Plan for improvement.
-**Unblocked by:** Group 2 complete.
-**Output:** Documented benchmarks; clear path to bytecode-only production runtime.
-
----
-
-## Task 7.1 — Publish Benchmark Results
-
-**Status:** `[x]` — `docs/performance.md` written with real numbers from `cargo bench`. Added 5 new benchmark programs and 7 new criterion bench functions. Key numbers: ast_loop 327 µs, ast_fib20 50.4 ms, ast_array_ops 138 µs, ast_json_ops 318 µs, ast_gc_alloc_10k 5.76 ms.
+**Status:** `[ ]`
+**Risk:** MEDIUM — breaks "deterministic execution" claim; hard to debug
 **Estimated size:** Small
 
-### What to Do
-- File: `benches/benchmarks.rs` — already exists with criterion
-- Run: `cargo bench`
-- Add benchmarks for:
-  - fibonacci(30) — recursion
-  - Array of 10,000 elements: map, filter, sort
-  - String concatenation 10,000 times
-  - JSON encode/decode 1,000 objects
-  - File write 1,000 lines
-- Write results to: `docs/performance.md`
-- Include: comparison table (AST VM vs Bytecode VM)
-
-### Done When
-- `docs/performance.md` exists with real numbers
-- AST VM vs Bytecode VM comparison documented
-
----
-
-## Task 7.2 — Plan Bytecode-Only Production Path
-
-**Status:** `[x]` — Documented below.
-
-### Bytecode-Only Production Path (v0.8 plan)
-
-#### Current state (v0.5)
-| Component | Role |
-|-----------|------|
-| AST VM | Default for `txtcode run`, REPL, tests, type-check mode |
-| Bytecode VM | Experimental — available via `--features bytecode` |
-| `txtcode compile` | Produces `.txtc` bytecode binary |
-
-#### v0.6 target
-- Bytecode VM becomes **default** for `txtcode run` when `--features bytecode` is in the default feature set
-- AST VM retained for: `txtcode repl`, `txtcode debug`, `--type-check` / `--strict-types` flags
-- Both VMs share the same stdlib, permission system, and audit trail
-
-#### v0.8 target — `txtcode exec`
-- `txtcode compile main.tc -o app.txtc` → produces standalone bytecode file
-- `txtcode exec app.txtc` → runs bytecode directly, NO source re-parsing
-- Cold-start target: < 5 ms for a 500-line program
-- AST VM: kept for `repl` + `debug` only; not used in production deploys
-- This enables: distributing `.txtc` binaries without shipping source code
-
-#### Deprecation plan for AST VM
-- v0.6: AST VM is secondary; bytecode VM is default for `run`
-- v0.8: AST VM is debug-only; `txtcode run` always uses bytecode VM
-- v1.0: AST VM may be removed from release builds (kept in dev builds)
-- NOT before v1.0: REPL and error messages still need AST walking for good diagnostics
-
----
-
-## Task 7.3 — Document GC Behavior
-
-**Status:** `[x]` — Extensive doc comments added to `src/runtime/gc.rs` explaining RAII model, what `collect()` actually does (no-op counter reset), performance numbers, and future arena allocator plan. `docs/performance.md` has "Memory Management" section with the same explanation.
-**Estimated size:** Small
+### Problem
+`Value::Map` uses `HashMap` internally. Iterating over a map in a `for` loop produces
+different key orders across runs. This breaks the "deterministic execution" claim in docs
+and makes scripts that process maps non-reproducible.
 
 ### What to Do
-- File: `src/runtime/gc.rs`
-- Add doc comment explaining: "Rust RAII handles memory. AllocationTracker monitors allocation count. collect() is a suggestion, not a sweep."
-- Update `docs/performance.md`: section "Memory Management" explaining the model honestly
-- Add benchmark: 100,000 object allocation loop — measure if GC overhead is visible
+
+**Step 1 — Switch to IndexMap**
+- File: `Cargo.toml` — add `indexmap = "2"`
+- File: `src/runtime/core/value.rs` — change `HashMap<String, Value>` in `Value::Map` to
+  `IndexMap<String, Value>` (insertion-ordered)
+- This preserves insertion order, making iteration deterministic
+
+**Step 2 — Update all map construction sites**
+- Run: `grep -r "HashMap::new()" src/ --include="*.rs"` for map value construction
+- Change relevant sites to `IndexMap::new()`
+
+**Step 3 — Update sort for display**
+- `print(my_map)` — display order is now insertion order (deterministic)
+
+**Step 4 — Tests**
+- Test: `store → m → {a: 1, b: 2, c: 3}` iterated with `for` → always yields a, b, c in order
 
 ### Done When
-- `docs/performance.md` has "Memory Management" section
-- GC code is accurately documented
+- Map iteration order matches insertion order
+- All existing map tests pass
+- `cargo test` passes
 
 ---
 
-## Group 7 Checkpoint
+## Task 9.5 — Update "Deterministic" Documentation
+
+**Status:** `[ ]`
+**Risk:** LOW — documentation fix
+**Estimated size:** Tiny
+
+### What to Do
+- File: `README.md`, `docs/index.md`, `docs/language-spec.md`
+- Replace vague "deterministic execution" with accurate description:
+  "**Permission-transparent execution** — every privileged side effect requires an
+  explicit grant; no hidden network, filesystem, or process calls."
+- Add note: "Map iteration order is insertion-order (deterministic as of v0.6)."
+- Remove any claim that non-deterministic operations (HTTP, time, exec) are deterministic.
+
+### Done When
+- Docs accurately describe what "deterministic" means in Txtcode context
+
+---
+
+## Group 9 Checkpoint
 
 ```
-[x] Benchmark results published in docs/performance.md
-[x] AST VM vs Bytecode VM comparison documented (see performance.md)
-[x] Bytecode-only production path planned (see Task 7.2 above)
-[x] GC behavior documented honestly (gc.rs + performance.md)
-[x] cargo test passes (194 tests)
+[ ] Module imports execute in isolated scope; unexported names invisible to importer
+[ ] Circular imports detected and reported with clear error
+[ ] Transitive deps resolved and installed automatically
+[ ] Txtcode.lock written and verified on install; package update regenerates it
+[ ] Map iteration order is insertion-order (IndexMap)
+[ ] "Deterministic" documentation corrected in README and spec
+[ ] cargo test passes
+```
+
+---
+
+---
+
+# GROUP 10 — Type System Promotion
+**Goal:** Type annotations are enforced by default, not decorative.
+**Unblocked by:** Group 9 complete.
+**Output:** Type errors are warnings by default; generics have partial runtime support.
+**Target version:** 0.6.5
+
+---
+
+## Task 10.1 — Make Type Warnings the Default
+
+**Status:** `[ ]`
+**Risk:** HIGH — changing default behavior; needs clean migration path
+**Estimated size:** Medium
+
+### Problem
+Type errors are silently ignored unless `--strict-types` is passed. Most users run
+`txtcode run script.tc` and never see type mismatches. Type annotations are decoration.
+
+### What to Do
+
+**Step 1 — Add three type-check modes**
+- `--no-type-check` — skip type checker entirely (old default behavior)
+- *(new default)* — run type checker; print warnings for violations; continue execution
+- `--strict-types` — run type checker; abort on any violation (existing flag)
+
+**Step 2 — Wire default mode in run.rs**
+- File: `src/cli/run.rs`
+- After parsing, always run `TypeChecker::check(program)`
+- If warnings: print each with `[WARNING] type: ...` prefix (do NOT abort)
+- If `--strict-types`: abort with exit 1
+
+**Step 3 — Suppress with --no-type-check**
+- Existing scripts that have type-annotation-free code continue to work silently
+- Scripts with type annotations see useful feedback immediately
+
+**Step 4 — Formatter: preserve type annotations**
+- File: `src/tools/formatter.rs`
+- Ensure type annotations are not stripped by formatter
+
+**Step 5 — Tests**
+- Test: script with type mismatch prints warning but runs
+- Test: `--strict-types` aborts on same script
+- Test: `--no-type-check` prints nothing
+
+### Done When
+- Default `txtcode run` shows type warnings without aborting
+- `--strict-types` aborts
+- `--no-type-check` silences all type output
+- `cargo test` passes
+
+---
+
+## Task 10.2 — Enforce Generics for Built-in Collection Types
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — partial implementation; full generics deferred to v0.8
+**Estimated size:** Medium-Large
+
+### Problem
+Generic parameters `<T>` are parsed then discarded. `Array<int>` and `Array<string>` are
+identical at runtime. Partial enforcement for the built-in collection types is achievable
+without a full generics implementation.
+
+### What to Do
+
+**Step 1 — Track element type on typed array/map literals**
+- File: `src/typecheck/checker.rs`
+- When type annotation says `Array<int>` and an array literal contains a non-int: type warning/error
+- Same for `Map<string, int>` — key must be string, value must be int
+
+**Step 2 — Enforce on push/insert**
+- When `array_push(arr, value)` is called and arr has a declared element type:
+  - In strict mode: error if `value` does not match element type
+  - In default mode: warning
+
+**Step 3 — Type-erase at module boundary**
+- Generic type params on user-defined functions remain erased (v0.8 work)
+- Only built-in collection type annotations (`Array<T>`, `Map<K,V>`) get enforcement
+
+**Step 4 — Tests**
+- Test: `store → nums: Array<int> → [1, 2, "three"]` → warning in default, error in strict
+
+### Done When
+- Built-in collection type annotations produce meaningful errors/warnings when violated
+- User-defined generic functions still compile (type-erased, no change)
+- `cargo test` passes
+
+---
+
+## Task 10.3 — Type Checker Coverage Expansion
+
+**Status:** `[ ]`
+**Risk:** LOW — additive; improves existing checker without breaking changes
+**Estimated size:** Medium
+
+### Problem
+The type checker (`src/typecheck/checker.rs`) has basic coverage but misses:
+- Function return type mismatch
+- Calling a non-function value
+- Passing wrong number of arguments
+- `null` used in arithmetic context
+
+### What to Do
+
+**Step 1 — Return type checking**
+- In `check_function_def`: track return type annotation
+- In `check_return`: compare returned expression type against declared return type
+- Warn/error on mismatch
+
+**Step 2 — Arity checking**
+- In `check_function_call`: if callee is known (defined in same file), check arg count
+- Warn if arg count != param count (excluding variadic functions)
+
+**Step 3 — Null arithmetic warning**
+- In `check_binary_op`: if either operand might be `Null`, warn
+- "Potential null dereference in arithmetic: left operand may be null"
+
+**Step 4 — Tests**
+- Test: function declared `→ int` but returns string → warning
+- Test: calling `f(a, b, c)` where `f` takes 2 params → warning
+- Test: `x + null` → warning
+
+### Done When
+- Return type, arity, and null arithmetic checks work in default and strict modes
+- `cargo test` passes
+
+---
+
+## Group 10 Checkpoint
+
+```
+[ ] Default txtcode run shows type warnings without aborting
+[ ] --strict-types aborts on type violations
+[ ] --no-type-check silences type output
+[ ] Array<T> / Map<K,V> annotations produce errors/warnings when violated
+[ ] Return type checking implemented in type checker
+[ ] Arity checking implemented in type checker
+[ ] Null arithmetic warnings implemented
+[ ] cargo test passes
+```
+
+---
+
+---
+
+# GROUP 11 — Developer Experience
+**Goal:** Txtcode is installable without Rust; debugger is actually usable; LSP is complete enough for real editing.
+**Unblocked by:** Group 8 complete (can work in parallel with Groups 9 and 10).
+**Output:** Pre-built binaries; interactive debugger CLI; doc generation; complete LSP.
+**Target version:** 0.7.0
+
+---
+
+## Task 11.1 — Pre-Built Binaries and Release Pipeline (CRITICAL)
+
+**Status:** `[ ]`
+**Risk:** CRITICAL — without binaries, `install.sh` requires Rust toolchain; blocks all non-Rust users
+**Estimated size:** Small (CI configuration)
+
+### Problem
+`release/` directory is empty. `install.sh` falls back to `cargo build` when no binary is found.
+This requires a Rust toolchain install (~1GB, ~10 min compile) as a prerequisite.
+No pre-built binaries exist on GitHub Releases.
+
+### What to Do
+
+**Step 1 — GitHub Actions release workflow**
+- File: `.github/workflows/release.yml` (new)
+- Trigger: `on: push: tags: 'v*'`
+- Matrix: `[ubuntu-latest, macos-latest, windows-latest]`
+- Steps per platform:
+  1. `cargo build --release`
+  2. Strip binary (Linux/macOS)
+  3. Rename: `txtcode-linux-x86_64`, `txtcode-macos-aarch64`, `txtcode-windows-x86_64.exe`
+  4. Upload to GitHub Release as asset
+  5. Compute SHA-256 and upload `checksums.txt`
+
+**Step 2 — Update install.sh**
+- File: `install.sh`
+- Detect OS + arch
+- Construct download URL: `https://github.com/iga2x/txtcode/releases/latest/download/txtcode-<os>-<arch>`
+- Download binary, verify SHA-256 against `checksums.txt`
+- Install to `~/.local/bin/txtcode`
+- Fall back to `cargo build` only if no binary exists for the platform
+
+**Step 3 — Add cross-compilation targets**
+- `Cargo.toml`: add `.cargo/config.toml` with cross-compilation targets
+- Additional targets: `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-gnu`
+- Use `cross` tool or GitHub Actions matrix for cross-compilation
+
+**Step 4 — Test the installer**
+- Test: `curl -sSf .../install.sh | sh` on clean Ubuntu 22.04 (no Rust) → txtcode installed
+- Test: `txtcode --version` works after install
+
+### Done When
+- GitHub Release has binaries for Linux x86_64, macOS arm64, Windows x86_64
+- `install.sh` installs from binary on these platforms (no cargo needed)
+- `txtcode doctor` reports correct installation
+
+---
+
+## Task 11.2 — Interactive Debugger CLI
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — infrastructure exists; needs interactive loop and source-line mapping
+**Estimated size:** Medium
+
+### Problem
+`src/tools/debugger.rs` — `step()`, `continue_execution()`, `inspect_variable()` all work
+at bytecode level. But `txtcode debug file.tc` compiles and runs without stopping — there
+is no interactive loop exposed to the user. Breakpoints are by bytecode address (not line).
+
+### What to Do
+
+**Step 1 — Add debug symbol table to compiler**
+- File: `src/compiler/bytecode.rs`
+- Add: `debug_info: Vec<(usize, usize)>` to `Bytecode` struct
+  - Each entry: `(instruction_index, source_line_number)`
+- Compiler: when emitting each instruction, record the source line from the AST span
+
+**Step 2 — Add line-based breakpoints to Debugger**
+- File: `src/tools/debugger.rs`
+- Add: `fn add_breakpoint_at_line(&mut self, line: usize)` — looks up line in debug_info,
+  adds the corresponding instruction index to `breakpoints`
+
+**Step 3 — Interactive REPL loop in `txtcode debug`**
+- File: `src/cli/debug_cmd.rs` (new, or extend existing)
+- Start debugger, enter loop:
+  ```
+  (txtcode-dbg) run          → run until breakpoint or end
+  (txtcode-dbg) step         → execute one instruction, print state
+  (txtcode-dbg) break 15     → set breakpoint at source line 15
+  (txtcode-dbg) print x      → print variable x
+  (txtcode-dbg) vars         → print all variables in scope
+  (txtcode-dbg) stack        → print operand stack
+  (txtcode-dbg) continue     → resume until next breakpoint
+  (txtcode-dbg) quit         → exit debugger
+  ```
+- Use `rustyline` (already may be a dep via REPL) for readline in debugger loop
+
+**Step 4 — Source context display**
+- When breaking at instruction I: print the source line that generated it
+  (read source file, display line N with `→` marker)
+
+**Step 5 — Tests**
+- Test: debugger breaks at line 5 when `break 5` set before `run`
+- Test: `step` advances one instruction at a time
+- Test: `print x` shows current value of variable
+
+### Done When
+- `txtcode debug script.tc` enters interactive loop
+- `break <line>`, `step`, `continue`, `print <var>`, `vars`, `quit` all work
+- Source line shown at each break
+
+---
+
+## Task 11.3 — Real Doc Generation (`txtcode doc`)
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — `txtcode doc` listed in CLI but produces no output
+**Estimated size:** Medium
+
+### Problem
+`txtcode doc` subcommand is listed in CLI help but does nothing useful. There is no
+documentation generation for Txtcode packages or scripts.
+
+### What to Do
+
+**Step 1 — Extract doc comments from source**
+- File: `src/tools/docgen.rs` (new)
+- Parse `.tc` files; extract `##` block comments immediately before `define → fn → (params)` or `struct`
+- Build: `DocItem { kind: Function|Struct, name, params, doc_comment, return_type }`
+
+**Step 2 — Markdown output**
+- File: `src/tools/docgen.rs`
+- Generate: one `.md` file per `.tc` source file
+- Format per function:
+  ```markdown
+  ## gcd(a, b)
+  Greatest common divisor of a and b.
+  **Parameters:** a: int, b: int
+  **Returns:** int
+  ```
+
+**Step 3 — Wire to CLI**
+- File: `src/cli/doc_cmd.rs` (new or extend existing)
+- `txtcode doc [path]` — default: scan `src/` and `packages/`, output to `docs/api/`
+- `txtcode doc --format json` — output JSON for tooling
+- `txtcode doc --output DIR` — custom output directory
+
+**Step 4 — Package doc index**
+- For packages: generate `docs/api/index.md` listing all packages with their exports
+
+**Step 5 — Tests**
+- Test: `txtcode doc examples/hello_world.tc` produces a markdown file with function docs
+
+### Done When
+- `txtcode doc packages/npl-math` generates correct markdown documentation
+- `txtcode doc --format json` produces parseable JSON
+- `cargo test` passes
+
+---
+
+## Task 11.4 — LSP: Go-to-Definition, Hover, Rename
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — LSP server exists; needs symbol resolution
+**Estimated size:** Medium-Large
+
+### Problem
+`src/cli/lsp.rs` — handles `initialize`, diagnostics, completion. Does NOT handle:
+- `textDocument/definition` — go-to-definition
+- `textDocument/hover` — show function signature on hover
+- `textDocument/references` — find all usages
+- `textDocument/rename` — rename symbol across file
+- `textDocument/signatureHelp` — show param info while typing
+
+Without these, the LSP is not useful beyond syntax highlighting and basic completion.
+
+### What to Do
+
+**Step 1 — Build a symbol table from AST**
+- File: `src/tools/symbol_table.rs` (new) or extend type checker
+- `SymbolTable` built by walking AST:
+  - Maps each function/variable name → definition location (file, line, col)
+  - Maps each usage location → definition location
+
+**Step 2 — textDocument/definition**
+- In `lsp.rs`: handle `textDocument/definition` request
+- Given cursor position: find the token at that position, look up in symbol table
+- Return: `Location { uri, range }` of the definition
+
+**Step 3 — textDocument/hover**
+- Handle `textDocument/hover`
+- For a function call: return `{ contents: "fn_name(params) → return_type\ndoc_comment" }`
+- For a variable: return its inferred type (from type checker)
+
+**Step 4 — textDocument/rename**
+- Handle `textDocument/rename`
+- Find all occurrences of the symbol in the file
+- Return `WorkspaceEdit` replacing each occurrence
+
+**Step 5 — Async LSP (non-blocking)**
+- Current LSP is synchronous stdin/stdout blocking
+- For large files, diagnostics on every keystroke will block
+- Add debounce: only re-parse 300ms after last change
+
+**Step 6 — Tests**
+- Integration test: send `textDocument/definition` LSP request, get correct location back
+- Integration test: `textDocument/hover` returns function signature
+
+### Done When
+- Go-to-definition works for functions defined in the same file
+- Hover shows function signature and doc comment
+- Rename works within a single file
+- LSP debounces re-parsing
+
+---
+
+## Task 11.5 — REPL Multiline Input and History
+
+**Status:** `[ ]`
+**Risk:** LOW — quality of life
+**Estimated size:** Small-Medium
+
+### Problem
+REPL does not support multiline input. Typing a `define → f → (x)` and pressing Enter
+immediately tries to parse the incomplete input and fails. No `...` continuation prompt.
+History works per-line but multi-line blocks cannot be re-used from history.
+
+### What to Do
+
+**Step 1 — Detect incomplete input**
+- File: `src/cli/repl.rs`
+- After each input line: try to parse
+- If parse error is "unexpected EOF" (unclosed `define...end`, `if...end`, `while...end`):
+  - Show `...` prompt and accumulate lines
+- Else: execute immediately
+
+**Step 2 — Continuation prompt**
+- Current prompt: `txtcode> `
+- Continuation prompt: `    ...  ` (aligned with 4-space indent)
+
+**Step 3 — Persistent history**
+- Save REPL history to `~/.txtcode/repl_history` across sessions
+- Load on startup: last 1000 entries
+
+**Step 4 — `:clear` and `:reset` commands**
+- `:clear` — clear screen
+- `:reset` — reset VM state (clear all variables)
+- `:help` — show available commands
+
+### Done When
+- Multi-line `define → f → (x)\n  return x\nend` works in REPL
+- History persists across sessions
+- `cargo test` passes
+
+---
+
+## Group 11 Checkpoint
+
+```
+[ ] Pre-built binaries on GitHub Releases for Linux x86_64, macOS arm64, Windows x64
+[ ] install.sh installs from binary without requiring Rust toolchain
+[ ] txtcode debug <file> enters interactive loop with break/step/print/continue/quit
+[ ] Source line shown at each debugger break
+[ ] txtcode doc generates markdown API docs from ## comments
+[ ] LSP: go-to-definition works for same-file symbols
+[ ] LSP: hover shows function signature
+[ ] REPL: multiline input with continuation prompt
+[ ] REPL: history persists across sessions
+[ ] cargo test passes
+```
+
+---
+
+---
+
+# GROUP 12 — Platform and Compilation
+**Goal:** Txtcode has a path to native performance and broader deployment.
+**Unblocked by:** Groups 9 and 10 complete.
+**Output:** Async event loop; struct methods; WASM target; LLVM planning.
+**Target version:** 0.8.0
+
+---
+
+## Task 12.1 — Async Event Loop (Tokio Integration)
+
+**Status:** `[ ]`
+**Risk:** HIGH — architectural change to how async functions execute
+**Estimated size:** Very Large
+
+### Problem
+Current async: `async define` spawns one OS thread per call. This does not scale.
+`http_serve` spawns a thread per request. 100 concurrent requests = 100 threads.
+No `select`, no `join!`, no cancellation, no backpressure.
+
+### What to Do
+
+**Step 1 — Add Tokio runtime to VirtualMachine**
+- File: `src/runtime/vm.rs`
+- Replace `_async_executor: Option<()>` with `tokio_rt: Arc<tokio::runtime::Runtime>`
+- Initialize with `tokio::runtime::Builder::new_multi_thread().build()`
+- Feature-gated behind `features = ["async"]` (already a Cargo feature)
+
+**Step 2 — Async function execution via Tokio**
+- File: `src/runtime/execution/` — function call handler
+- When calling an `async_function`: `tokio_rt.spawn(async { ... })` → `Value::Future(JoinHandle)`
+- `await handle` → `tokio_rt.block_on(handle)` in sync context, or native `.await` in async context
+
+**Step 3 — Async-safe stdlib**
+- File: `src/stdlib/net.rs`
+- Convert `http_get`, `http_post`, `http_serve` to `tokio::spawn` async tasks
+- Handler function in `http_serve` called via `tokio::spawn` per request (no thread per request)
+
+**Step 4 — Language: join!/select! syntax**
+- Add `await_all([future1, future2])` stdlib function — waits for all
+- Add `await_any([future1, future2])` stdlib function — waits for first
+
+**Step 5 — Cancellation**
+- Add `cancel(future)` stdlib function — cancels a pending future via `AbortHandle`
+
+**Step 6 — Tests**
+- Test: 100 concurrent HTTP requests via `await_all` — completes without 100 threads
+- Test: `cancel(future)` stops the task
+
+### Done When
+- `http_serve` handles concurrent requests without spawning OS threads
+- `await_all` / `await_any` work
+- `cargo test` passes
+
+---
+
+## Task 12.2 — Struct Methods (impl Blocks)
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — additive; does not break existing struct usage
+**Estimated size:** Large
+
+### Problem
+Structs are data-only. No method calls. `point.distance(other)` is impossible.
+All behavior must be passed as function references. This limits expressivity significantly
+for domain modeling.
+
+### What to Do
+
+**Step 1 — Parser: `impl` block syntax**
+- File: `src/parser/statements/`
+- New statement type: `Statement::Impl { struct_name: String, methods: Vec<FunctionDef> }`
+- Syntax:
+  ```
+  impl → Point
+    define → distance → (self, other)
+      return → sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+    end
+  end
+  ```
+
+**Step 2 — Method registration**
+- File: `src/runtime/vm.rs` (or struct_defs HashMap)
+- `struct_methods: HashMap<String, HashMap<String, Value>>` — struct_name → method_name → function
+- When `Statement::Impl` executes: register methods
+
+**Step 3 — Method dispatch**
+- File: `src/runtime/execution/expressions/member_access.rs`
+- When `obj.method_name(args)` is evaluated:
+  1. Get `obj` type name from `Value::type_name()`
+  2. Look up `struct_methods[type_name][method_name]`
+  3. Call with `obj` as first argument (self)
+
+**Step 4 — Bytecode VM method dispatch**
+- File: `src/runtime/bytecode_vm.rs`
+- `CallMethod` instruction: already exists; extend to check struct_methods registry
+
+**Step 5 — `self` parameter**
+- `self` is a conventional first parameter — not a keyword (keeps parser simple)
+- Caller: `point.distance(other)` → desugars to `distance(point, other)`
+
+**Step 6 — Tests**
+- Test: `struct Point(x, y)` + `impl Point { define → len → (self) ... }` + `point.len()` works
+- Test: method calling another method via `self.other_method()`
+
+### Done When
+- Struct methods can be defined and called
+- Both VMs support method dispatch
+- `cargo test` passes
+
+---
+
+## Task 12.3 — WASM Compilation Target
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — new backend; additive
+**Estimated size:** Very Large
+
+### Problem
+No compilation path beyond bytecode VM. WASM would enable browser-side Txtcode,
+edge function deployment, and plugin sandboxing.
+
+### What to Do
+
+**Step 1 — Bytecode → WAT (WebAssembly Text Format)**
+- File: `src/compiler/wasm.rs` (new)
+- New backend: `WasmCompiler` that walks `Bytecode` instructions and emits WAT
+- Start with a minimal subset: arithmetic, variables, function calls, if/while
+
+**Step 2 — WASM stdlib shim**
+- Most stdlib functions (HTTP, filesystem) are unavailable in WASM
+- Define a `wasm_stdlib` shim that either:
+  - Raises `RuntimeError("not available in WASM context")` for unavailable functions
+  - Provides WASM-safe alternatives (e.g., `console.log` for print)
+
+**Step 3 — CLI: `txtcode compile --target wasm`**
+- `txtcode compile script.tc --target wasm -o script.wasm`
+- Uses `wasm-opt` for optimization if available
+
+**Step 4 — Runtime: wasm execution via wasmtime**
+- `txtcode run --target wasm script.wasm` — runs via `wasmtime` crate
+- Feature-gated: `--features wasm`
+
+**Step 5 — Tests**
+- Test: simple arithmetic script compiles to WASM and produces correct output
+
+### Done When
+- `txtcode compile --target wasm hello.tc -o hello.wasm` produces valid WASM
+- `txtcode run --target wasm hello.wasm` runs it
+- `cargo test` passes for WASM feature
+
+---
+
+## Task 12.4 — LLVM Native Compilation Planning
+
+**Status:** `[ ]`
+**Risk:** LOW (planning only) — implementation in v1.0
+**Estimated size:** Small (planning document)
+
+### What to Do
+
+**This task is planning/research only. No code.**
+
+Write `docs/llvm-backend.md`:
+1. Evaluate: `inkwell` (LLVM Rust bindings) vs `cranelift` (Rust-native code gen, no LLVM dep)
+2. **Recommendation**: `cranelift` — pure Rust, lighter, used by Wasmtime; avoids LLVM toolchain dep
+3. Design: `src/compiler/native.rs` — `NativeCompiler` that emits Cranelift IR from `Bytecode`
+4. Scope for v1.0:
+   - Integers, floats, strings (heap-allocated)
+   - Function calls (direct, no dynamic dispatch)
+   - Basic control flow (if/while/for)
+   - Stdlib calls via C FFI into a `libtxtcode_rt.a` runtime library
+5. Performance target: 10× faster than bytecode VM for compute-heavy scripts
+6. Timeline: design in v0.8, prototype in v0.9, release in v1.0
+
+### Done When
+- `docs/llvm-backend.md` written with specific recommendation and design
+- Decision recorded in CHANGELOG
+
+---
+
+## Task 12.5 — Or-Patterns and Range Patterns in Match
+
+**Status:** `[ ]`
+**Risk:** LOW — additive language feature
+**Estimated size:** Small-Medium
+
+### Problem
+Match patterns lack:
+- Or-patterns: `match x { 1 | 2 | 3 => "small", _ => "other" }`
+- Range patterns: `match x { 1..=5 => "low", 6..=10 => "mid", _ => "high" }`
+- `as` bindings: `match x { SomeStruct { x, y } as s => use_s(s) }`
+
+### What to Do
+
+**Step 1 — Parser: or-patterns**
+- File: `src/parser/patterns.rs`
+- Add: `Pattern::Or(Vec<Pattern>)` variant
+- Parse: `1 | 2 | 3` in match arm pattern position
+
+**Step 2 — Parser: range patterns**
+- Add: `Pattern::Range(Expression, Expression)` using `..=` syntax
+- Parse: `1..=5` in pattern position
+
+**Step 3 — VM: match evaluation**
+- Both VMs: when `Pattern::Or`: try each sub-pattern; succeed if any matches
+- Both VMs: when `Pattern::Range`: evaluate bounds, check value in range
+
+**Step 4 — Tests**
+- Test: `match 2 { 1 | 2 | 3 => "yes", _ => "no" }` → "yes"
+- Test: `match 4 { 1..=5 => "low", _ => "high" }` → "low"
+
+### Done When
+- Or-patterns and range patterns work in match expressions in both VMs
+- `cargo test` passes
+
+---
+
+## Task 12.6 — `?` Error Propagation Operator
+
+**Status:** `[ ]`
+**Risk:** LOW — additive; improves ergonomics significantly
+**Estimated size:** Medium
+
+### Problem
+Error handling requires explicit `try/catch` or `unwrap`. There is no ergonomic propagation.
+```txtcode
+# Current: verbose
+store → result → do_something()
+if → is_err(result)
+  return → result
+end
+
+# Target: concise
+store → result → do_something()?
+```
+
+### What to Do
+
+**Step 1 — Lexer: `?` as postfix operator**
+- File: `src/lexer/lexer.rs`
+- `?` after an expression (not `?.` optional chain): `Propagate` token
+
+**Step 2 — Parser: postfix `?`**
+- File: `src/parser/expressions/`
+- Parse `expr?` as `Expression::Propagate(Box<Expression>)`
+
+**Step 3 — VM: propagation semantics**
+- When `Expression::Propagate(expr)` evaluates:
+  1. Evaluate inner expression → result
+  2. If `Value::Result(false, err)` (error): return `err` from current function (early return)
+  3. If `Value::Result(true, val)`: unwrap to `val`
+  4. If not a Result value: pass through unchanged
+
+**Step 4 — Bytecode instruction**
+- File: `src/compiler/bytecode.rs`
+- Add: `Instruction::Propagate` — pops stack; if Err, early-return; if Ok, unwrap
+
+**Step 5 — Tests**
+- Test: `err("oops")?` in a function causes the function to return `err("oops")`
+- Test: `ok(42)?` unwraps to `42`
+
+### Done When
+- `?` operator works in both VMs
+- `cargo test` passes
+
+---
+
+## Group 12 Checkpoint
+
+```
+[ ] Tokio async runtime integrated; http_serve handles concurrent requests
+[ ] await_all / await_any / cancel implemented
+[ ] Struct methods (impl blocks) work in both VMs
+[ ] WASM compilation: txtcode compile --target wasm works for basic programs
+[ ] docs/llvm-backend.md written with Cranelift recommendation
+[ ] Or-patterns and range patterns work in match
+[ ] ? error propagation operator works in both VMs
+[ ] cargo test passes
 ```
 
 ---
@@ -1094,19 +1243,48 @@ Generics are "parsed, erased at runtime" — this is misleading.
 
 # Milestone Summary
 
-| Milestone | Version | Groups | What It Unlocks |
+| Milestone | Version | Groups | What It Delivers |
 |-----------|---------|--------|-----------------|
-| **Stable Core** | 0.6.0 | 1 | Trustworthy foundation |
-| **Complete Language** | 0.7.0 | 1+2+3 | Real programs work |
-| **Async + Full Stdlib** | 0.7.5 | 1+4+5 | I/O-bound automation |
-| **Platform** | 0.8.0 | 1+2+3+4+5+6 | Adoption possible |
-| **Production** | 1.0.0 | All groups | All groups complete |
+| **Security Correctness** | 0.5.1 | 8 | exec default-deny; const enforced; signing CLI; FFI path guard |
+| **Module Platform** | 0.6.0 | 8+9 | Isolated namespaces; transitive deps; lockfile; deterministic maps |
+| **Type-Safe Core** | 0.6.5 | 8+9+10 | Type warnings by default; collection generics; better checker |
+| **Developer Platform** | 0.7.0 | 8+11 | Pre-built binaries; interactive debugger; real doc gen; complete LSP |
+| **Production Platform** | 0.8.0 | 8+9+10+11+12 | Async event loop; struct methods; WASM; `?` operator; or-patterns |
+| **v1.0 Release** | 1.0.0 | All | LLVM backend; full generics; community registry; stable API |
+
+---
+
+# Quick Reference: Key Files per Group
+
+| Group | Primary Files |
+|-------|---------------|
+| 8.1 exec default | `src/runtime/vm/core.rs`, `src/cli/run.rs`, `src/bin/txtcode.rs` |
+| 8.2 const enforce | `src/runtime/core.rs` (ScopeManager), `src/runtime/execution/` |
+| 8.3 signing CLI | `src/cli/sign.rs` (new), `src/bin/txtcode.rs`, `src/security/auth.rs` |
+| 8.4 FFI allowlist | `src/stdlib/ffi.rs`, `src/runtime/permissions.rs`, `src/bin/txtcode.rs` |
+| 8.5 audit persist | `src/runtime/audit.rs`, `src/cli/run.rs` |
+| 9.1 module isolation | `src/runtime/module.rs`, `src/runtime/vm.rs`, `src/runtime/bytecode_vm.rs` |
+| 9.2 transitive deps | `src/cli/package.rs` |
+| 9.3 lockfile enforce | `src/cli/package.rs` |
+| 9.4 deterministic maps | `src/runtime/core/value.rs`, `Cargo.toml` (indexmap) |
+| 10.1 type warnings default | `src/cli/run.rs`, `src/typecheck/checker.rs` |
+| 10.2 collection generics | `src/typecheck/checker.rs`, `src/stdlib/core.rs` |
+| 10.3 checker coverage | `src/typecheck/checker.rs` |
+| 11.1 pre-built bins | `.github/workflows/release.yml` (new), `install.sh` |
+| 11.2 interactive debugger | `src/tools/debugger.rs`, `src/compiler/bytecode.rs`, `src/cli/debug_cmd.rs` |
+| 11.3 doc generation | `src/tools/docgen.rs` (new), `src/cli/` |
+| 11.4 LSP complete | `src/cli/lsp.rs`, `src/tools/symbol_table.rs` (new) |
+| 11.5 REPL multiline | `src/cli/repl.rs` |
+| 12.1 tokio async | `src/runtime/vm.rs`, `src/stdlib/net.rs`, `Cargo.toml` |
+| 12.2 struct methods | `src/parser/statements/`, `src/runtime/vm.rs`, `src/runtime/bytecode_vm.rs` |
+| 12.3 WASM target | `src/compiler/wasm.rs` (new), `src/bin/txtcode.rs` |
+| 12.4 LLVM planning | `docs/llvm-backend.md` (new) |
+| 12.5 or/range patterns | `src/parser/patterns.rs`, both VMs |
+| 12.6 ? operator | `src/lexer/lexer.rs`, `src/parser/expressions/`, both VMs, `src/compiler/bytecode.rs` |
 
 ---
 
 # Session Resume Instructions
-
-If you hit context limit and resume in a new session:
 
 1. Read this file: `docs/dev-plan.md`
 2. Read memory: `/home/iganomono/.claude/projects/-home-iganomono-test-NPL/memory/MEMORY.md`
@@ -1115,32 +1293,6 @@ If you hit context limit and resume in a new session:
 5. Continue from where you left off
 6. Update status symbols in this file after each task
 7. Run `cargo test` after every task to verify nothing broke
-
----
-
-# Quick Reference: Key Files per Group
-
-| Group | Primary Files |
-|-------|---------------|
-| 1.1 HOF FunctionRef | `src/runtime/core/value.rs`, `src/compiler/bytecode.rs`, `src/runtime/bytecode_vm.rs` |
-| 1.2 Source location | `src/runtime/errors.rs`, `src/lexer/lexer.rs`, `src/parser/ast/`, both VMs |
-| 1.3 Call depth | `src/runtime/vm.rs`, `src/runtime/bytecode_vm.rs`, `src/config.rs` |
-| 1.4 Memory limit | `src/runtime/gc.rs`, `src/config.rs`, both VMs |
-| 1.5 Finally | `src/parser/statements/`, `src/compiler/bytecode.rs`, both VMs |
-| 1.6 Error recovery | `src/parser/parser.rs`, `src/cli/run.rs`, `src/cli/repl.rs` |
-| 2.1 Hex literals | `src/lexer/lexer.rs` |
-| 2.2 Bytes type | `src/runtime/core/value.rs`, `src/stdlib/` |
-| 2.3 Enum data | `src/parser/`, `src/runtime/core/value.rs`, both VMs |
-| 2.4 Default params | `src/parser/statements/functions.rs`, both VMs |
-| 2.5 Variadics | `src/parser/statements/functions.rs`, both VMs |
-| 2.6 Match guards | `src/parser/patterns.rs`, both VMs |
-| 3.1 Type blocking | `src/typecheck/checker.rs`, `src/cli/run.rs` |
-| 3.2 Struct types | both VMs, struct_defs lookup |
-| 4.1 Async | `src/runtime/vm.rs`, `src/runtime/bytecode_vm.rs`, `src/compiler/bytecode.rs` |
-| 5.1 HTTP server | `src/stdlib/net.rs`, `Cargo.toml` |
-| 5.2 DateTime | `src/stdlib/time.rs` |
-| 6.1 LSP | `src/cli/lsp.rs` (new), `editors/vscode/` (new) |
-| 6.3 Registry | `src/cli/package.rs` |
 
 ---
 
