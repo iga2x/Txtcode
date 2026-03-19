@@ -34,6 +34,7 @@ fn run_compiled_file(
     allow_exec: bool,
     allow_fs: &[String],
     allow_net: &[String],
+    allow_ffi: &[String],
     cancel_flag: Option<Arc<AtomicBool>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::compiler::bytecode::Bytecode;
@@ -90,6 +91,9 @@ fn run_compiled_file(
     for host in allow_net {
         vm.grant_permission(PermissionResource::Network("connect".to_string()), Some(host.clone()));
     }
+    for lib_path in allow_ffi {
+        vm.grant_permission(PermissionResource::System("ffi".to_string()), Some(lib_path.clone()));
+    }
 
     vm.execute(&bytecode).map_err(|e| format!("Bytecode runtime error: {}", e))?;
     Ok(())
@@ -139,7 +143,12 @@ pub fn apply_env_permissions(vm: &mut VirtualMachine) {
 ///
 /// --allow-fs=/tmp  → grants fs.read + fs.write with scope "/tmp/*"
 /// --allow-net=api.example.com → grants net.connect with scope "api.example.com"
-pub fn apply_cli_allowlists(vm: &mut VirtualMachine, allow_fs: &[String], allow_net: &[String]) {
+pub fn apply_cli_allowlists(
+    vm: &mut VirtualMachine,
+    allow_fs: &[String],
+    allow_net: &[String],
+    allow_ffi: &[String],
+) {
     for path in allow_fs {
         let scope = if path.ends_with('/') || path.ends_with('*') {
             format!("{}*", path.trim_end_matches(['/', '*']))
@@ -161,6 +170,12 @@ pub fn apply_cli_allowlists(vm: &mut VirtualMachine, allow_fs: &[String], allow_
             Some(host.clone()),
         );
     }
+    for lib_path in allow_ffi {
+        vm.grant_permission(
+            PermissionResource::System("ffi".to_string()),
+            Some(lib_path.clone()),
+        );
+    }
 }
 
 // ── Core run ─────────────────────────────────────────────────────────────────
@@ -172,7 +187,7 @@ pub fn run_file(
     debug: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], None, false)
+    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, false)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -184,6 +199,7 @@ fn run_file_inner(
     verbose: bool,
     allow_fs: &[String],
     allow_net: &[String],
+    allow_ffi: &[String],
     cancel_flag: Option<Arc<AtomicBool>>,
     strict_types: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -210,7 +226,7 @@ fn run_file_inner(
                 #[cfg(feature = "bytecode")]
                 {
                     logger::log_info(&format!("Running compiled bytecode: {}", file.display()));
-                    return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net, cancel_flag);
+                    return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net, allow_ffi, cancel_flag);
                 }
                 #[cfg(not(feature = "bytecode"))]
                 return Err(
@@ -278,10 +294,13 @@ fn run_file_inner(
         .map(|(_, _, cfg)| cfg.permissions.safe_mode)
         .unwrap_or(false);
     let effective_safe_mode = safe_mode || env_safe_mode;
-    let exec_allowed = if allow_exec { true } else { !effective_safe_mode };
+    // exec requires explicit --allow-exec or in-script grant_permission("sys.exec", null)
+    let exec_allowed = allow_exec && !effective_safe_mode;
 
     let mut vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
-    vm.set_exec_allowed(exec_allowed);
+    if exec_allowed {
+        vm.set_exec_allowed(true);
+    }
     vm.set_strict_types(strict_types);
 
     // Attach cancellation flag so timeout can stop execution mid-run.
@@ -294,7 +313,7 @@ fn run_file_inner(
     vm.runtime_security.hash_and_set_source(source.as_bytes());
 
     apply_env_permissions(&mut vm);
-    apply_cli_allowlists(&mut vm, allow_fs, allow_net);
+    apply_cli_allowlists(&mut vm, allow_fs, allow_net, allow_ffi);
 
     vm.interpret(&program)
         .map_err(|e| format!("Runtime error: {}", e))?;
@@ -302,7 +321,7 @@ fn run_file_inner(
     Ok(())
 }
 
-/// Run a file with optional filesystem/network path allowlists.
+/// Run a file with optional filesystem/network/ffi path allowlists.
 pub fn run_file_with_allowlists(
     file: &PathBuf,
     safe_mode: bool,
@@ -311,13 +330,14 @@ pub fn run_file_with_allowlists(
     verbose: bool,
     allow_fs: &[String],
     allow_net: &[String],
+    allow_ffi: &[String],
     strict_types: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if allow_fs.is_empty() && allow_net.is_empty() {
-        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], None, strict_types);
+    if allow_fs.is_empty() && allow_net.is_empty() && allow_ffi.is_empty() {
+        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, strict_types);
     }
     run_file_inner(
-        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, None, strict_types,
+        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, allow_ffi, None, strict_types,
     )
 }
 
@@ -350,6 +370,7 @@ pub fn run_file_with_timeout(
     timeout_str: &str,
     allow_fs: &[String],
     allow_net: &[String],
+    allow_ffi: &[String],
     strict_types: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let duration = parse_duration(timeout_str).ok_or_else(|| {
@@ -370,12 +391,13 @@ pub fn run_file_with_timeout(
     // Clone allowlists so they can be moved into the worker thread.
     let allow_fs = allow_fs.to_vec();
     let allow_net = allow_net.to_vec();
+    let allow_ffi = allow_ffi.to_vec();
     let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
     std::thread::spawn(move || {
         let result = run_file_inner(
             &file, safe_mode, allow_exec, debug, verbose,
-            &allow_fs, &allow_net,
+            &allow_fs, &allow_net, &allow_ffi,
             Some(cancel_flag_worker),
             strict_types,
         )
@@ -408,6 +430,7 @@ pub fn run_file_watch(
     verbose: bool,
     allow_fs: Vec<String>,
     allow_net: Vec<String>,
+    allow_ffi: Vec<String>,
 ) {
     println!(
         "Watching '{}' for changes (Ctrl+C to stop)...\n",
@@ -420,7 +443,7 @@ pub fn run_file_watch(
 
     let mut prev_mtime = get_mtime(file);
     let _ = run_file_with_allowlists(
-        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, false,
+        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false,
     );
 
     loop {
@@ -434,7 +457,7 @@ pub fn run_file_watch(
         if changed {
             println!("\n── file changed, re-running ──\n");
             let _ = run_file_with_allowlists(
-                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, false,
+                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false,
             );
             prev_mtime = cur;
         }

@@ -95,6 +95,9 @@ pub enum Commands {
         /// Allow network access scoped to a host pattern (e.g. --allow-net=api.example.com).
         #[arg(long, value_name = "HOST")]
         allow_net: Vec<String>,
+        /// Allow loading a specific FFI shared library path (e.g. --allow-ffi=/usr/lib/libfoo.so).
+        #[arg(long, value_name = "PATH")]
+        allow_ffi: Vec<String>,
         /// Run the static type checker before execution (advisory — warnings only by default).
         #[arg(long)]
         type_check: bool,
@@ -499,6 +502,7 @@ pub fn main() {
                     watch,
                     allow_fs,
                     allow_net,
+                    allow_ffi,
                     type_check,
                     strict_types,
                     permissions_report,
@@ -613,6 +617,7 @@ pub fn main() {
                             verbose,
                             allow_fs.clone(),
                             allow_net.clone(),
+                            allow_ffi.clone(),
                         );
                         return;
                     }
@@ -626,6 +631,7 @@ pub fn main() {
                             ts,
                             allow_fs,
                             allow_net,
+                            allow_ffi,
                             *strict_types,
                         )
                     } else {
@@ -637,6 +643,7 @@ pub fn main() {
                             verbose,
                             allow_fs,
                             allow_net,
+                            allow_ffi,
                             *strict_types,
                         )
                     };

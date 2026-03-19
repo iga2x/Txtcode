@@ -360,7 +360,7 @@ impl StdLib {
             BytesLib::call_function(name, args)
         } else if name == "ffi_load" || name == "ffi_call" || name == "ffi_close" {
             #[cfg(feature = "ffi")]
-            return FfiLib::call_function(name, args);
+            return FfiLib::call_function(name, args, effective_permission_checker);
             #[cfg(not(feature = "ffi"))]
             return Err(crate::runtime::RuntimeError::new(format!(
                 "FFI function '{}' requires the 'ffi' feature. \

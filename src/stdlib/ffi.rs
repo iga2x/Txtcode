@@ -26,6 +26,8 @@
 ///
 /// Up to 4 arguments are supported in this version.
 use crate::runtime::{RuntimeError, Value};
+use crate::runtime::permissions::PermissionResource;
+use crate::stdlib::PermissionChecker;
 
 #[cfg(feature = "ffi")]
 use libloading::{Library, Symbol};
@@ -45,9 +47,13 @@ lazy_static::lazy_static! {
 pub struct FfiLib;
 
 impl FfiLib {
-    pub fn call_function(name: &str, args: &[Value]) -> Result<Value, RuntimeError> {
+    pub fn call_function(
+        name: &str,
+        args: &[Value],
+        permission_checker: Option<&dyn PermissionChecker>,
+    ) -> Result<Value, RuntimeError> {
         match name {
-            "ffi_load" => Self::ffi_load(args),
+            "ffi_load" => Self::ffi_load(args, permission_checker),
             "ffi_call" => Self::ffi_call(args),
             "ffi_close" => Self::ffi_close(args),
             _ => Err(RuntimeError::new(format!("Unknown FFI function: {}", name))),
@@ -56,7 +62,10 @@ impl FfiLib {
 
     // ── ffi_load ──────────────────────────────────────────────────────────────
 
-    fn ffi_load(args: &[Value]) -> Result<Value, RuntimeError> {
+    fn ffi_load(
+        args: &[Value],
+        permission_checker: Option<&dyn PermissionChecker>,
+    ) -> Result<Value, RuntimeError> {
         #[cfg(not(feature = "ffi"))]
         return Err(RuntimeError::new(
             "ffi_load requires the 'ffi' feature. Rebuild with: cargo build --features ffi"
@@ -73,6 +82,22 @@ impl FfiLib {
                     ))
                 }
             };
+
+            // Permission gate: require sys.ffi with the library path as scope.
+            // Grant via --allow-ffi PATH or grant_permission("sys.ffi", "/path/to/lib.so").
+            if let Some(checker) = permission_checker {
+                checker.check_permission(
+                    &PermissionResource::System("ffi".to_string()),
+                    Some(&path),
+                )?;
+            } else {
+                return Err(RuntimeError::new(
+                    "ffi_load: sys.ffi permission required. \
+                     Use --allow-ffi PATH or grant_permission(\"sys.ffi\", \"/path/to/lib\") \
+                     to allow loading shared libraries."
+                        .to_string(),
+                ));
+            }
 
             // SAFETY: loading a shared library is inherently unsafe. The caller
             // must have been granted sys.ffi permission before reaching this point.
@@ -332,7 +357,7 @@ mod tests {
 
     #[test]
     fn ffi_load_wrong_arg_type() {
-        let result = FfiLib::call_function("ffi_load", &[Value::Integer(42)]);
+        let result = FfiLib::call_function("ffi_load", &[Value::Integer(42)], None);
         assert!(result.is_err());
         // With ffi feature: "must be a string"; without: "requires the 'ffi' feature"
         assert!(result.is_err());
@@ -341,7 +366,7 @@ mod tests {
     #[test]
     fn ffi_load_nonexistent_path() {
         let result =
-            FfiLib::call_function("ffi_load", &[Value::String("/no/such/lib.so".to_string())]);
+            FfiLib::call_function("ffi_load", &[Value::String("/no/such/lib.so".to_string())], None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         // With ffi: "ffi_load: could not load..."; without: "requires the 'ffi' feature"
@@ -351,7 +376,7 @@ mod tests {
     #[test]
     fn ffi_close_invalid_handle() {
         // Without ffi feature: error. With ffi feature: silent no-op → Null.
-        let result = FfiLib::call_function("ffi_close", &[Value::Integer(9999)]);
+        let result = FfiLib::call_function("ffi_close", &[Value::Integer(9999)], None);
         #[cfg(feature = "ffi")]
         assert_eq!(result.unwrap(), Value::Null);
         #[cfg(not(feature = "ffi"))]
@@ -368,6 +393,7 @@ mod tests {
                 Value::String("int".to_string()),
                 Value::Null,
             ],
+            None,
         );
         assert!(result.is_err());
     }
@@ -389,13 +415,14 @@ mod tests {
                 Value::String("void".to_string()),
                 big_array,
             ],
+            None,
         );
         assert!(result.is_err());
     }
 
     #[test]
     fn ffi_unknown_function() {
-        let result = FfiLib::call_function("ffi_unknown", &[]);
+        let result = FfiLib::call_function("ffi_unknown", &[], None);
         assert!(result.is_err());
         assert!(result.unwrap_err().message().contains("Unknown FFI function"));
     }
@@ -404,8 +431,19 @@ mod tests {
     #[test]
     fn ffi_load_and_call_libc() {
         // Load libc.so.6 and call `abs(-7)` which should return 7.
+        // Provide a permissive checker that grants all sys.ffi requests.
+        struct AllowAll;
+        impl PermissionChecker for AllowAll {
+            fn check_permission(
+                &self,
+                _resource: &crate::runtime::permissions::PermissionResource,
+                _scope: Option<&str>,
+            ) -> Result<(), crate::runtime::RuntimeError> { Ok(()) }
+        }
+        let checker: &dyn PermissionChecker = &AllowAll;
+
         let load_result =
-            FfiLib::call_function("ffi_load", &[Value::String("libc.so.6".to_string())]);
+            FfiLib::call_function("ffi_load", &[Value::String("libc.so.6".to_string())], Some(checker));
         match load_result {
             Err(_) => return, // libc not directly loadable on this system — skip
             Ok(Value::Integer(handle)) => {
@@ -417,9 +455,10 @@ mod tests {
                         Value::String("int".to_string()),
                         Value::Array(vec![Value::Integer(-7)]),
                     ],
+                    Some(checker),
                 );
                 assert_eq!(call_result.unwrap(), Value::Integer(7));
-                let _ = FfiLib::call_function("ffi_close", &[Value::Integer(handle)]);
+                let _ = FfiLib::call_function("ffi_close", &[Value::Integer(handle)], None);
             }
             Ok(other) => panic!("Expected Integer handle, got {:?}", other),
         }
