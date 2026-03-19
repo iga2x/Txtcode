@@ -1,7 +1,28 @@
 use crate::runtime::{RuntimeError, Value};
 use std::env;
 use std::fs;
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+
+// ── File handle registry ─────────────────────────────────────────────────────
+// Stores open file handles keyed by integer ID.
+// Handles are returned as Value::Integer to user code.
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+lazy_static::lazy_static! {
+    static ref READ_HANDLES: Mutex<HashMap<i64, BufReader<fs::File>>> = Mutex::new(HashMap::new());
+    static ref WRITE_HANDLES: Mutex<HashMap<i64, std::io::BufWriter<fs::File>>> = Mutex::new(HashMap::new());
+    static ref NEXT_HANDLE_ID: Mutex<i64> = Mutex::new(1);
+}
+
+fn next_handle_id() -> i64 {
+    let mut id = NEXT_HANDLE_ID.lock().unwrap();
+    let result = *id;
+    *id += 1;
+    result
+}
 
 /// I/O library
 pub struct IOLib;
@@ -511,6 +532,33 @@ impl IOLib {
                     )),
                 }
             }
+            // read_file_bytes(path) → Value::Bytes (Task 2.2)
+            "read_file_bytes" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "read_file_bytes requires 1 argument (path)".to_string(),
+                    ));
+                }
+                match &args[0] {
+                    Value::String(path) => {
+                        if let Some(checker) = permission_checker {
+                            use crate::runtime::permissions::PermissionResource;
+                            checker.check_permission(
+                                &PermissionResource::FileSystem("read".to_string()),
+                                Some(path.as_str()),
+                            )?;
+                        }
+                        let validated_path = Self::validate_path(path)?;
+                        let data = fs::read(&validated_path).map_err(|e| {
+                            RuntimeError::new(format!("Failed to read file: {}", e))
+                        })?;
+                        Ok(Value::Bytes(data))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "read_file_bytes requires a string path".to_string(),
+                    )),
+                }
+            }
             "write_file_binary" => {
                 if args.len() != 2 {
                     return Err(RuntimeError::new(
@@ -776,6 +824,143 @@ impl IOLib {
                         "read_csv requires a string path".to_string(),
                     )),
                 }
+            }
+            // ── Streaming file I/O ───────────────────────────────────────────
+            "file_open" => {
+                if args.len() < 1 || args.len() > 2 {
+                    return Err(RuntimeError::new("file_open requires 1 or 2 arguments (path, mode?)".to_string()));
+                }
+                let path = match &args[0] {
+                    Value::String(p) => p.clone(),
+                    _ => return Err(RuntimeError::new("file_open: path must be a string".to_string())),
+                };
+                let mode = if args.len() == 2 {
+                    match &args[1] {
+                        Value::String(m) => m.as_str(),
+                        _ => return Err(RuntimeError::new("file_open: mode must be a string".to_string())),
+                    }
+                } else {
+                    "r"
+                };
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    let perm = if mode == "r" || mode == "read" { "read" } else { "write" };
+                    checker.check_permission(&PermissionResource::FileSystem(perm.to_string()), None)?;
+                }
+                match mode {
+                    "r" | "read" => {
+                        let file = fs::File::open(&path)
+                            .map_err(|e| RuntimeError::new(format!("file_open: cannot open '{}': {}", path, e)))?;
+                        let id = next_handle_id();
+                        READ_HANDLES.lock().unwrap().insert(id, BufReader::new(file));
+                        Ok(Value::Integer(id))
+                    }
+                    "w" | "write" => {
+                        let file = fs::File::create(&path)
+                            .map_err(|e| RuntimeError::new(format!("file_open: cannot create '{}': {}", path, e)))?;
+                        let id = next_handle_id();
+                        WRITE_HANDLES.lock().unwrap().insert(id, std::io::BufWriter::new(file));
+                        Ok(Value::Integer(id))
+                    }
+                    "a" | "append" => {
+                        let file = fs::OpenOptions::new().append(true).create(true).open(&path)
+                            .map_err(|e| RuntimeError::new(format!("file_open: cannot open '{}' for append: {}", path, e)))?;
+                        let id = next_handle_id();
+                        WRITE_HANDLES.lock().unwrap().insert(id, std::io::BufWriter::new(file));
+                        Ok(Value::Integer(id))
+                    }
+                    other => Err(RuntimeError::new(format!("file_open: unknown mode '{}' (use r/w/a)", other))),
+                }
+            }
+            "file_read_line" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("file_read_line requires 1 argument (handle)".to_string()));
+                }
+                let id = match &args[0] {
+                    Value::Integer(n) => *n,
+                    _ => return Err(RuntimeError::new("file_read_line: handle must be an integer".to_string())),
+                };
+                let mut handles = READ_HANDLES.lock().unwrap();
+                let reader = handles.get_mut(&id)
+                    .ok_or_else(|| RuntimeError::new(format!("file_read_line: invalid or closed handle {}", id)))?;
+                let mut line = String::new();
+                let bytes = reader.read_line(&mut line)
+                    .map_err(|e| RuntimeError::new(format!("file_read_line: read error: {}", e)))?;
+                if bytes == 0 {
+                    Ok(Value::Null) // EOF
+                } else {
+                    // Strip trailing newline
+                    if line.ends_with('\n') { line.pop(); }
+                    if line.ends_with('\r') { line.pop(); }
+                    Ok(Value::String(line))
+                }
+            }
+            "file_write_line" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new("file_write_line requires 2 arguments (handle, line)".to_string()));
+                }
+                let id = match &args[0] {
+                    Value::Integer(n) => *n,
+                    _ => return Err(RuntimeError::new("file_write_line: handle must be an integer".to_string())),
+                };
+                let line = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                let mut handles = WRITE_HANDLES.lock().unwrap();
+                let writer = handles.get_mut(&id)
+                    .ok_or_else(|| RuntimeError::new(format!("file_write_line: invalid or closed handle {}", id)))?;
+                writeln!(writer, "{}", line)
+                    .map_err(|e| RuntimeError::new(format!("file_write_line: write error: {}", e)))?;
+                Ok(Value::Null)
+            }
+            "file_close" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("file_close requires 1 argument (handle)".to_string()));
+                }
+                let id = match &args[0] {
+                    Value::Integer(n) => *n,
+                    _ => return Err(RuntimeError::new("file_close: handle must be an integer".to_string())),
+                };
+                let removed_r = READ_HANDLES.lock().unwrap().remove(&id).is_some();
+                let removed_w = {
+                    let mut handles = WRITE_HANDLES.lock().unwrap();
+                    if let Some(writer) = handles.remove(&id) {
+                        // Flush before dropping
+                        drop(writer);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if removed_r || removed_w {
+                    Ok(Value::Null)
+                } else {
+                    Err(RuntimeError::new(format!("file_close: invalid or already closed handle {}", id)))
+                }
+            }
+            "csv_write" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "csv_write requires 2 arguments (path, rows)".to_string(),
+                    ));
+                }
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::FileSystem("write".to_string()), None)?;
+                }
+                let path = match &args[0] {
+                    Value::String(p) => p.clone(),
+                    _ => return Err(RuntimeError::new("csv_write: path must be a string".to_string())),
+                };
+                let rows = match &args[1] {
+                    Value::Array(rows) => rows.clone(),
+                    _ => return Err(RuntimeError::new("csv_write: rows must be an array of arrays".to_string())),
+                };
+                let csv_str = Self::rows_to_csv(&rows)?;
+                std::fs::write(&path, csv_str)
+                    .map_err(|e| RuntimeError::new(format!("csv_write: cannot write '{}': {}", path, e)))?;
+                Ok(Value::Null)
             }
             "temp_file" => {
                 if !args.is_empty() {
@@ -1069,5 +1254,30 @@ impl IOLib {
             }
             _ => Err(RuntimeError::new(format!("Unknown I/O function: {}", name))),
         }
+    }
+
+    fn rows_to_csv(rows: &[Value]) -> Result<String, RuntimeError> {
+        let mut output = String::new();
+        for row in rows {
+            match row {
+                Value::Array(fields) => {
+                    let parts: Vec<String> = fields.iter().map(|f| {
+                        let s = match f {
+                            Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        if s.contains(',') || s.contains('"') || s.contains('\n') {
+                            format!("\"{}\"", s.replace('"', "\"\""))
+                        } else {
+                            s
+                        }
+                    }).collect();
+                    output.push_str(&parts.join(","));
+                    output.push('\n');
+                }
+                _ => return Err(RuntimeError::new("csv_write: each row must be an array".to_string())),
+            }
+        }
+        Ok(output)
     }
 }

@@ -6,18 +6,19 @@
 > All changes are documented in the [CHANGELOG](https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md).
 >
 > **New in v0.5 (over v0.4):**
-> - **Real async/await** — `async define → fn → (args)` spawns an OS thread; `await` blocks until result; `Value::Future` type
-> - **Package registry backend** — `registry/index.json` single source of truth; `RegistryIndex` type; SHA-256 verification; `package search` / `package info` use index
-> - **Starter packages** — `npl-math`, `npl-strings`, `npl-collections`, `npl-datetime` ship in `packages/`
-> - **`txtcode package install-local <PATH>`** — install from local directory
-> - **Semver resolver** — 11 new unit tests covering `^`, `~`, `>=`, exact, non-semver
+> - **Real async/await** — `async define → fn → (args)` spawns an OS thread; `await` blocks until result; `Value::Future` type; `Instruction::Await` in bytecode VM
+> - **LSP server** — `txtcode lsp` starts a JSON-RPC LSP server over stdio; diagnostics on open/change, 100+ completions
+> - **20 core packages** — `npl-math`, `npl-strings`, `npl-collections`, `npl-datetime`, `npl-http-client`, `npl-http-server`, `npl-json-schema`, `npl-csv`, `npl-env`, `npl-template`, `npl-semver`, `npl-base64`, `npl-uuid`, `npl-retry`, `npl-assert`, `npl-cli-args`, `npl-colors`, `npl-table`, `npl-hash`, `npl-path`
+> - **Package registry backend** — `registry/index.json` single source of truth; `local_path` offline installs; SHA-256 verification; `package search` / `package info`
+> - **TextMate grammar** — `editors/txtcode.tmLanguage.json` + `editors/txtcode-language-configuration.json` for VS Code / Sublime / Zed
+> - **Full stdlib additions** — `file_open`/`file_read_line`/`file_write_line`/`file_close` streaming I/O; `format_datetime`/`datetime_add`/`datetime_diff`/`now` datetime; `csv_write`; `exec_pipe`; `http_serve`; `xml_decode`
+> - **Performance documented** — `docs/performance.md` with real Criterion.rs benchmark numbers
 > - **`txtcode run --permissions-report`** — list privileged calls without running
+> - **`txtcode run --type-check` / `--strict-types`** — static type checker as advisory or hard-error pre-execution step
 > - **`CapabilityResult` enum** (`Granted`, `NotFound`, `Revoked`, `Expired`) — typed denial reasons
 > - **Struct field type checking** — construction and bracket-assign validate against declared types; advisory (`[WARNING]`) or strict (`E0016`)
 > - **`Value::type_name()`** — human-readable type name for error messages
-> - **`xml_decode`** canonical alias; `json_encode`/`json_decode` protected from obfuscation
 > - **FFI stdlib** (`--features ffi`) — `ffi_load`, `ffi_call`, `ffi_close`; `sys.ffi` permission gate
-> - **Performance baselines** — `cargo bench` covers lexer/fib, lexer/loop, parser/complex, vm/ast_loop (+ bytecode variants with `--features bytecode`)
 >
 > **New in v0.4 (over v0.3):**
 > - Virtual environment system (`txtcode env`) with 12 subcommands
@@ -28,11 +29,11 @@
 > - `?.` / `?[]` / `?()` optional chaining — both VMs (returns `null` on null target)
 >
 > **Still not fully implemented:**
-> - Generic type enforcement at runtime (type params are parsed but erased at execution)
+> - Generic type enforcement at runtime (type params are parsed but erased at execution; full enforcement planned v0.8)
 > - `++arr[0]` / `--arr[0]` on non-identifier targets — use `store → arr[0] → arr[0] + 1` instead
-> - AST identifier obfuscation (`Obfuscator::obfuscate` is a no-op placeholder)
 > - WebSocket support — planned for v0.6
 > - macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only
+> - LLVM / WASM compilation backends — planned for v0.6/v0.8; bytecode (`.txtc`) is the only non-AST output today
 
 ---
 
@@ -781,7 +782,7 @@ The captured environment is a snapshot: mutations to `n` after `make_adder` retu
 
 ```txtcode
 async → define → fetch → (url: string) → string
-  # In v0.4 this runs synchronously — http_get blocks
+  # In v0.5 async define spawns an OS thread — http_get runs concurrently
   store → body → await → http_get(url)
   return → body
 end
@@ -814,10 +815,8 @@ end
 | `fs` | `read`, `write`, `delete`, `*` | Filesystem I/O |
 | `net` | `connect`, `listen`, `*` | HTTP, TCP, UDP, DNS |
 | `sys` | `exec`, `env`, `*` | Process execution, environment |
-| `wifi` | `scan`, `capture`, `deauth`, `inject` | WiFi operations (enforced, v0.4.1+) |
-| `ble` | `scan`, `connect`, `fuzz`, `read`, `write` | Bluetooth LE (enforced, v0.4.1+) |
 
-Alias: `"bluetooth"` is accepted as a synonym for `"ble"`.
+> **Note:** `wifi.*` and `ble.*` resources were removed in v0.4.1. Passing them raises a `RuntimeError` with an explanatory message.
 
 Wildcard forms: `"fs.*"` (any fs action), `"*.*"` (unrestricted).
 
@@ -974,9 +973,9 @@ Design functions to stay within this budget. Deeply recursive algorithms should 
 
 ### 6.4 Memory
 
-Memory is managed by Rust's ownership system combined with reference counting for shared values. There is **no explicit memory limit** in v0.4. The process is bounded by the host OS.
+Memory is managed by Rust's ownership system combined with reference counting for shared values. There is **no explicit memory limit** in v0.5. The process is bounded by the host OS.
 
-`MemoryManager` (stub in v0.4) is a placeholder for future GC integration.
+`AllocationTracker` (in `src/runtime/gc.rs`) tracks allocations and enforces a configurable soft memory limit. A full arena-allocator-based GC is planned for v0.8.
 
 ### 6.5 Integer Overflow
 
@@ -1128,12 +1127,12 @@ A native `Result<T, E>` type is planned for a future release.
 
 ---
 
-## Appendix F — Security Guarantees (v0.4)
+## Appendix F — Security Guarantees (v0.5)
 
-This section documents what the v0.4 runtime does and does not enforce, so users can make
+This section documents what the v0.5 runtime does and does not enforce, so users can make
 informed decisions about running Txt-code scripts.
 
-### F.1 Enforced in v0.4
+### F.1 Enforced in v0.5
 
 | Guarantee | Mechanism | Notes |
 |-----------|-----------|-------|

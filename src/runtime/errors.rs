@@ -1,6 +1,18 @@
 use crate::runtime::core::stack::CallFrame;
 use crate::runtime::core::Value;
 
+/// Maximum call stack depth before raising a recursion error.
+///
+/// Kept at 50 because the AST VM uses Rust's own call stack for Txtcode
+/// recursion (each Txtcode frame = ~10-20 Rust frames in debug mode).
+/// Increasing this limit without first making the VM iterative causes
+/// Rust's thread stack to overflow before our guard fires.
+///
+/// TODO (Group 7): convert AST VM to iterative execution, then raise to 500+.
+/// The value is configurable via `RuntimeConfig::max_call_depth` for release
+/// builds where frame sizes are much smaller.
+pub const MAX_CALL_DEPTH: usize = 50;
+
 /// Control-flow signals — non-error exits that must pierce block boundaries.
 /// These are not runtime errors; they ride the `Result<_, RuntimeError>` channel
 /// so that Rust's `?` operator propagates them automatically through every nested
@@ -41,6 +53,8 @@ pub enum ErrorCode {
     E0014,
     /// Execution timeout.
     E0020,
+    /// Memory limit exceeded.
+    E0021,
     /// File system error.
     E0030,
     /// Network error.
@@ -73,6 +87,7 @@ impl ErrorCode {
             Self::E0013 => "E0013",
             Self::E0014 => "E0014",
             Self::E0020 => "E0020",
+            Self::E0021 => "E0021",
             Self::E0030 => "E0030",
             Self::E0031 => "E0031",
             Self::E0032 => "E0032",
@@ -113,6 +128,8 @@ impl ErrorCode {
             Self::E0014
         } else if lower.contains("timeout") || lower.contains("timed out") {
             Self::E0020
+        } else if lower.contains("memory limit") {
+            Self::E0021
         } else if lower.contains("file") || lower.contains("io error") || lower.contains("path") {
             Self::E0030
         } else if lower.contains("network") || lower.contains("connect") || lower.contains("http") {
@@ -139,6 +156,9 @@ pub struct RuntimeError {
     signal: Option<ControlFlowSignal>,
     /// Machine-readable error code for IDE and CI consumers.
     pub code: Option<ErrorCode>,
+    /// Source location where the error originated: (line, column).
+    /// None when the error comes from internal/stdlib code with no AST span.
+    pub span: Option<(usize, usize)>,
 }
 
 impl RuntimeError {
@@ -152,7 +172,17 @@ impl RuntimeError {
             hint: None,
             stack_trace: Vec::new(),
             signal: None,
+            span: None,
         }
+    }
+
+    /// Attach a source location to this error (line, column).
+    /// No-op if the error already has a span (first wins — the innermost site).
+    pub fn with_span(mut self, line: usize, col: usize) -> Self {
+        if self.span.is_none() {
+            self.span = Some((line, col));
+        }
+        self
     }
 
     /// Attach an explicit error code, overriding the inferred one.
@@ -171,6 +201,7 @@ impl RuntimeError {
             hint: None,
             stack_trace: Vec::new(),
             signal: Some(ControlFlowSignal::ReturnValue(v)),
+            span: None,
         }
     }
 
@@ -182,6 +213,7 @@ impl RuntimeError {
             hint: None,
             stack_trace: Vec::new(),
             signal: Some(ControlFlowSignal::Break),
+            span: None,
         }
     }
 
@@ -193,6 +225,7 @@ impl RuntimeError {
             hint: None,
             stack_trace: Vec::new(),
             signal: Some(ControlFlowSignal::Continue),
+            span: None,
         }
     }
 
@@ -245,6 +278,13 @@ impl std::fmt::Display for RuntimeError {
             // at their respective boundaries before being shown to users.
             write!(f, "ControlFlowSignal({:?})", signal)
         } else {
+            // Prefix with error code and source location when available.
+            if let Some(code) = &self.code {
+                write!(f, "[{}] ", code.as_str())?;
+            }
+            if let Some((line, col)) = self.span {
+                write!(f, "line {}:{} — ", line, col)?;
+            }
             write!(f, "{}", self.message)?;
             if let Some(hint) = &self.hint {
                 write!(f, " ({})", hint)?;

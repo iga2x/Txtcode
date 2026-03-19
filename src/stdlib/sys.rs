@@ -1,6 +1,7 @@
 use crate::runtime::{RuntimeError, Value};
 use std::collections::HashMap;
-use std::process::{Child, Command};
+use std::io::Write;
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 lazy_static::lazy_static! {
@@ -111,18 +112,102 @@ impl SysLib {
                         )?;
                     }
 
-                    let output = Command::new(executable)
-                        .args(cmd_args)
-                        .output()
+                    // Optional second argument: options map {stdin, capture_stderr}
+                    let opts = args.get(1).and_then(|v| if let Value::Map(m) = v { Some(m) } else { None });
+                    let stdin_input = opts.and_then(|m| m.get("stdin")).and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
+                    let capture_stderr = opts.and_then(|m| m.get("capture_stderr")).map(|v| matches!(v, Value::Boolean(true))).unwrap_or(false);
+
+                    let mut child_cmd = Command::new(executable);
+                    child_cmd.args(cmd_args);
+                    if stdin_input.is_some() {
+                        child_cmd.stdin(Stdio::piped());
+                    }
+                    if capture_stderr {
+                        child_cmd.stderr(Stdio::piped());
+                    }
+
+                    let mut child = child_cmd.spawn()
                         .map_err(|e| RuntimeError::new(format!("exec() failed: {}", e)))?;
-                    Ok(Value::String(
-                        String::from_utf8_lossy(&output.stdout).to_string(),
-                    ))
+                    if let Some(input) = stdin_input {
+                        if let Some(mut stdin_handle) = child.stdin.take() {
+                            let _ = stdin_handle.write_all(input.as_bytes());
+                        }
+                    }
+                    let output = child.wait_with_output()
+                        .map_err(|e| RuntimeError::new(format!("exec() failed: {}", e)))?;
+                    if capture_stderr {
+                        let mut result = std::collections::HashMap::new();
+                        result.insert("stdout".to_string(), Value::String(String::from_utf8_lossy(&output.stdout).to_string()));
+                        result.insert("stderr".to_string(), Value::String(String::from_utf8_lossy(&output.stderr).to_string()));
+                        result.insert("status".to_string(), Value::Integer(output.status.code().unwrap_or(0) as i64));
+                        Ok(Value::Map(result))
+                    } else {
+                        Ok(Value::String(String::from_utf8_lossy(&output.stdout).to_string()))
+                    }
                 } else {
                     Err(RuntimeError::new(
                         "exec() requires a string argument".to_string(),
                     ))
                 }
+            }
+            "exec_pipe" => {
+                // exec_pipe(commands) — run a pipeline: ["grep foo", "sort", "uniq"]
+                if !exec_allowed {
+                    return Err(RuntimeError::new("exec_pipe() is disabled in safe mode".to_string()));
+                }
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("exec_pipe requires 1 argument (array of command strings)".to_string()));
+                }
+                let commands = match &args[0] {
+                    Value::Array(v) => v.clone(),
+                    _ => return Err(RuntimeError::new("exec_pipe: argument must be an array of strings".to_string())),
+                };
+                if commands.is_empty() {
+                    return Err(RuntimeError::new("exec_pipe: command list must not be empty".to_string()));
+                }
+                let mut prev_stdout: Option<std::process::ChildStdout> = None;
+                let mut children: Vec<std::process::Child> = Vec::new();
+                for cmd_val in &commands {
+                    let cmd_str = match cmd_val {
+                        Value::String(s) => s.clone(),
+                        _ => return Err(RuntimeError::new("exec_pipe: each command must be a string".to_string())),
+                    };
+                    let cmd_parts: Vec<&str> = cmd_str.split_whitespace().collect();
+                    let (exe, c_args) = match cmd_parts.split_first() {
+                        Some(pair) => pair,
+                        None => return Err(RuntimeError::new("exec_pipe: empty command".to_string())),
+                    };
+                    if let Some(checker) = permission_checker {
+                        use crate::runtime::permissions::PermissionResource;
+                        checker.check_permission(&PermissionResource::System("exec".to_string()), Some(exe))?;
+                    }
+                    let stdin_cfg = if let Some(stdout) = prev_stdout.take() {
+                        Stdio::from(stdout)
+                    } else {
+                        Stdio::null()
+                    };
+                    let mut child = Command::new(exe)
+                        .args(c_args)
+                        .stdin(stdin_cfg)
+                        .stdout(Stdio::piped())
+                        .spawn()
+                        .map_err(|e| RuntimeError::new(format!("exec_pipe: failed to spawn '{}': {}", exe, e)))?;
+                    prev_stdout = child.stdout.take();
+                    children.push(child);
+                }
+                // Read final stdout
+                let output = if let Some(mut stdout) = prev_stdout {
+                    use std::io::Read;
+                    let mut buf = String::new();
+                    stdout.read_to_string(&mut buf).map_err(|e| RuntimeError::new(format!("exec_pipe: read error: {}", e)))?;
+                    buf
+                } else {
+                    String::new()
+                };
+                for mut child in children {
+                    let _ = child.wait();
+                }
+                Ok(Value::String(output))
             }
             "exit" => {
                 let code = if let Some(Value::Integer(c)) = args.first() {

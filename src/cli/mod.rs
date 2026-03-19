@@ -8,6 +8,7 @@ pub mod env;
 pub mod format;
 pub mod init;
 pub mod lint;
+pub mod lsp;
 pub mod migrate;
 pub mod package;
 pub mod repl;

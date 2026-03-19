@@ -116,7 +116,38 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         let obj_name = &name[..dot_pos];
         let method_name = &name[dot_pos + 1..];
         if let Some(obj_val) = vm.get_variable(obj_name) {
+            // Enum constructor: Color.Red(value) — build enum with payload
+            if let Value::Enum(_, _, _) = &obj_val {
+                // obj_name is the enum type; look for variant = method_name in enum_defs
+                if vm.enum_defs().get(obj_name).and_then(|variants| {
+                    variants.iter().find(|(v, _)| v == method_name)
+                }).is_some() {
+                    let payload = args.into_iter().next();
+                    let result = Value::Enum(
+                        obj_name.to_string(),
+                        method_name.to_string(),
+                        payload.map(Box::new),
+                    );
+                    vm.gc_register_allocation(&result);
+                    return Ok(result);
+                }
+            }
             return call_method(vm, obj_val, method_name, &args, obj_name);
+        }
+        // Enum constructor via enum type name (not a variable holding an enum value)
+        // e.g. Shape.Circle(5.0) where Shape is an enum type registered in enum_defs
+        if let Some(variants) = vm.enum_defs().get(obj_name) {
+            let variant_exists = variants.iter().any(|(v, _)| v == method_name);
+            if variant_exists {
+                let payload = args.into_iter().next();
+                let result = Value::Enum(
+                    obj_name.to_string(),
+                    method_name.to_string(),
+                    payload.map(Box::new),
+                );
+                vm.gc_register_allocation(&result);
+                return Ok(result);
+            }
         }
     }
 
@@ -604,7 +635,7 @@ pub fn call_user_function<VM: ExpressionVM>(
 
     // Guard against infinite recursion before pushing the next frame.
     // Kept at 50 in debug mode — larger enums use more Rust stack per frame.
-    const MAX_CALL_DEPTH: usize = 50;
+    const MAX_CALL_DEPTH: usize = crate::runtime::errors::MAX_CALL_DEPTH;
     if vm.call_stack_depth() >= MAX_CALL_DEPTH {
         return Err(RuntimeError::new(format!(
             "Maximum call stack depth ({}) exceeded — possible infinite recursion in '{}'",

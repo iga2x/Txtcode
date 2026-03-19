@@ -17,11 +17,11 @@ The `PermissionResource` type identifies what is being accessed.
 
 | String form | Meaning | Scope example |
 |---|---|---|
-| `fs.read` | Read files, check existence, list dirs | `/var/log/*` |
-| `fs.write` | Write, append, copy, move, create dirs | `/tmp/*` |
+| `fs.read` | Read files, check existence, list dirs, `file_open`/`file_read_line`/`file_close` | `/var/log/*` |
+| `fs.write` | Write, append, copy, move, create dirs, `csv_write`, `file_write_line` | `/tmp/*` |
 | `fs.delete` | Delete files and directories | `/tmp/*` |
-| `net.connect` | Outbound HTTP, TCP, UDP, DNS | `*.example.com` |
-| `sys.exec` | `exec()`, `exec_json()`, `exec_lines()`, `exec_status()`, `spawn()`, `pipe_exec()`, `kill()`, `signal_send()` | — |
+| `net.connect` | Outbound HTTP, TCP, UDP, DNS, `http_get`, `http_post`, `http_serve` | `*.example.com` |
+| `sys.exec` | `exec()`, `exec_json()`, `exec_lines()`, `exec_status()`, `exec_pipe()`, `spawn()`, `kill()`, `signal_send()` | — |
 | `sys.env` | `getenv()`, `setenv()`, `env_list()` | — |
 | `sys.info` | `cpu_count()`, `memory_available()`, `disk_space()` | — |
 

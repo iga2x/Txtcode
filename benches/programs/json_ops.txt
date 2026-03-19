@@ -1,0 +1,7 @@
+store → i → 0
+while → i < 100
+  store → obj → {name: "Alice", age: 30, active: true, score: 99.5}
+  store → encoded → json_encode(obj)
+  store → decoded → json_decode(encoded)
+  store → i → i + 1
+end

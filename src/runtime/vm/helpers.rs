@@ -112,6 +112,23 @@ impl VirtualMachine {
                             }
                         }
                     }
+                } else if let Some(dot_pos) = name.find('.') {
+                    // Enum variant pattern: "Color.Red" — must match exactly, no binding
+                    let enum_name = &name[..dot_pos];
+                    let variant_name = &name[dot_pos + 1..];
+                    match value {
+                        Value::Enum(ev_enum, ev_variant, _)
+                            if ev_enum == enum_name && ev_variant == variant_name =>
+                        {
+                            // Pattern matches — no binding needed
+                        }
+                        _ => {
+                            return Err(self.create_error(format!(
+                                "Enum pattern mismatch: expected {}.{}, got {:?}",
+                                enum_name, variant_name, value
+                            )));
+                        }
+                    }
                 } else {
                     // Regular identifier pattern - always matches, binds the value
                     self.set_variable(name.clone(), value.clone())?;
@@ -294,9 +311,33 @@ impl VirtualMachine {
                             self.bind_pattern(pattern, field_value)?;
                         }
                     }
+                } else if let Value::Enum(_ev_enum, ev_variant, payload) = value {
+                    // Enum constructor pattern: Circle(r) matches Value::Enum(_, "Circle", Some(r_val))
+                    if ev_variant != type_name {
+                        return Err(self.create_error(format!(
+                            "Enum constructor pattern mismatch: expected variant '{}', got '{}'",
+                            type_name, ev_variant
+                        )));
+                    }
+                    match args.len() {
+                        0 => {
+                            // no payload expected
+                        }
+                        1 => {
+                            // bind payload to single pattern arg
+                            let inner = payload.as_deref().unwrap_or(&Value::Null);
+                            self.bind_pattern(&args[0], inner)?;
+                        }
+                        _ => {
+                            return Err(self.create_error(format!(
+                                "Enum constructor pattern: at most 1 payload argument supported, got {}",
+                                args.len()
+                            )));
+                        }
+                    }
                 } else {
                     return Err(self.create_error(format!(
-                        "Constructor pattern '{}' requires a struct value, got {:?}",
+                        "Constructor pattern '{}' requires a struct or enum value, got {:?}",
                         type_name, value
                     )));
                 }

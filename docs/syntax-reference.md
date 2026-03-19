@@ -1,6 +1,6 @@
 # Txt-code Syntax Reference
 
-Quick reference guide for Txt-code v0.4.0 syntax.
+Quick reference guide for Txt-code v0.5.0 syntax.
 
 ## Basic Syntax
 
@@ -75,10 +75,9 @@ end
 store → bounds → minmax([3, 1, 4, 1, 5])
 ```
 
-### Async Functions (synchronous mode)
+### Async Functions
 ```txtcode
-# async/await runs synchronously in v0.4 — no blocking or parallelism yet.
-# True async I/O is planned for v0.5.
+# async define spawns an OS thread in v0.5; await blocks until the result is ready.
 async → define → fetch → (url: string)
   store → body → await → http_get(url)
   return → body

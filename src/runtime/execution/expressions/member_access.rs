@@ -19,7 +19,7 @@ pub fn evaluate_member<VM: ExpressionVM>(
                         "Accessing enum variant {}.{}",
                         enum_type_name, name
                     ));
-                    return Ok(Value::Enum(enum_type_name.clone(), name.to_string()));
+                    return Ok(Value::Enum(enum_type_name.clone(), name.to_string(), None));
                 }
             }
             return Err(RuntimeError::new(format!(
@@ -64,7 +64,7 @@ pub fn evaluate_member<VM: ExpressionVM>(
                 name
             ))),
         },
-        Value::Enum(enum_name, _variant) => Err(RuntimeError::new(format!(
+        Value::Enum(enum_name, _variant, _) => Err(RuntimeError::new(format!(
             "Cannot access members of enum value {}.{}",
             enum_name, _variant
         ))),

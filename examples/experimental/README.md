@@ -1,7 +1,7 @@
 # Experimental Examples
 
 These examples target language features or stdlib functions that are **not yet supported
-in Txtcode v0.4**. They are kept here for reference and to track planned work.
+in Txtcode v0.5**. They are kept here for reference and to track planned work.
 
 Running them with `txtcode run` will produce a parse error or runtime error.
 
@@ -9,13 +9,13 @@ Running them with `txtcode run` will produce a parse error or runtime error.
 
 | File | Unsupported feature | Planned |
 |------|---------------------|---------|
-| `config_parser.tc` | Nested map assignment `m["a"]["b"] → val` | v0.5 |
-| `module_import.tc` | `from Module import name` keyword syntax | v0.5 |
-| `package_usage.tc` | Package-level import parse errors | v0.5 |
-| `policy_exec.tc` | Multi-arg `permission → sys, "exec", "/usr/*"` syntax; `capability →` keyword | v0.5 |
-| `port_scanner.tc` | `capability → network.tcp.connect` keyword syntax | v0.5 |
-| `task_automation.tc` | Subscript-then-call `task["handler"]()` expression | v0.5 |
-| `web_server.tc` | `capability →` keyword; `http_serve()` not in stdlib | v0.5 |
+| `config_parser.tc` | Nested map assignment `m["a"]["b"] → val` | v0.6 |
+| `module_import.tc` | `from Module import name` keyword syntax | ✅ stable in v0.5 — move to `examples/` |
+| `package_usage.tc` | Package-level import parse errors | ✅ stable in v0.5 — move to `examples/` |
+| `policy_exec.tc` | Multi-arg `permission → sys, "exec", "/usr/*"` syntax; `capability →` keyword | v0.6 |
+| `port_scanner.tc` | `capability → network.tcp.connect` keyword syntax | v0.6 |
+| `task_automation.tc` | Subscript-then-call `task["handler"]()` expression | v0.6 |
+| `web_server.tc` | `http_serve()` and route helpers | ✅ `http_serve` added in v0.5 stdlib — move to `examples/` |
 
 ## Stable examples (in `examples/`)
 

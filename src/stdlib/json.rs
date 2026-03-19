@@ -105,11 +105,18 @@ impl JsonLib {
                     _ => encoded.to_string(),
                 }
             }
-            Value::Enum(name, variant) => {
+            Value::Enum(name, variant, payload) => {
                 // Enums are encoded as objects
                 let mut map = HashMap::new();
                 map.insert("_type".to_string(), Value::String(name.clone()));
                 map.insert("_variant".to_string(), Value::String(variant.clone()));
+                if let Some(inner) = payload {
+                    let inner_encoded = match Self::json_encode(inner)? {
+                        Value::String(s) => s,
+                        other => other.to_string(),
+                    };
+                    map.insert("_payload".to_string(), Value::String(inner_encoded));
+                }
                 let encoded = Self::json_encode(&Value::Map(map))?;
                 match encoded {
                     Value::String(s) => s,
@@ -136,6 +143,12 @@ impl JsonLib {
                 }
             }
             Value::Future(_) => "null".to_string(),
+            Value::FunctionRef(name) => format!("\"<fn:{}>\"", name),
+            Value::Bytes(b) => {
+                // Encode bytes as a hex string array
+                let hex: String = b.iter().map(|byte| format!("{:02x}", byte)).collect();
+                format!("\"{}\"", hex)
+            }
         };
 
         // If the result is already a JSON string (starts with "), return it as-is

@@ -41,9 +41,6 @@ pub struct VirtualMachine {
     call_stack: CallStack,
     gc: GarbageCollector,
     module_resolver: ModuleResolver,
-    // async_executor removed in Phase 4.1 — zero callers; will be redesigned as a proper subsystem.
-    #[allow(dead_code)]
-    _async_executor: Option<()>,
     current_file: Option<PathBuf>,
     import_stack: Vec<PathBuf>, // Track imports to detect circular dependencies
     exported_symbols: HashSet<String>, // Track explicitly exported symbols for current module
@@ -147,13 +144,22 @@ impl VirtualMachine {
                 return Err(RuntimeError::new("Execution cancelled: timeout exceeded".to_string()));
             }
 
-            self.execute_statement(statement)?;
+            // Execute the statement; attach its source location to any error
+            // that doesn't already carry one (innermost span wins).
+            self.execute_statement(statement).map_err(|e| {
+                if let Some((line, col)) = statement.source_location() {
+                    e.with_span(line, col)
+                } else {
+                    e
+                }
+            })?;
             // Periodic garbage collection
             // Note: scopes() returns a slice, but collect expects a Vec reference
             // We need to pass the scopes as a reference to a Vec
             let scopes_vec: Vec<_> = self.scope_manager.scopes().to_vec();
             self.gc
-                .collect(&self.stack, self.scope_manager.globals(), &scopes_vec);
+                .collect_checked(&self.stack, self.scope_manager.globals(), &scopes_vec)
+                .map_err(|e| RuntimeError::new(e).with_code(crate::runtime::errors::ErrorCode::E0021))?;
         }
         Ok(Value::Null)
     }
@@ -200,13 +206,20 @@ impl VirtualMachine {
             if self.is_cancelled() {
                 return Err(RuntimeError::new("Execution cancelled: timeout exceeded".to_string()));
             }
-            let val = self.execute_statement(statement)?;
+            let val = self.execute_statement(statement).map_err(|e| {
+                if let Some((line, col)) = statement.source_location() {
+                    e.with_span(line, col)
+                } else {
+                    e
+                }
+            })?;
             if !matches!(val, Value::Null) {
                 last = val;
             }
             let scopes_vec: Vec<_> = self.scope_manager.scopes().to_vec();
             self.gc
-                .collect(&self.stack, self.scope_manager.globals(), &scopes_vec);
+                .collect_checked(&self.stack, self.scope_manager.globals(), &scopes_vec)
+                .map_err(|e| RuntimeError::new(e).with_code(crate::runtime::errors::ErrorCode::E0021))?;
         }
         Ok(last)
     }
@@ -452,7 +465,7 @@ impl FunctionExecutor for VirtualMachine {
 
                 // Guard against unbounded recursion.
                 // Kept at 50 in debug mode — larger enums use more Rust stack per frame.
-                const MAX_CALL_DEPTH: usize = 50;
+                const MAX_CALL_DEPTH: usize = crate::runtime::errors::MAX_CALL_DEPTH;
                 if self.call_stack.frames().len() >= MAX_CALL_DEPTH {
                     return Err(RuntimeError::new(format!(
                         "Maximum call stack depth ({}) exceeded — possible infinite recursion in '{}'",

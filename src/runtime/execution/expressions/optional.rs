@@ -19,7 +19,7 @@ pub fn evaluate_optional_member<VM: ExpressionVM>(
             Value::Struct(_struct_name, fields) => {
                 Ok(fields.get(name).cloned().unwrap_or(Value::Null))
             }
-            Value::Enum(_enum_name, _variant) => Ok(Value::Null),
+            Value::Enum(_enum_name, _variant, _) => Ok(Value::Null),
             _ => Ok(Value::Null),
         }
     }

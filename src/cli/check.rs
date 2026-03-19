@@ -70,7 +70,21 @@ pub fn check_files(files: &[PathBuf], json_out: bool) -> Result<(), Box<dyn std:
         let mut lexer = Lexer::new(source);
         if let Ok(tokens) = lexer.tokenize() {
             let mut parser = Parser::new(tokens);
-            if let Ok(program) = parser.parse() {
+            // Use parse_with_errors so all syntax errors are reported at once.
+            let (program, parse_errors) = parser.parse_with_errors();
+            for parse_err in &parse_errors {
+                total_errors += 1;
+                if json_out {
+                    json_issues.push(format!(
+                        "{{\"file\":\"{}\",\"line\":0,\"col\":0,\"severity\":\"error\",\"message\":\"{}\"}}",
+                        file.display(),
+                        parse_err.replace('"', "\\\"")
+                    ));
+                } else {
+                    println!("  [syntax] {}", parse_err);
+                }
+            }
+            if parse_errors.is_empty() {
                 // Run the validator pipeline (syntax → semantics → restrictions).
                 if let Err(validation_err) = Validator::validate_program(&program) {
                     total_errors += 1;

@@ -16,6 +16,9 @@ pub enum Constant {
     String(String),
     Boolean(bool),
     Null,
+    /// A bytecode function reference by name — distinct from Constant::String
+    /// so the VM can distinguish lambdas from plain string values.
+    FunctionRef(String),
 }
 
 impl std::hash::Hash for Constant {
@@ -41,6 +44,10 @@ impl std::hash::Hash for Constant {
             Constant::Null => {
                 state.write_u8(4);
             }
+            Constant::FunctionRef(s) => {
+                state.write_u8(5);
+                s.hash(state);
+            }
         }
     }
 }
@@ -62,6 +69,7 @@ impl std::cmp::PartialEq for Constant {
             (Constant::String(a), Constant::String(b)) => a == b,
             (Constant::Boolean(a), Constant::Boolean(b)) => a == b,
             (Constant::Null, Constant::Null) => true,
+            (Constant::FunctionRef(a), Constant::FunctionRef(b)) => a == b,
             _ => false,
         }
     }
@@ -209,6 +217,10 @@ pub enum Instruction {
     /// Pipe: stack has [arg, func]. Pop func, pop arg, call func(arg), push result.
     /// Used when |> rhs is a complex expression (not a simple identifier desugared at parse time).
     Pipe,
+
+    /// Await a Future: pop Value::Future from stack, block until resolved, push result.
+    /// `await` on a non-Future value is a transparent no-op (JavaScript semantics).
+    Await,
 }
 
 /// Per-loop tracking for break/continue jump patching.
@@ -1161,8 +1173,8 @@ impl BytecodeCompiler {
                 instructions[end_jump] = Instruction::Jump(end);
             }
             Expression::Await { expression, .. } => {
-                // Async not supported in bytecode VM; evaluate synchronously
                 self.compile_expression(expression, instructions);
+                instructions.push(Instruction::Await);
             }
             Expression::Set { elements, .. } => {
                 for elem in elements {
@@ -1188,7 +1200,9 @@ impl BytecodeCompiler {
                     param_names,
                     body_start,
                 ));
-                let name_idx = self.add_constant(&Literal::String(lambda_name));
+                // Push a FunctionRef (not a plain String) so HOF dispatch can
+                // distinguish lambdas from user string values without collision.
+                let name_idx = self.add_function_ref(&lambda_name);
                 instructions.push(Instruction::PushConstant(name_idx));
             }
             Expression::MethodCall {
@@ -1254,6 +1268,21 @@ impl BytecodeCompiler {
                 // Spread outside an array literal — compile inner value (unusual but handle gracefully)
                 self.compile_expression(value, instructions);
             }
+        }
+    }
+
+    /// Add a `Constant::FunctionRef` to the pool and return its index.
+    /// Used when compiling lambdas so the VM can distinguish function
+    /// references from plain string values at HOF dispatch time.
+    fn add_function_ref(&mut self, name: &str) -> usize {
+        let constant = Constant::FunctionRef(name.to_string());
+        if let Some(&idx) = self.constant_map.get(&constant) {
+            idx
+        } else {
+            let idx = self.constants.len();
+            self.constants.push(constant.clone());
+            self.constant_map.insert(constant, idx);
+            idx
         }
     }
 

@@ -59,6 +59,91 @@ impl Parser {
         Ok(Program { statements })
     }
 
+    /// Parse the full program, collecting ALL syntax errors instead of stopping
+    /// at the first one. Returns `(partial_program, errors)`.
+    ///
+    /// On a syntax error, the parser advances to the next statement-level
+    /// synchronization point and continues parsing, so multiple errors per
+    /// file are reported in one pass.
+    ///
+    /// Use this in the REPL, `txtcode check`, and future LSP diagnostics.
+    pub fn parse_with_errors(&mut self) -> (Program, Vec<String>) {
+        let mut statements = Vec::new();
+        let mut errors = Vec::new();
+
+        while !self.is_at_end() {
+            match self.parse_statement() {
+                Ok(Some(stmt)) => statements.push(stmt),
+                Ok(None) => {
+                    // Block terminator at top level — advance to avoid infinite loop
+                    self.advance();
+                }
+                Err(e) => {
+                    errors.push(e);
+                    // Synchronize: skip tokens until we reach a likely
+                    // statement boundary (newline + keyword, or EOF).
+                    self.synchronize();
+                }
+            }
+        }
+
+        (Program { statements }, errors)
+    }
+
+    /// Advance past tokens until we find a synchronization point:
+    /// a newline followed by a statement-starting keyword, or EOF.
+    fn synchronize(&mut self) {
+        while !self.is_at_end() {
+            // Consume the current token
+            self.advance();
+
+            // Check if the NEXT token starts a new statement
+            if self.is_at_end() {
+                break;
+            }
+
+            let kind = self.peek().kind;
+            let value = self.peek().value.clone();
+
+            // Newline is a statement boundary
+            if kind == crate::lexer::token::TokenKind::Newline {
+                self.advance(); // consume the newline
+                // If the token after the newline starts a statement, stop
+                if !self.is_at_end() {
+                    let next_val = self.peek().value.clone();
+                    let next_kind = self.peek().kind;
+                    if next_kind == crate::lexer::token::TokenKind::Keyword {
+                        let canonical = canonicalize_keyword(&next_val);
+                        match canonical.as_str() {
+                            "store" | "define" | "if" | "while" | "for" | "return"
+                            | "try" | "import" | "export" | "struct" | "enum"
+                            | "match" | "const" | "break" | "continue" | "repeat"
+                            | "async" | "permission" | "type" | "error" => break,
+                            "end" | "catch" | "finally" | "else" | "elseif" => {
+                                // Block terminators — stop so caller can handle
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // Keyword that starts a new statement is a hard boundary
+            if kind == crate::lexer::token::TokenKind::Keyword {
+                let canonical = canonicalize_keyword(&value);
+                match canonical.as_str() {
+                    "store" | "define" | "if" | "while" | "for" | "return"
+                    | "try" | "import" | "export" | "struct" | "enum"
+                    | "match" | "const" | "break" | "continue" | "repeat"
+                    | "async" | "permission" | "end" => break,
+                    _ => {}
+                }
+            }
+        }
+    }
+
     pub(crate) fn parse_statement(&mut self) -> Result<Option<Statement>, String> {
         if self.is_at_end() {
             return Ok(None);
@@ -475,10 +560,18 @@ impl Parser {
         })?;
 
         // Check if it's a generic type parameter
-        if type_params.contains(&type_name) {
-            Ok(crate::typecheck::types::Type::Generic(type_name))
+        let base_type = if type_params.contains(&type_name) {
+            crate::typecheck::types::Type::Generic(type_name)
         } else {
-            Ok(self.type_keyword_to_type(&type_name))
+            self.type_keyword_to_type(&type_name)
+        };
+
+        // Optional `?` suffix makes the type nullable: int? → Nullable(Int)
+        if self.check(crate::lexer::token::TokenKind::QuestionMark) {
+            self.advance();
+            Ok(crate::typecheck::types::Type::Nullable(Box::new(base_type)))
+        } else {
+            Ok(base_type)
         }
     }
 

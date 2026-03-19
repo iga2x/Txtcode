@@ -109,7 +109,7 @@ txtcode inspect program.txtc --format json
 > **Note:** The compiled file extension is `.txtc`.
 > The bytecode VM runs with basic permission checking but no audit trail, policy engine,
 > or intent checking. Use `txtcode run` on source files for full security enforcement.
-> Native and WASM compilation targets are planned for v0.5.
+> Native and WASM compilation backends are planned for v0.6/v0.8.
 
 ## Package Management
 
@@ -177,6 +177,45 @@ store → handle → ble_connect("AA:BB:CC:DD:EE:FF")
 store → data → ble_read(handle, "0x2A37")
 ```
 
+## New in v0.5.0 — Stdlib Highlights
+
+### Streaming File I/O
+```txtcode
+store → h → file_open("data.txt", "r")
+store → line → file_read_line(h)
+while → line != null
+  print → line
+  store → line → file_read_line(h)
+end
+file_close(h)
+```
+
+### Datetime
+```txtcode
+store → today → format_datetime(now(), "%Y-%m-%d", "UTC")
+store → tomorrow → datetime_add(now(), 1, "days")
+store → diff → datetime_diff(tomorrow, now(), "hours")
+```
+
+### CSV Write
+```txtcode
+csv_write("/tmp/report.csv", [["name","score"],["Alice",95],["Bob",87]])
+```
+
+### Process Piping
+```txtcode
+store → result → exec_pipe(["echo hello world", "tr a-z A-Z"])
+```
+
+### Async/Await
+```txtcode
+async define → fetch_data → (url)
+  return → http_get(url)
+end
+store → handle → fetch_data("https://api.example.com/data")
+store → result → await handle
+```
+
 ## Development Tools
 
 ```bash
@@ -194,17 +233,63 @@ txtcode lint program.tc
 
 # Start REPL
 txtcode repl
+
+# Start LSP server (for VS Code / Neovim / Zed integration)
+txtcode lsp
+
+# Run static type checker
+txtcode run program.tc --type-check
+
+# Type errors as hard errors
+txtcode run program.tc --strict-types
+```
+
+## Package Management
+
+```bash
+# Initialize a package
+txtcode package init myproject 0.1.0
+
+# Add a dependency
+txtcode package add npl-math 0.1.0
+
+# Install all dependencies
+txtcode package install
+
+# Install a local package directory
+txtcode package install-local packages/npl-math
+
+# Search the registry
+txtcode package search math
+
+# Show package details
+txtcode package info npl-math
+```
+
+### Using packages in scripts
+```txtcode
+from "npl-math/math" import is_prime, factorial, fib
+from "npl-strings/strings" import pad_left, truncate
+from "npl-collections/collections" import zip, chunk, range
+from "npl-datetime/datetime" import today, relative_time
+
+print(is_prime(17))                      ## true
+print(factorial(10))                     ## 3628800
+print(today())                           ## "2026-03-19"
+print(range(0, 5))                       ## [0, 1, 2, 3, 4]
 ```
 
 ## Examples
 
 See the `examples/` directory for complete example programs:
-- `hello.tc` - Hello World
-- `calculator.tc` - Calculator
-- `port_scanner.tc` - Network port scanner
-- `file_processor.tc` - File processing
-- `security_demo.tc` - Security features
-- `web_server.tc` - Web server
+- `hello_world.tc` - Hello World, variables, functions, control flow
+- `calculator.tc` - Arithmetic with pattern matching
+- `file_processing.tc` - CSV parsing and stats
+- `log_analyzer.tc` - Log classification
+- `pipeline.tc` - Sequential task runner
+- `audit_trail.tc` - File I/O with permission model
+- `security_demo.tc` - SHA-256, AES-GCM, base64
+- `metrics_report.tc` - Map grouping and aggregation
 
 ## Next Steps
 

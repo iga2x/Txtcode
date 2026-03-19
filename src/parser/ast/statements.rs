@@ -139,6 +139,40 @@ pub enum Statement {
     },
 }
 
+impl Statement {
+    /// Return the (line, column) of this statement's first token, when available.
+    /// Used by the VM to attach source locations to runtime errors.
+    pub fn source_location(&self) -> Option<(usize, usize)> {
+        let span = match self {
+            Statement::Assignment { span, .. }
+            | Statement::IndexAssignment { span, .. }
+            | Statement::CompoundAssignment { span, .. }
+            | Statement::FunctionDef { span, .. }
+            | Statement::Return { span, .. }
+            | Statement::Break { span, .. }
+            | Statement::Continue { span, .. }
+            | Statement::If { span, .. }
+            | Statement::While { span, .. }
+            | Statement::DoWhile { span, .. }
+            | Statement::For { span, .. }
+            | Statement::Repeat { span, .. }
+            | Statement::Assert { span, .. }
+            | Statement::Enum { span, .. }
+            | Statement::Struct { span, .. }
+            | Statement::Match { span, .. }
+            | Statement::Try { span, .. }
+            | Statement::Import { span, .. }
+            | Statement::Export { span, .. }
+            | Statement::Const { span, .. }
+            | Statement::Permission { span, .. }
+            | Statement::TypeAlias { span, .. }
+            | Statement::NamedError { span, .. } => Some(span),
+            Statement::Expression(_) => None,
+        };
+        span.map(|s| (s.line, s.column))
+    }
+}
+
 /// Program root node
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {

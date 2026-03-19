@@ -826,6 +826,51 @@ impl Lexer {
                                 int_val.to_string(),
                                 (start_line, start_col),
                             ));
+                        } else if next_ch == 'o' || next_ch == 'O' {
+                            // Octal literal: 0o777, 0o17
+                            self.advance(); // consume '0'
+                            self.advance(); // consume 'o' or 'O'
+                            value.push('0');
+                            value.push('o');
+
+                            // Read octal digits (0-7)
+                            let mut has_digits = false;
+                            while self.position < self.source.len() {
+                                let oct_remaining = &self.source[self.position..];
+                                if let Some(oct_ch) = oct_remaining.chars().next() {
+                                    if oct_ch >= '0' && oct_ch <= '7' {
+                                        value.push(oct_ch);
+                                        has_digits = true;
+                                        self.advance();
+                                    } else {
+                                        break;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            if !has_digits {
+                                return Err(format!(
+                                    "Octal literal must have at least one digit at line {}:{}",
+                                    self.line, self.column
+                                ));
+                            }
+
+                            // Parse octal value
+                            let oct_str = &value[2..]; // Skip "0o"
+                            let int_val = i64::from_str_radix(oct_str, 8).map_err(|_| {
+                                format!(
+                                    "Invalid octal number at line {}:{}",
+                                    self.line, self.column
+                                )
+                            })?;
+
+                            return Ok(Token::new(
+                                TokenKind::Integer,
+                                int_val.to_string(),
+                                (start_line, start_col),
+                            ));
                         }
                     }
                 }

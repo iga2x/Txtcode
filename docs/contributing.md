@@ -26,7 +26,7 @@ Txt-code is built in Rust and follows a modular architecture:
 - **Lexer**: Tokenizes source code
 - **Parser**: Builds Abstract Syntax Tree (AST)
 - **Type Checker**: Performs type checking and inference
-- **Compiler**: Compiles AST to bytecode (`.txtc`); native and WASM targets planned for v0.5
+- **Compiler**: Compiles AST to bytecode (`.txtc`); native and WASM targets planned for v0.6/v0.8
 - **Runtime**: Executes programs
 - **Standard Library**: Core functions and modules
 
@@ -136,13 +136,22 @@ cargo test -- --nocapture
 - ✅ Validator wired into `txtcode repl` (`:load` and inline input), `txtcode debug`, `txtcode test`
 - ✅ Validator upgraded: all AST expression/statement variants covered; break/continue-outside-loop detection; expanded `required_capability` map; injection check covers all exec/spawn/pipe_exec args
 
-### v0.5+ (planned)
-- True async/await with Tokio runtime integration
+### v0.5.0 (released) — Ecosystem & performance
+- ✅ Real async/await: `async define` + `await`; `Value::Future`; `Instruction::Await` in bytecode VM
+- ✅ LSP server: `txtcode lsp` — JSON-RPC over stdio, diagnostics, 100+ completions
+- ✅ 20 core packages in `packages/` + `registry/index.json` with `local_path` offline installs
+- ✅ TextMate grammar: `editors/txtcode.tmLanguage.json` + language configuration for VS Code/Zed/Sublime
+- ✅ Stdlib additions: `file_open`/`file_read_line`/`file_write_line`/`file_close`, `format_datetime`/`datetime_add`/`datetime_diff`/`now`, `csv_write`, `exec_pipe`, `http_serve`
+- ✅ `docs/performance.md` — real Criterion.rs benchmark numbers
+- ✅ `--type-check` / `--strict-types` flags wire static type checker as advisory/hard-error step
+- ✅ SHA-256 manifest verification in `package install`; `scripts/sign_release.sh`; `fuzz/` targets
+
+### v0.6+ (planned)
 - Native binary compilation (`-t native`) via LLVM
 - WebAssembly compilation target
 - WebSocket stdlib (`websocket_connect`)
-- Generic type enforcement at runtime
-- AST identifier obfuscation (Obfuscator currently a no-op stub)
+- Generic type enforcement at runtime (type params parsed but erased today)
+- Arena allocator for improved memory throughput
 
 ## Questions?
 

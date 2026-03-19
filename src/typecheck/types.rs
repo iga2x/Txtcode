@@ -18,6 +18,8 @@ pub enum Type {
     Future(Box<Type>), // Future<T> - async type
     Identifier(String),
     Generic(String),
+    Nullable(Box<Type>), // T? — type that can also be null
+    Null,                // the null type itself
 }
 
 impl Type {
@@ -37,6 +39,10 @@ impl Type {
             (Type::Future(a), Type::Future(b)) => a.is_compatible_with(b),
             (Type::Identifier(a), Type::Identifier(b)) => a == b,
             (Type::Generic(a), Type::Generic(b)) => a == b,
+            // Nullable: null is compatible with T?, T is compatible with T?
+            (Type::Null, Type::Nullable(_)) => true,
+            (inner, Type::Nullable(outer)) => inner.is_compatible_with(outer),
+            (Type::Nullable(inner), other) => inner.is_compatible_with(other),
             _ => false,
         }
     }

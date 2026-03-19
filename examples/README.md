@@ -1,6 +1,8 @@
 # Txtcode Examples
 
-All examples in this directory are verified to run with `txtcode run` (v0.4).
+All examples in this directory are verified to run with `txtcode run` (v0.5.0).
+
+## Core Examples
 
 | Example | Run command | Demonstrates |
 |---------|-------------|--------------|
@@ -16,8 +18,38 @@ All examples in this directory are verified to run with `txtcode run` (v0.4).
 | `math_utils.tc` | `txtcode run examples/math_utils.tc` | Numeric functions, recursion |
 | `security_demo.tc` | `txtcode run examples/security_demo.tc` | SHA-256, AES-GCM encrypt/decrypt, base64 |
 
+## v0.5.0 Feature Examples
+
+These examples demonstrate new stdlib functions added in v0.5.0:
+
+```txtcode
+// Streaming file I/O (file_open / file_read_line)
+store → h → file_open("data.txt", "r")
+store → line → file_read_line(h)
+while → line != null
+  print → line
+  store → line → file_read_line(h)
+end
+file_close(h)
+
+// Datetime helpers
+store → today → format_datetime(now(), "%Y-%m-%d", "UTC")
+store → tomorrow → datetime_add(now(), 1, "days")
+store → diff → datetime_diff(tomorrow, now(), "hours")
+
+// CSV write
+csv_write("/tmp/report.csv", [["name","score"],["Alice",95],["Bob",87]])
+
+// Process piping
+store → result → exec_pipe(["echo hello world", "tr a-z A-Z"])
+
+// HTTP server (requires net feature)
+// http_serve(8080, (req) → http_response(200, "OK", {}))
+```
+
 ## Notes
 
-- `audit_trail.tc` and `directory_summary.tc` require `--allow-fs` because they read/write the filesystem.
-- Examples use only confirmed-stable stdlib functions for v0.4.
-- See [`experimental/README.md`](experimental/README.md) for examples that use planned (not-yet-implemented) features.
+- Examples requiring filesystem access (`audit_trail.tc`, `directory_summary.tc`) need `--allow-fs`.
+- Examples requiring network access need `--allow-net=<host>`.
+- All stdlib functions used are stable as of v0.5.0.
+- See [`experimental/README.md`](experimental/README.md) for examples using planned features.

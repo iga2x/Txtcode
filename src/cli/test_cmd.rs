@@ -107,7 +107,17 @@ pub fn run_tests(
             continue;
         }
         let mut vm = VirtualMachine::new();
-        match vm.interpret(&program) {
+        let test_result = vm.interpret(&program).and_then(|val| {
+            // If the program returned a Future (e.g. async test without top-level await),
+            // resolve it now so async test files work transparently.
+            match val {
+                crate::runtime::core::Value::Future(handle) => {
+                    handle.resolve().map_err(crate::runtime::errors::RuntimeError::new)
+                }
+                other => Ok(other),
+            }
+        });
+        match test_result {
             Ok(_) => {
                 if json_out {
                     json_tests.push(format!(

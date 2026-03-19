@@ -1,0 +1,5 @@
+store → i → 0
+while → i < 10000
+  store → obj → {x: i, y: i, label: "item"}
+  store → i → i + 1
+end

@@ -17,21 +17,13 @@ writes a `denied` entry to the audit trail.
 
 | Resource string | Protects |
 |---|---|
-| `fs.read` | Reading files, checking existence, listing directories |
-| `fs.write` | Writing, appending, copying, moving, creating dirs |
+| `fs.read` | Reading files, checking existence, listing directories, `file_open`/`file_read_line` |
+| `fs.write` | Writing, appending, copying, moving, creating dirs, `csv_write`, `file_write_line` |
 | `fs.delete` | Deleting files and directories |
-| `net.connect` | HTTP requests, TCP/UDP connections, DNS resolution |
-| `sys.exec` | `exec()`, `spawn()`, `pipe_exec()`, `kill()`, `signal_send()` |
+| `net.connect` | HTTP requests, TCP/UDP connections, DNS, `http_serve` |
+| `sys.exec` | `exec()`, `exec_pipe()`, `spawn()`, `kill()`, `signal_send()` |
 | `sys.env` | `getenv()`, `setenv()` |
-| `wifi.scan` | Passive WiFi interface / probe-response enumeration |
-| `wifi.capture` | Raw WiFi frame capture (monitor mode) |
-| `wifi.deauth` | Deauthentication frame injection (requires authorisation) |
-| `wifi.inject` | Arbitrary WiFi packet injection (requires authorisation) |
-| `ble.scan` | BLE advertisement scanning / device discovery |
-| `ble.connect` | GATT connection to a remote BLE device |
-| `ble.fuzz` | Malformed BLE PDU injection (requires authorisation) |
-| `ble.read` | Read GATT characteristic values |
-| `ble.write` | Write GATT characteristic values |
+| `sys.ffi` | `ffi_load()`, `ffi_call()`, `ffi_close()` (requires `--features ffi`) |
 
 ### Granting permissions at the CLI
 
@@ -47,9 +39,10 @@ txtcode run scan.tc --sandbox
 
 ```txtcode
 # Grant can be scoped with glob patterns
-grant_permission("fs.read",  "/tmp/*")
+grant_permission("fs.read",    "/tmp/*")
+grant_permission("fs.write",   "/tmp/*")
 grant_permission("net.connect", "*.example.com")
-grant_permission("wifi.scan", null)
+grant_permission("sys.exec",   null)
 ```
 
 ### Permission declarations in functions
@@ -77,12 +70,12 @@ capability manager. They enable fine-grained, revocable access that outlasts
 a single function call.
 
 ```txtcode
-# Acquire a capability token for WiFi scanning
-store → tok → grant_capability("wifi.scan", null)
+# Acquire a short-lived capability token for network access
+store → tok → grant_capability("net.connect", "*.corp.lan")
 
-# Use it — valid until explicitly revoked
+# Activate — valid until explicitly revoked
 use_capability(tok)
-store → nets → wifi_scan()
+store → resp → http_get("https://api.corp.lan/data")
 
 # Revoke immediately when done
 revoke_capability(tok)
@@ -126,7 +119,7 @@ Every permission check, capability use, intent violation, and security
 startup event is logged to an in-memory audit trail with:
 
 - Monotonic nanosecond timestamp
-- Action category (e.g. `fs.read`, `net.connect`, `wifi.scan`)
+- Action category (e.g. `fs.read`, `net.connect`, `sys.exec`)
 - Resource (path, hostname, interface, etc.)
 - Result: `Allowed` or `Denied`
 - AI metadata (model, session, policy version) when present
@@ -228,7 +221,7 @@ check reports a mismatch in the audit trail under `security.startup`.
 | macOS anti-debug (kinfo_proc) | Stub | Approach documented in `protector.rs`; needs `libc::sysctl` wiring. |
 | Windows anti-debug (IsDebuggerPresent) | Stub | Approach documented in `protector.rs`; needs `winapi` linkage. |
 
-Do not rely on the obfuscator for IP protection — it has no effect in v0.4.
+Do not rely on the obfuscator for IP protection — it has no effect in v0.5.
 
 ---
 

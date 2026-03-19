@@ -34,7 +34,7 @@ impl NetLib {
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
                             checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
-                        Self::http_get_sync(url)
+                        Ok(Self::http_get_future(url.clone()))
                     }
                     _ => Err(RuntimeError::new("http_get requires a string URL".to_string())),
                 }
@@ -52,11 +52,11 @@ impl NetLib {
                         }
                         let headers = if args.len() == 3 {
                             match &args[2] {
-                                Value::Map(h) => Some(h),
+                                Value::Map(h) => Some(h.clone()),
                                 _ => return Err(RuntimeError::new("http_post headers must be a map".to_string())),
                             }
                         } else { None };
-                        Self::http_post_sync(url, body, headers)
+                        Ok(Self::http_post_future(url.clone(), body.clone(), headers))
                     }
                     _ => Err(RuntimeError::new("http_post requires url and body as strings".to_string())),
                 }
@@ -73,9 +73,9 @@ impl NetLib {
                             checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         let headers = if args.len() == 3 {
-                            match &args[2] { Value::Map(h) => Some(h), _ => return Err(RuntimeError::new("http_put headers must be a map".to_string())) }
+                            match &args[2] { Value::Map(h) => Some(h.clone()), _ => return Err(RuntimeError::new("http_put headers must be a map".to_string())) }
                         } else { None };
-                        Self::http_put_sync(url, body, headers)
+                        Ok(Self::http_put_future(url.clone(), body.clone(), headers))
                     }
                     _ => Err(RuntimeError::new("http_put requires url and body as strings".to_string())),
                 }
@@ -92,9 +92,9 @@ impl NetLib {
                             checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         let headers = if args.len() == 2 {
-                            match &args[1] { Value::Map(h) => Some(h), _ => return Err(RuntimeError::new("http_delete headers must be a map".to_string())) }
+                            match &args[1] { Value::Map(h) => Some(h.clone()), _ => return Err(RuntimeError::new("http_delete headers must be a map".to_string())) }
                         } else { None };
-                        Self::http_delete_sync(url, headers)
+                        Ok(Self::http_delete_future(url.clone(), headers))
                     }
                     _ => Err(RuntimeError::new("http_delete requires a string URL".to_string())),
                 }
@@ -111,9 +111,9 @@ impl NetLib {
                             checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
                         }
                         let headers = if args.len() == 3 {
-                            match &args[2] { Value::Map(h) => Some(h), _ => return Err(RuntimeError::new("http_patch headers must be a map".to_string())) }
+                            match &args[2] { Value::Map(h) => Some(h.clone()), _ => return Err(RuntimeError::new("http_patch headers must be a map".to_string())) }
                         } else { None };
-                        Self::http_patch_sync(url, body, headers)
+                        Ok(Self::http_patch_future(url.clone(), body.clone(), headers))
                     }
                     _ => Err(RuntimeError::new("http_patch requires url and body as strings".to_string())),
                 }
@@ -190,6 +190,63 @@ impl NetLib {
                     }
                     _ => Err(RuntimeError::new("http_stream requires a string URL".to_string())),
                 }
+            }
+            // ── HTTP Server helpers ──────────────────────────────────────────
+            "http_response" => {
+                // http_response(status, body, headers?) → {status, body, headers}
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(RuntimeError::new("http_response requires 2 or 3 arguments (status, body, headers?)".to_string()));
+                }
+                let status = match &args[0] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err(RuntimeError::new("http_response: status must be an integer".to_string())),
+                };
+                let body = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                let headers = if args.len() == 3 {
+                    match &args[2] {
+                        Value::Map(m) => m.clone(),
+                        _ => return Err(RuntimeError::new("http_response: headers must be a map".to_string())),
+                    }
+                } else {
+                    HashMap::new()
+                };
+                let mut result = HashMap::new();
+                result.insert("status".to_string(), Value::Integer(status));
+                result.insert("body".to_string(), Value::String(body));
+                result.insert("headers".to_string(), Value::Map(headers));
+                Ok(Value::Map(result))
+            }
+            "http_request_method" => {
+                if args.len() != 1 { return Err(RuntimeError::new("http_request_method requires 1 argument (request)".to_string())); }
+                match &args[0] {
+                    Value::Map(m) => Ok(m.get("method").cloned().unwrap_or(Value::String("GET".to_string()))),
+                    _ => Err(RuntimeError::new("http_request_method: argument must be a request map".to_string())),
+                }
+            }
+            "http_request_path" => {
+                if args.len() != 1 { return Err(RuntimeError::new("http_request_path requires 1 argument (request)".to_string())); }
+                match &args[0] {
+                    Value::Map(m) => Ok(m.get("path").cloned().unwrap_or(Value::String("/".to_string()))),
+                    _ => Err(RuntimeError::new("http_request_path: argument must be a request map".to_string())),
+                }
+            }
+            "http_request_body" => {
+                if args.len() != 1 { return Err(RuntimeError::new("http_request_body requires 1 argument (request)".to_string())); }
+                match &args[0] {
+                    Value::Map(m) => Ok(m.get("body").cloned().unwrap_or(Value::String(String::new()))),
+                    _ => Err(RuntimeError::new("http_request_body: argument must be a request map".to_string())),
+                }
+            }
+            "http_serve" => {
+                // http_serve requires an executor to call the handler; without one it errors.
+                Err(RuntimeError::new(
+                    "http_serve: handler callback requires VM context. \
+                     Call http_serve via the standard VM dispatch path.".to_string()
+                ))
             }
             "websocket_connect" => {
                 Err(RuntimeError::new(
@@ -488,6 +545,53 @@ impl NetLib {
         rt.block_on(Self::http_patch_async(url, body, headers))
     }
 
+    // ── Non-blocking Future helpers ─────────────────────────────────────────
+
+    fn http_get_future(url: String) -> Value {
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+        std::thread::spawn(move || {
+            let result = Self::http_get_sync(&url);
+            sender.send(result.map_err(|e| e.to_string()));
+        });
+        Value::Future(handle)
+    }
+
+    fn http_post_future(url: String, body: String, headers: Option<HashMap<String, Value>>) -> Value {
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+        std::thread::spawn(move || {
+            let result = Self::http_post_sync(&url, &body, headers.as_ref());
+            sender.send(result.map_err(|e| e.to_string()));
+        });
+        Value::Future(handle)
+    }
+
+    fn http_put_future(url: String, body: String, headers: Option<HashMap<String, Value>>) -> Value {
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+        std::thread::spawn(move || {
+            let result = Self::http_put_sync(&url, &body, headers.as_ref());
+            sender.send(result.map_err(|e| e.to_string()));
+        });
+        Value::Future(handle)
+    }
+
+    fn http_delete_future(url: String, headers: Option<HashMap<String, Value>>) -> Value {
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+        std::thread::spawn(move || {
+            let result = Self::http_delete_sync(&url, headers.as_ref());
+            sender.send(result.map_err(|e| e.to_string()));
+        });
+        Value::Future(handle)
+    }
+
+    fn http_patch_future(url: String, body: String, headers: Option<HashMap<String, Value>>) -> Value {
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+        std::thread::spawn(move || {
+            let result = Self::http_patch_sync(&url, &body, headers.as_ref());
+            sender.send(result.map_err(|e| e.to_string()));
+        });
+        Value::Future(handle)
+    }
+
     async fn http_headers_async(url: &str) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -648,5 +752,127 @@ impl NetLib {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
         rt.block_on(Self::resolve_dns_async(domain))
+    }
+
+    /// Start a blocking HTTP/1.1 server on `port`.
+    ///
+    /// For each request, calls `handler_fn` via `executor` with a request map:
+    /// `{method, path, body, headers}`.
+    /// The handler should return a map `{status, body, headers?}` or a string.
+    pub fn serve_with_executor<E: crate::stdlib::function_executor::FunctionExecutor>(
+        args: &[Value],
+        executor: &mut E,
+        permission_checker: Option<&dyn crate::stdlib::permission_checker::PermissionChecker>,
+    ) -> Result<Value, RuntimeError> {
+        if args.len() != 2 {
+            return Err(RuntimeError::new("http_serve requires 2 arguments (port, handler)".to_string()));
+        }
+        let port = match &args[0] {
+            Value::Integer(p) => *p as u16,
+            Value::Float(f) => *f as u16,
+            _ => return Err(RuntimeError::new("http_serve: port must be an integer".to_string())),
+        };
+        let handler_fn = args[1].clone();
+
+        if let Some(checker) = permission_checker {
+            checker.check_permission(
+                &crate::runtime::permissions::PermissionResource::Network("bind".to_string()),
+                Some(&format!("0.0.0.0:{}", port)),
+            )?;
+        }
+
+        let listener = std::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+            .map_err(|e| RuntimeError::new(format!("http_serve: cannot bind to port {}: {}", port, e)))?;
+
+        for stream_result in listener.incoming() {
+            let mut stream = match stream_result {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            // Parse HTTP/1.1 request
+            let request_map = match Self::parse_http_request(&mut stream) {
+                Ok(req) => req,
+                Err(_) => continue,
+            };
+            // Call the handler
+            let response_val = executor.call_function_value(&handler_fn, &[Value::Map(request_map)])?;
+            // Write the HTTP response
+            let _ = Self::write_http_response(&mut stream, response_val);
+        }
+        Ok(Value::Null)
+    }
+
+    fn parse_http_request(stream: &mut std::net::TcpStream) -> Result<HashMap<String, Value>, RuntimeError> {
+        use std::io::{BufRead, BufReader, Read};
+        let mut reader = BufReader::new(stream.try_clone().map_err(|e| RuntimeError::new(e.to_string()))?);
+
+        // Read request line
+        let mut request_line = String::new();
+        reader.read_line(&mut request_line).map_err(|e| RuntimeError::new(e.to_string()))?;
+        let parts: Vec<&str> = request_line.trim().splitn(3, ' ').collect();
+        let method = parts.get(0).copied().unwrap_or("GET").to_string();
+        let path = parts.get(1).copied().unwrap_or("/").to_string();
+
+        // Read headers
+        let mut headers: HashMap<String, Value> = HashMap::new();
+        let mut content_length: usize = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).map_err(|e| RuntimeError::new(e.to_string()))?;
+            let trimmed = line.trim();
+            if trimmed.is_empty() { break; }
+            if let Some(colon_pos) = trimmed.find(':') {
+                let key = trimmed[..colon_pos].trim().to_lowercase();
+                let val = trimmed[colon_pos + 1..].trim().to_string();
+                if key == "content-length" {
+                    content_length = val.parse().unwrap_or(0);
+                }
+                headers.insert(key, Value::String(val));
+            }
+        }
+
+        // Read body
+        let body = if content_length > 0 {
+            let mut buf = vec![0u8; content_length];
+            reader.read_exact(&mut buf).map_err(|e| RuntimeError::new(e.to_string()))?;
+            String::from_utf8_lossy(&buf).to_string()
+        } else {
+            String::new()
+        };
+
+        let mut req = HashMap::new();
+        req.insert("method".to_string(), Value::String(method));
+        req.insert("path".to_string(), Value::String(path));
+        req.insert("body".to_string(), Value::String(body));
+        req.insert("headers".to_string(), Value::Map(headers));
+        Ok(req)
+    }
+
+    fn write_http_response(stream: &mut std::net::TcpStream, response: Value) -> std::io::Result<()> {
+        use std::io::Write;
+        let (status, body, extra_headers) = match response {
+            Value::Map(ref m) => {
+                let status = m.get("status").and_then(|v| if let Value::Integer(n) = v { Some(*n as u16) } else { None }).unwrap_or(200);
+                let body = m.get("body").map(|v| match v { Value::String(s) => s.clone(), other => other.to_string() }).unwrap_or_default();
+                let headers: Vec<String> = m.get("headers").and_then(|v| if let Value::Map(h) = v { Some(h) } else { None })
+                    .map(|h| h.iter().map(|(k, v)| format!("{}: {}", k, v)).collect())
+                    .unwrap_or_default();
+                (status, body, headers)
+            }
+            Value::String(s) => (200, s, vec![]),
+            _ => (200, response.to_string(), vec![]),
+        };
+        let status_text = match status {
+            200 => "OK", 201 => "Created", 204 => "No Content",
+            400 => "Bad Request", 401 => "Unauthorized", 403 => "Forbidden",
+            404 => "Not Found", 500 => "Internal Server Error",
+            _ => "OK",
+        };
+        write!(stream, "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nContent-Type: text/plain\r\nConnection: close\r\n",
+            status, status_text, body.len())?;
+        for h in &extra_headers {
+            write!(stream, "{}\r\n", h)?;
+        }
+        write!(stream, "\r\n{}", body)
     }
 }

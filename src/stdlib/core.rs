@@ -46,9 +46,11 @@ impl CoreLib {
                         Value::Set(_) => "set",
                         Value::Function(_, _, _, _) => "function",
                         Value::Struct(_, _) => "struct",
-                        Value::Enum(_, _) => "enum",
+                        Value::Enum(_, _, _) => "enum",
                         Value::Result(_, _) => "result",
                         Value::Future(_) => "future",
+                        Value::FunctionRef(_) => "function_ref",
+                        Value::Bytes(_) => "bytes",
                     };
                     Ok(Value::String(type_name.to_string()))
                 } else {
@@ -1406,7 +1408,7 @@ impl CoreLib {
             }
 
             // CSV encode/decode
-            "csv_encode" => {
+            "csv_to_string" | "csv_encode" => {
                 if args.len() != 1 {
                     return Err(RuntimeError::new(
                         "csv_encode requires 1 argument (rows: array of arrays)".to_string(),

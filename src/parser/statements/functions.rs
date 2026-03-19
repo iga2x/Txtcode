@@ -168,8 +168,33 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
             }
 
             // 1. Check for variadic ... (must be before parameter name)
+            // Supports both: single Spread token (...) and three consecutive Dot tokens
             let mut is_variadic = false;
-            if parser.check(crate::lexer::token::TokenKind::Dot) {
+            if parser.check(crate::lexer::token::TokenKind::Spread) {
+                // Single Spread token (... lexed as one token)
+                parser.advance();
+                is_variadic = true;
+                seen_variadic = true;
+                // Skip whitespace after ...
+                while !parser.is_at_end()
+                    && (parser.peek().kind == crate::lexer::token::TokenKind::Newline
+                        || parser.peek().kind == crate::lexer::token::TokenKind::Whitespace)
+                {
+                    parser.advance();
+                }
+            } else if parser.check(crate::lexer::token::TokenKind::Star) {
+                // * prefix for variadic (Python-style): *args
+                parser.advance();
+                is_variadic = true;
+                seen_variadic = true;
+                // Skip whitespace after *
+                while !parser.is_at_end()
+                    && (parser.peek().kind == crate::lexer::token::TokenKind::Newline
+                        || parser.peek().kind == crate::lexer::token::TokenKind::Whitespace)
+                {
+                    parser.advance();
+                }
+            } else if parser.check(crate::lexer::token::TokenKind::Dot) {
                 // Check if we have three consecutive dots
                 if parser.position + 2 < parser.tokens.len()
                     && parser.tokens[parser.position].kind == crate::lexer::token::TokenKind::Dot

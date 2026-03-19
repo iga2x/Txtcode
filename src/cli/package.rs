@@ -18,10 +18,16 @@ use tar::Archive;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RegistryVersionEntry {
     /// URL of the `.tar.gz` tarball to download.
+    #[serde(default)]
     pub url: String,
     /// Expected SHA-256 hex digest of the tarball (empty = checksum not yet published).
     #[serde(default)]
     pub sha256: String,
+    /// Optional local filesystem path to a package directory.
+    /// When set, the package is installed by copying files directly (no tarball needed).
+    /// Relative paths are resolved from the registry index file's directory.
+    #[serde(default)]
+    pub local_path: String,
     /// Packages that this version depends on (`name` → `version_constraint`).
     #[serde(default)]
     pub dependencies: HashMap<String, String>,
@@ -377,9 +383,26 @@ impl PackageRegistry {
             )
         })?;
 
+        // 1. local_path install — no network required, no tarball
+        if !ver_entry.local_path.is_empty() {
+            let resolved = {
+                let p = Path::new(&ver_entry.local_path);
+                if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    // Resolve relative to the working directory
+                    std::env::current_dir()
+                        .unwrap_or_else(|_| PathBuf::from("."))
+                        .join(p)
+                }
+            };
+            install_local_package(&resolved.to_string_lossy())?;
+            return Ok(true);
+        }
+
         if ver_entry.url.is_empty() {
             return Err(format!(
-                "Package '{}@{}' has no download URL in the registry. \
+                "Package '{}@{}' has no download URL or local_path in the registry. \
                  Use `txtcode package install-local <path>` instead.",
                 name, version
             )

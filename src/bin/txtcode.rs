@@ -10,6 +10,7 @@ use txtcode::cli::env as env_cli;
 use txtcode::cli::format as format_cli;
 use txtcode::cli::init;
 use txtcode::cli::lint as lint_cli;
+use txtcode::cli::lsp;
 use txtcode::cli::package;
 use txtcode::cli::repl as repl_cli;
 use txtcode::cli::run as run_cli;
@@ -188,6 +189,8 @@ pub enum Commands {
     },
     /// Check environment health
     Doctor,
+    /// Start the Language Server Protocol (LSP) server on stdin/stdout
+    Lsp,
     /// Run tests
     Test {
         /// Path to test directory or file (default: tests/)
@@ -650,6 +653,12 @@ pub fn main() {
                 }
                 Commands::Doctor => {
                     doctor::run_doctor();
+                }
+                Commands::Lsp => {
+                    if let Err(e) = lsp::run() {
+                        eprintln!("LSP error: {}", e);
+                        std::process::exit(1);
+                    }
                 }
                 Commands::Test {
                     path,

@@ -13,8 +13,11 @@ Txtcode is a **deterministic cyber orchestration DSL** — a policy-enforced exe
 - **Execution Transparency** — Full trace logging and replayable execution graphs
 - **Policy Enforcement** — Intent declarations, capability scoping, and rate limiting
 - **AI-Safe Design** — Structured error output and deterministic execution for AI agents
-- **Developer Tooling** — REPL, formatter, linter, debugger, and execution tracer
-- **Package Manager** — Built-in dependency management via `Txtcode.toml`
+- **Developer Tooling** — REPL, formatter, linter, debugger, LSP server (`txtcode lsp`), TextMate grammar
+- **Package Manager** — 20 core packages, `registry/index.json`, `Txtcode.lock` lockfile
+- **Async/Await** — thread-based `Value::Future`, `await` in both AST and Bytecode VMs
+- **Full Stdlib** — HTTP server/client, datetime (UTC/local), CSV, streaming file I/O, process piping
+- **Performance Documented** — see [docs/performance.md](performance.md) for real benchmark numbers
 
 ---
 
@@ -117,16 +120,26 @@ end
 ```text
 txtcode                        Start REPL (no args)
 txtcode <file>                 Run a file
-txtcode run <file>             Run with AST VM (full policy/audit)
+txtcode run <file>             Run a Txt-code program (full policy/audit)
+  --timeout 30s                Maximum execution time
+  --sandbox                    Deny all fs writes, network, exec
+  --allow-fs PATH              Permit filesystem access under PATH
+  --allow-net HOST             Permit network access to HOST
+  --type-check / --strict-types  Static type checker (advisory / hard errors)
+  --permissions-report         List privileged calls without running
 txtcode repl                   Start interactive shell
-txtcode compile <file> [opts]  Compile to bytecode (.txtc)
-txtcode format <paths>         Format source files
+txtcode compile <file>         Compile to bytecode (.txtc)
+txtcode lsp                    Start LSP server on stdin/stdout
+txtcode format <paths>         Format source files (--write for in-place)
 txtcode lint <paths>           Run static analysis
 txtcode debug <file>           Launch interactive debugger
-txtcode test [path]            Run tests
+txtcode test [path]            Run tests (default: tests/)
 txtcode bench <file>           Benchmark a program
 txtcode doctor                 Check environment setup
 txtcode init [name]            Initialize a new project
+txtcode package install        Install dependencies
+txtcode package install-local  Install from local directory
+txtcode package search <query> Search the registry
 ```
 
 > **Engine note:** Both `txtcode run` (AST VM) and compiled `.txtc` files (Bytecode VM) enforce
@@ -142,6 +155,7 @@ txtcode init [name]            Initialize a new project
 - [Syntax Reference](syntax-reference.md)
 - [Permissions Reference](permissions.md)
 - [Security Features](security-features.md)
+- [Performance Baseline](performance.md)
 - [Contributing Guide](contributing.md)
 
 ---

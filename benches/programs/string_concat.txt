@@ -1,0 +1,6 @@
+store → s → ""
+store → i → 0
+while → i < 500
+  store → s → s + "hello"
+  store → i → i + 1
+end

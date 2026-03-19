@@ -1,3 +1,4 @@
+pub mod bytes;
 pub mod capabilities;
 pub mod core;
 pub mod crypto;
@@ -17,6 +18,7 @@ pub mod time;
 pub mod tools;
 pub mod url;
 
+pub use bytes::BytesLib;
 pub use capabilities::{CapabilityExecutor, CapabilityLib};
 pub use core::CoreLib;
 pub use crypto::CryptoLib;
@@ -193,7 +195,8 @@ impl StdLib {
             || name == "base32_decode"
             || name == "html_escape"
             || name.starts_with("toml_")
-            || name.starts_with("csv_")
+            || (name.starts_with("csv_") && name != "csv_write")
+            || name == "csv_to_string"
             || name == "xml_decode"
             || name == "xml_parse"
             || name.starts_with("yaml_")
@@ -221,6 +224,22 @@ impl StdLib {
             || name == "rsa_verify"
         {
             CryptoLib::call_function(name, args, seed_override)
+        } else if name == "http_serve" {
+            #[cfg(feature = "net")]
+            {
+                if let Some(exec) = executor {
+                    return crate::stdlib::net::NetLib::serve_with_executor(
+                        args, exec, effective_permission_checker,
+                    );
+                }
+                return Err(crate::runtime::RuntimeError::new(
+                    "http_serve: requires an executor context (call from within VM)".to_string(),
+                ));
+            }
+            #[cfg(not(feature = "net"))]
+            return Err(crate::runtime::RuntimeError::new(
+                "http_serve requires the 'net' feature. Rebuild with: cargo build --features net".to_string(),
+            ))
         } else if name.starts_with("http")
             || name.starts_with("tcp")
             || name == "udp_send"
@@ -252,6 +271,7 @@ impl StdLib {
             || name == "symlink_create"
             || name == "zip_create"
             || name == "zip_extract"
+            || name == "csv_write"
         {
             IOLib::call_function(name, args, effective_permission_checker)
         } else if name == "getenv"
@@ -268,6 +288,7 @@ impl StdLib {
             || name == "env_list"
             || name == "signal_send"
             || name == "pipe_exec"
+            || name == "exec_pipe"
             || name == "which"
             || name == "is_root"
             || name == "cpu_count"
@@ -296,6 +317,12 @@ impl StdLib {
             || name == "time_format"
             || name == "parse_time"
             || name == "time_parse"
+            || name == "now_utc"
+            || name == "now_local"
+            || name == "parse_datetime"
+            || name == "format_datetime"
+            || name == "datetime_add"
+            || name == "datetime_diff"
         {
             TimeLib::call_function(name, args, time_override)
         } else if name == "chdir"
@@ -329,6 +356,8 @@ impl StdLib {
                 "Capability function '{}' requires VM executor. Use grant_capability() etc. from VM context.",
                 name
             )))
+        } else if name.starts_with("bytes_") {
+            BytesLib::call_function(name, args)
         } else if name == "ffi_load" || name == "ffi_call" || name == "ffi_close" {
             #[cfg(feature = "ffi")]
             return FfiLib::call_function(name, args);

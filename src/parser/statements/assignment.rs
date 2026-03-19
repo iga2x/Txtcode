@@ -78,12 +78,30 @@ pub fn parse_store(parser: &mut Parser) -> Result<Option<Statement>, String> {
 
     // Parse pattern (identifier, array, or struct)
     let pattern = parser.parse_pattern()?;
+
+    // Optional type annotation: store → x: int → value
+    let type_annotation = if parser.check(crate::lexer::token::TokenKind::Colon) {
+        parser.advance(); // consume ':'
+        // Skip optional whitespace after ':'
+        while !parser.is_at_end()
+            && matches!(
+                parser.peek().kind,
+                crate::lexer::token::TokenKind::Whitespace
+            )
+        {
+            parser.advance();
+        }
+        Some(parser.parse_type(&[])?)
+    } else {
+        None
+    };
+
     parser.skip_optional_arrow(); // Optional arrow before value
     let value = parser.parse_expression()?;
     let span = token_span_to_ast_span(&start_token);
     Ok(Some(Statement::Assignment {
         pattern,
-        type_annotation: None,
+        type_annotation,
         value,
         span,
     }))

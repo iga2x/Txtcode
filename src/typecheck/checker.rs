@@ -314,6 +314,8 @@ impl TypeChecker {
             Type::Future(inner) => format!("Future[{}]", self.type_to_string(inner)),
             Type::Identifier(name) => name.clone(),
             Type::Generic(name) => format!("<{}>", name),
+            Type::Nullable(inner) => format!("{}?", self.type_to_string(inner)),
+            Type::Null => "null".to_string(),
         }
     }
 }

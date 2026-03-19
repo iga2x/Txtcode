@@ -1,4 +1,4 @@
-# Txt-code Programming Language v0.4.1
+# Txt-code Programming Language v0.5.0
 
 **Txt-code** © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.
 
@@ -15,8 +15,11 @@ Txtcode is a **deterministic cyber orchestration DSL** — a policy-enforced exe
 - **Execution Transparency** — Full trace logging and replayable execution graphs
 - **Policy Enforcement** — Intent declarations, capability scoping, and rate limiting
 - **AI-Safe Design** — Structured error output and deterministic execution for AI agents
-- **Developer Tooling** — REPL, formatter, linter, debugger, and execution tracer
-- **Package Manager** — Built-in dependency management via `Txtcode.toml`
+- **Developer Tooling** — REPL, formatter, linter, debugger, LSP server, TextMate grammar
+- **Package Manager** — 20 core packages, `registry/index.json`, lockfile (`Txtcode.lock`)
+- **Async/Await** — `async define` + `await` with thread-based `Value::Future`
+- **Full Stdlib** — HTTP server/client, datetime, CSV, streaming file I/O, process piping
+- **Performance Baseline** — Documented benchmarks; see `docs/performance.md`
 
 ---
 
@@ -96,17 +99,16 @@ txtcode self info           # shows binary path, data size, project environments
 # Run a Txt-code program
 txtcode examples/hello.tc
 # or explicitly:
-# txtcode run examples/hello.tc
+txtcode run examples/hello.tc
 
 # Start interactive REPL
 txtcode repl
 
 # Compile to bytecode
 txtcode compile examples/hello.tc -o hello.txtc
-# (Experimental / planned) Compile to native or WASM:
-# native and WASM backends are not enabled in v0.4 builds yet.
-# Future versions will support:
-# txtcode compile examples/hello.txt -t native -o hello
+
+# Start LSP server (for editor integration)
+txtcode lsp
 ```
 
 ---
@@ -117,12 +119,19 @@ txtcode compile examples/hello.tc -o hello.txtc
 # Core execution
 txtcode                        Start REPL (no args)
 txtcode <file>                 Run a file (shortcut for txtcode run)
-txtcode run <file>             Run a Txt-code program (with AST VM, full policy/audit)
+txtcode run <file>             Run a Txt-code program (full policy/audit)
+  --timeout 30s                Maximum execution time
+  --sandbox                    Deny all fs writes, network, and exec
+  --allow-fs PATH              Permit filesystem access under PATH
+  --allow-net HOST             Permit network access to HOST
+  --type-check                 Run static type checker before execution
+  --strict-types               Treat type errors as hard errors
+  --permissions-report         List privileged calls without running
 txtcode repl                   Start interactive shell
 
-# Compilation
+# Compilation & execution
 txtcode compile <file> [opts]  Compile to bytecode (.txtc)
-                               Note: emits bytecode only; native/WASM backends are planned.
+txtcode inspect <file>         Disassemble a bytecode file
 
 # Formatting & linting
 txtcode format <paths> [--write]  Format source files (in-place with --write)
@@ -131,12 +140,18 @@ txtcode lint <paths>              Run static analysis
 # Debugging
 txtcode debug <file>           Launch interactive debugger with breakpoints
 
+# Language server
+txtcode lsp                    Start LSP server on stdin/stdout (for editors)
+
 # Packages
 txtcode package init <name>    Initialize Txtcode.toml
 txtcode package add <lib>      Add a dependency
-txtcode package install        Install all dependencies
+txtcode package install        Install all dependencies from registry/lockfile
+txtcode package install-local <path>  Install a local package directory
 txtcode package update         Update dependencies
-txtcode package list           List dependencies
+txtcode package list           List installed dependencies
+txtcode package search <query> Search the package registry
+txtcode package info <name>    Show package details
 
 # Projects & maintenance
 txtcode init [name]            Initialize a new project scaffold
@@ -144,7 +159,7 @@ txtcode test [path]            Run tests (default: tests/)
 txtcode doc [files]            Generate docs (default: src → docs/api)
 txtcode bench <file>           Benchmark a program
 txtcode doctor                 Check environment and ~/.txtcode setup
-txtcode migrate [...]          Migrate code between Txt-code versions (dry-run by default)
+txtcode migrate [...]          Migrate code between Txt-code versions
 ```
 
 ### CLI behavior
@@ -334,7 +349,9 @@ make clean          # remove build artefacts
 - [Quick Start Guide](docs/quick-start.md)
 - [Language Specification](docs/language-spec.md)
 - [Syntax Reference](docs/syntax-reference.md)
+- [Permissions Reference](docs/permissions.md)
 - [Security Features](docs/security-features.md)
+- [Performance Baseline](docs/performance.md)
 - [Contributing Guide](docs/contributing.md)
 
 ---

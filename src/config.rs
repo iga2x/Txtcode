@@ -424,6 +424,10 @@ impl Default for CompilerConfig {
     }
 }
 
+fn default_max_call_depth() -> usize {
+    crate::runtime::errors::MAX_CALL_DEPTH
+}
+
 /// Runtime configuration section
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RuntimeConfig {
@@ -435,6 +439,11 @@ pub struct RuntimeConfig {
     pub debug: bool,
     #[serde(default)]
     pub verbose: bool,
+    /// Maximum call stack depth before raising a recursion error.
+    /// Defaults to MAX_CALL_DEPTH (500). Override via config file or
+    /// `--max-call-depth` CLI flag.
+    #[serde(default = "default_max_call_depth")]
+    pub max_call_depth: usize,
 }
 
 /// Package configuration section

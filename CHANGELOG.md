@@ -10,7 +10,52 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **`str_format(template, args...)` / `format(template, args...)`** — `{}` sequential and `{N}` positional placeholder formatting. `str_format("{} + {} = {}", 1, 2, 3)` → `"1 + 2 = 3"`.
+- **`str_format(template, args...)` / `format(template, args...)`**
+
+---
+
+## [0.5.1-dev] — 2026-03-19
+
+All 7 development groups complete. This release covers Groups 4–7 additions on top of v0.5.0.
+
+### Group 4 — Async Runtime
+
+- **`Instruction::Await` in Bytecode VM** — `await expr` resolves `Value::Future` by blocking the calling thread; non-Future values pass through unchanged (JavaScript-style transparent await)
+- **HTTP functions return `Value::Future`** — `http_get`, `http_post`, `http_put`, `http_delete`, `http_patch` now spawn a background OS thread and return a Future immediately; use `await` to block for the result
+- **Async test support** — `txtcode test` now resolves `Value::Future` results automatically so async test functions work without manual `await`
+
+### Group 5 — Standard Library Gaps
+
+- **HTTP server** — `http_serve(port, handler)`, `http_response(status, body, headers)`, `http_request_method(req)`, `http_request_path(req)`, `http_request_body(req)`; implemented with `std::net::TcpListener` (no extra deps)
+- **Timezone-aware datetime** — `now_utc()`, `now_local()`, `parse_datetime(s, fmt)`, `format_datetime(ts, fmt, tz)`, `datetime_add(ts, amount, unit)`, `datetime_diff(ts1, ts2, unit)`; uses `chrono`, supports UTC and local timezone
+- **CSV write** — `csv_write(path, rows)` writes rows to file; `csv_to_string(rows)` returns CSV string (alias for `csv_encode`)
+- **ZIP** — `zip_create` and `zip_extract` verified and covered by integration test
+- **Streaming file I/O** — `file_open(path, mode)` → handle id; `file_read_line(handle)` → string or `null` at EOF; `file_write_line(handle, line)`; `file_close(handle)`. Handles stored in global `lazy_static` `Mutex<HashMap<i64, BufReader/BufWriter>>` registry
+- **Process stdin piping** — `exec(cmd, {stdin: "...", capture_stderr: bool})` accepts options map; `exec_pipe(commands)` creates OS-level pipeline from array of command strings
+
+### Group 6 — Ecosystem
+
+- **LSP server** — `txtcode lsp` starts a synchronous JSON-RPC Language Server Protocol server on stdin/stdout. Supports: `initialize`, `textDocument/didOpen`, `textDocument/didChange` (→ `publishDiagnostics`), `textDocument/completion` (stdlib + keywords), `shutdown/exit`. No `tower-lsp` dependency.
+- **TextMate grammar** — `editors/txtcode.tmLanguage.json` defines scopes for keywords, all string types (`f"..."`, `r"..."`, `"""..."""`), comments, numbers (hex/bin/float/int), operators (`→`, `|>`, `?.`, `?[]`), function definitions and calls, type annotations. `editors/txtcode-language-configuration.json` provides bracket matching and indent rules for VS Code.
+- **Package registry** — `registry/index.json` with all 20 packages. New `local_path` field on `RegistryVersionEntry` allows installing directly from local directory (no tarball needed). `TXTCODE_REGISTRY_INDEX_FILE` env var for offline override already existed.
+- **Lockfile** — `Txtcode.lock` written by `install_dependencies`, pinned on re-install, removed on `update` (already existed; verified).
+- **20 core packages** — All packages installable via `txtcode package install <name>`:
+  - Pre-existing: `npl-math`, `npl-strings`, `npl-collections`, `npl-datetime`
+  - New: `npl-http-client`, `npl-http-server`, `npl-json-schema`, `npl-csv`, `npl-env`, `npl-template`, `npl-semver`, `npl-base64`, `npl-uuid`, `npl-retry`, `npl-assert`, `npl-cli-args`, `npl-colors`, `npl-table`, `npl-hash`, `npl-path`
+
+### Group 7 — Performance Baseline
+
+- **`docs/performance.md`** — real benchmark results from `cargo bench` (Criterion.rs): lexer ~2 µs, parser ~9 µs, loop×1000 ~327 µs, fib(20) ~50 ms, array_ops×100 ~138 µs, string_concat×500 ~282 µs, json_ops×100 ~318 µs, gc_alloc×10k ~5.76 ms. Includes scaling estimates and roadmap.
+- **New benchmarks** — 5 new benchmark programs (`fib_ast.txt`, `array_ops.txt`, `string_concat.txt`, `json_ops.txt`, `gc_alloc.txt`) + 7 new criterion bench functions covering all major operations, including AST-vs-bytecode comparison
+- **GC documentation** — `src/runtime/gc.rs` has comprehensive module-level doc comment explaining: RAII model, what `collect()` actually does (counter reset only, no sweep), measured allocation overhead, future arena allocator plan
+- **Bytecode-only production path** — v0.6 plan (bytecode VM as default), v0.8 plan (`txtcode exec .txtc` bytecode-only execution), AST VM deprecation timeline documented in `docs/dev-plan.md`
+
+### Fixed
+
+- `csv_write` routing: was swallowed by `csv_` prefix → CoreLib; fixed with explicit exclusion in `src/stdlib/mod.rs`
+- `csv_write` permission: now uses `FileSystem("write")` matching the pattern used by `write_file`
+- `file_open` permission: uses `FileSystem("read")` or `FileSystem("write")` instead of path string
+- Unused `Read` import removed from `src/cli/lsp.rs` — `{}` sequential and `{N}` positional placeholder formatting. `str_format("{} + {} = {}", 1, 2, 3)` → `"1 + 2 = 3"`.
 - **`str_repeat(s, n)`** — repeat a string n times.
 - **`str_contains(s, substr)`** — boolean membership test (cleaner than `indexOf() != -1`).
 - **`str_chars(s)`** — split a string into an array of single-character strings.

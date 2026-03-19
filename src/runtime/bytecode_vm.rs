@@ -811,7 +811,7 @@ impl BytecodeVM {
                 }
 
                 // Recursion depth guard (matches AST VM limit of 50)
-                const MAX_CALL_DEPTH: usize = 50;
+                const MAX_CALL_DEPTH: usize = crate::runtime::errors::MAX_CALL_DEPTH;
                 if self.call_stack.len() >= MAX_CALL_DEPTH {
                     return Err(RuntimeError::new(format!(
                         "Maximum call stack depth ({}) exceeded — possible infinite recursion in '{}'",
@@ -883,9 +883,12 @@ impl BytecodeVM {
                 // inline using call_lambda_inline rather than delegating to stdlib,
                 // which cannot re-enter the bytecode VM.
                 if matches!(name.as_str(), "map" | "filter" | "reduce" | "find") {
-                    // Lambda is always args[1] for these HOFs
+                    // Lambda is always args[1] for these HOFs.
+                    // Match on Value::FunctionRef (not Value::String) so that a
+                    // plain string value like "map" can never accidentally trigger
+                    // function dispatch.
                     let lambda_opt = args.get(1).and_then(|v| match v {
-                        Value::String(s) if self.functions.contains_key(s.as_str()) => {
+                        Value::FunctionRef(s) if self.functions.contains_key(s.as_str()) => {
                             Some(s.clone())
                         }
                         _ => None,
@@ -1275,7 +1278,7 @@ impl BytecodeVM {
                     Value::Set(_) => "set",
                     Value::Function(_, _, _, _) => "function",
                     Value::Struct(_, _) => "struct",
-                    Value::Enum(_, _) => "enum",
+                    Value::Enum(_, _, _) => "enum",
                     Value::Result(_, _) => "result",
                 };
                 self.stack.push(Value::String(type_name.to_string()));
@@ -1352,7 +1355,7 @@ impl BytecodeVM {
                         if let Some((params, start_ip)) =
                             self.functions.get(func_name.as_str()).cloned()
                         {
-                            const MAX_CALL_DEPTH: usize = 50;
+                            const MAX_CALL_DEPTH: usize = crate::runtime::errors::MAX_CALL_DEPTH;
                             if self.call_stack.len() >= MAX_CALL_DEPTH {
                                 return Err(RuntimeError::new(format!(
                                     "Maximum call stack depth ({}) exceeded",
@@ -1583,7 +1586,7 @@ impl BytecodeVM {
                     }
                 };
                 if let Some((params, start_ip)) = self.functions.get(func_name.as_str()).cloned() {
-                    const MAX_CALL_DEPTH: usize = 50;
+                    const MAX_CALL_DEPTH: usize = crate::runtime::errors::MAX_CALL_DEPTH;
                     if self.call_stack.len() >= MAX_CALL_DEPTH {
                         return Err(RuntimeError::new(format!(
                             "Maximum call stack depth ({}) exceeded",
@@ -1659,6 +1662,23 @@ impl BytecodeVM {
                 let obj = self.pop_value()?;
                 let result = self.dispatch_method(obj, method, &args)?;
                 self.stack.push(result);
+            }
+
+            // ── Async / await ─────────────────────────────────────────────────
+            Instruction::Await => {
+                let val = self.pop_value()?;
+                match val {
+                    Value::Future(handle) => {
+                        let result = handle
+                            .resolve()
+                            .map_err(RuntimeError::new)?;
+                        self.stack.push(result);
+                    }
+                    other => {
+                        // await on a non-future is a transparent no-op (JS semantics)
+                        self.stack.push(other);
+                    }
+                }
             }
 
             // ── Try-catch support ─────────────────────────────────────────────
@@ -2234,6 +2254,7 @@ impl BytecodeVM {
             Constant::String(s) => Value::String(s.clone()),
             Constant::Boolean(b) => Value::Boolean(*b),
             Constant::Null => Value::Null,
+            Constant::FunctionRef(s) => Value::FunctionRef(s.clone()),
         }
     }
 

@@ -189,14 +189,30 @@ fn test_bytecode_compound_mul() {
 }
 
 // ---------------------------------------------------------------------------
-// Await (synchronous passthrough in bytecode VM)
+// Await — bytecode VM now emits Instruction::Await
 // ---------------------------------------------------------------------------
 
 #[test]
 fn test_bytecode_await_passthrough() {
-    // await just evaluates expression synchronously
+    // await on a non-future is a transparent no-op (JS semantics)
     let val = run_ok("return → await 123");
     assert_eq!(val, Value::Integer(123));
+}
+
+#[test]
+fn test_bytecode_await_resolves_future() {
+    // async user function returns Value::Future in the AST VM; in the bytecode
+    // VM the function runs synchronously and returns its value directly.
+    // `await` on the result is a no-op and the value passes through.
+    let val = run_ok(
+        r#"
+async define → double → (x)
+  return → x * 2
+end
+return → await double(21)
+"#,
+    );
+    assert_eq!(val, Value::Integer(42));
 }
 
 // ---------------------------------------------------------------------------
@@ -671,7 +687,7 @@ return → 5 |> double
 
 #[test]
 fn test_bytecode_call_depth_limit() {
-    // Recursive function should hit call depth limit at 50, not 100
+    // Recursive function should hit call depth limit before Rust stack overflows
     let result = compile_and_run(
         r#"
 define → recurse → (n)

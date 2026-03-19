@@ -103,11 +103,18 @@ pub enum Value {
         HashMap<String, Value>,
     ), // name, params, body, captured_env
     Struct(String, HashMap<String, Value>),
-    Enum(String, String),     // enum_name, variant_name
+    Enum(String, String, Option<Box<Value>>), // enum_name, variant_name, optional payload
     Result(bool, Box<Value>), // true = Ok(inner), false = Err(inner)
     /// An asynchronously executing task.  Created by calling an `async` function;
     /// resolved by `await`-ing it to block until the task completes.
     Future(FutureHandle),
+    /// A reference to a compiled bytecode function by name.
+    /// Used exclusively by the bytecode compiler to represent lambda values
+    /// on the stack, so HOF dispatch can distinguish function references from
+    /// plain strings without risking accidental mis-dispatch.
+    FunctionRef(String),
+    /// Raw byte buffer, e.g. from reading binary files or `bytes_from_hex`.
+    Bytes(Vec<u8>),
 }
 
 impl std::fmt::Display for Value {
@@ -140,8 +147,16 @@ impl std::fmt::Display for Value {
                 let field_strs: Vec<String> = pairs.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "{}({})", name, field_strs.join(", "))
             }
-            Value::Enum(name, variant) => write!(f, "{}.{}", name, variant),
+            Value::Enum(name, variant, payload) => {
+                if let Some(inner) = payload {
+                    write!(f, "{}.{}({})", name, variant, inner)
+                } else {
+                    write!(f, "{}.{}", name, variant)
+                }
+            }
             Value::Future(_) => write!(f, "<future>"),
+            Value::FunctionRef(name) => write!(f, "<fn:{}>", name),
+            Value::Bytes(b) => write!(f, "<bytes:{}>", b.len()),
             Value::Result(ok, inner) => {
                 if *ok {
                     write!(f, "Ok({})", inner)
@@ -174,9 +189,11 @@ impl Value {
             Value::Set(_) => "set",
             Value::Function(_, _, _, _) => "function",
             Value::Struct(_, _) => "struct",
-            Value::Enum(_, _) => "enum",
+            Value::Enum(_, _, _) => "enum",
             Value::Result(_, _) => "result",
             Value::Future(_) => "future",
+            Value::FunctionRef(_) => "function_ref",
+            Value::Bytes(_) => "bytes",
         }
     }
 }
