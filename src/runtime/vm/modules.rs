@@ -47,60 +47,80 @@ impl VirtualMachine {
         // Add to import stack
         self.import_stack.push(module_path.clone());
 
-        // Load and execute module
+        // Load module AST (cached after first load)
         let module_program = self.module_resolver.load_module(&module_path)?;
 
-        // Create a new scope for the module
-        self.push_scope();
+        // ── Namespace isolation ────────────────────────────────────────────────
+        // Snapshot the caller's globals BEFORE running the module.
+        // After execution we restore this snapshot so the module cannot pollute
+        // the caller's global namespace (e.g. define → foo writes to globals).
+        let pre_globals: HashMap<String, Value> = self.scope_manager.globals().clone();
 
-        // Clear exported symbols for this module
+        // Clear exported symbols for this module's execution
         self.exported_symbols.clear();
 
-        // Execute module statements to populate its namespace
-        for stmt in &module_program.statements {
-            self.execute_statement(stmt)?;
-        }
+        // Push an isolated scope for the module
+        self.push_scope();
 
-        // Collect exported items (functions, variables) from the module scope
-        let module_scope = self
+        // Execute module statements to populate its namespace
+        let exec_result = (|| -> Result<(), RuntimeError> {
+            for stmt in &module_program.statements {
+                self.execute_statement(stmt)?;
+            }
+            Ok(())
+        })();
+
+        // Collect the module's top scope (local vars, structs, enums) BEFORE popping
+        let module_scope: HashMap<String, Value> = self
             .scope_manager
             .scopes()
             .last()
-            .ok_or_else(|| self.create_error("Module scope not found".to_string()))?;
+            .map(|s| s.clone())
+            .unwrap_or_default();
 
-        // Create module namespace (Map of exported items)
+        // Collect delta: symbols added to globals during module execution (functions, etc.)
+        let post_globals = self.scope_manager.globals().clone();
+        let delta_globals: HashMap<String, Value> = post_globals
+            .into_iter()
+            .filter(|(k, _)| !pre_globals.contains_key(k))
+            .collect();
+
+        // Build module namespace from scope + delta globals, respecting export declarations
         let mut module_namespace = HashMap::new();
-
-        // If there are explicit exports, only export those
         let has_explicit_exports = !self.exported_symbols.is_empty();
-
         if has_explicit_exports {
-            // Only export explicitly exported symbols
-            for name in &self.exported_symbols {
-                // Check module scope first
-                if let Some(value) = module_scope.get(name) {
-                    module_namespace.insert(name.clone(), value.clone());
-                } else if let Some(value) = self.scope_manager.globals().get(name) {
-                    // Check globals (for functions)
-                    module_namespace.insert(name.clone(), value.clone());
+            let exported = self.exported_symbols.clone();
+            for name in &exported {
+                if let Some(v) = module_scope.get(name) {
+                    module_namespace.insert(name.clone(), v.clone());
+                } else if let Some(v) = delta_globals.get(name) {
+                    module_namespace.insert(name.clone(), v.clone());
                 }
             }
         } else {
-            // No explicit exports - export everything that doesn't start with "_"
-            // Add items from module scope
-            for (name, value) in module_scope {
-                if !name.starts_with("_") {
-                    module_namespace.insert(name.clone(), value.clone());
+            // No explicit exports — expose everything that doesn't start with "_"
+            for (k, v) in &module_scope {
+                if !k.starts_with('_') {
+                    module_namespace.insert(k.clone(), v.clone());
                 }
             }
-
-            // Also check for items in globals that might have been added during module execution
-            for (name, value) in self.scope_manager.globals() {
-                if !name.starts_with("_") && !module_namespace.contains_key(name) {
-                    module_namespace.insert(name.clone(), value.clone());
+            for (k, v) in &delta_globals {
+                if !k.starts_with('_') && !module_namespace.contains_key(k) {
+                    module_namespace.insert(k.clone(), v.clone());
                 }
             }
         }
+
+        // Pop module scope
+        self.pop_scope();
+
+        // ── Restore caller globals (undo any pollution from the module) ────────
+        *self.scope_manager.globals_mut() = pre_globals;
+
+        self.import_stack.pop();
+
+        // Propagate any execution error AFTER cleanup
+        exec_result?;
 
         // S4: Log successful module import to audit trail
         let _ = self.audit_trail.log_action(
@@ -110,10 +130,6 @@ impl VirtualMachine {
             AuditResult::Allowed,
             if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
         );
-
-        // Pop module scope
-        self.pop_scope();
-        self.import_stack.pop();
 
         // Determine the import name
         let import_name = if let Some(alias_name) = alias {

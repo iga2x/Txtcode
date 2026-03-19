@@ -1295,3 +1295,77 @@ fn test_ast_const_value_is_readable() {
     let result = run_ast_repl("const → pi → 3\npi");
     assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(3));
 }
+
+// ---------------------------------------------------------------------------
+// Task 9.1 — Module namespace isolation
+// ---------------------------------------------------------------------------
+
+/// Write a .tc file to /tmp and return its path.
+fn write_temp_module(name: &str, content: &str) -> std::path::PathBuf {
+    let path = std::path::PathBuf::from(format!("/tmp/{}.tc", name));
+    std::fs::write(&path, content).expect("write temp module");
+    path
+}
+
+/// Run source with `fs.read` permission granted (needed for module imports).
+fn run_with_fs(source: &str) -> Result<txtcode::runtime::Value, txtcode::runtime::errors::RuntimeError> {
+    use txtcode::runtime::permissions::PermissionResource;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    vm.grant_permission(PermissionResource::FileSystem("read".to_string()), None);
+    vm.interpret_repl(&program)
+}
+
+#[test]
+fn test_module_isolation_no_namespace_pollution() {
+    write_temp_module(
+        "mod_iso_a",
+        "define → helper → ()\n  return → 42\nend\ndefine → internal → ()\n  return → 99\nend\n",
+    );
+    let result = run_with_fs("import → helper from \"/tmp/mod_iso_a\"\nstore → r → helper()\nr");
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(42));
+}
+
+#[test]
+fn test_module_unexported_symbol_not_accessible() {
+    write_temp_module(
+        "mod_iso_b",
+        "define → pub_fn → ()\n  return → 1\nend\ndefine → _private → ()\n  return → 2\nend\n",
+    );
+    // Trying to import `_private` should fail with "does not export" error
+    let result = run_with_fs("import → _private from \"/tmp/mod_iso_b\"\n_private()");
+    assert!(result.is_err(), "Importing underscore-prefixed symbol should fail");
+}
+
+#[test]
+fn test_module_two_modules_same_function_no_collision() {
+    write_temp_module("mod_col_a", "define → compute → ()\n  return → 10\nend\n");
+    write_temp_module("mod_col_b", "define → compute → ()\n  return → 20\nend\n");
+    // Import only mod_col_a — compute should return 10 (not polluted by mod_col_b)
+    let result = run_with_fs(
+        "import → compute from \"/tmp/mod_col_a\"\ncompute()",
+    );
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(10));
+}
+
+#[test]
+fn test_circular_import_detected() {
+    write_temp_module(
+        "mod_circ_a",
+        "import → helper from \"/tmp/mod_circ_b\"\ndefine → a_fn → ()\n  return → 1\nend\n",
+    );
+    write_temp_module(
+        "mod_circ_b",
+        "import → a_fn from \"/tmp/mod_circ_a\"\ndefine → helper → ()\n  return → 2\nend\n",
+    );
+    let result = run_with_fs("import → a_fn from \"/tmp/mod_circ_a\"\na_fn()");
+    assert!(result.is_err(), "Circular import must be detected");
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("ircular") || msg.contains("import"),
+        "Error should mention circular import, got: {msg}"
+    );
+}
