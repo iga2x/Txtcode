@@ -19,7 +19,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -630,6 +630,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#audit-findings-summary-what-drove-groups-812" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit Findings Summary (what drove Groups 8–12)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -666,992 +677,1077 @@
 </ul>
 <hr />
 <h2 id="current-position">Current Position</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Group 1: Foundation Stability     [x] COMPLETE (244 tests passing)
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Group 2: Language Completeness    [x] COMPLETE (261 tests passing)
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Group 3: Type Enforcement         [x] COMPLETE (179 tests passing)
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>Group 4: Async Runtime            [x] COMPLETE (179 tests passing)
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>Group 5: Stdlib Gaps              [x] COMPLETE (194 tests passing)
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>Group 6: Ecosystem                [x] COMPLETE (194 tests passing)
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>Group 7: Performance Baseline     [x] COMPLETE (194 tests passing)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Group 1: Foundation Stability          [x] COMPLETE (244 tests passing)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Group 2: Language Completeness         [x] COMPLETE (261 tests passing)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>Group 3: Type Enforcement              [x] COMPLETE (179 tests passing)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>Group 4: Async Runtime                 [x] COMPLETE (179 tests passing)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>Group 5: Stdlib Gaps                   [x] COMPLETE (194 tests passing)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>Group 6: Ecosystem                     [x] COMPLETE (194 tests passing)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>Group 7: Performance Baseline          [x] COMPLETE (194 tests passing)
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>─────────────────────────────────────────────────────────────────────
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>Group 8: Security Correctness          [ ] NEXT — start here
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>Group 9: Module System Overhaul        [ ] blocked by Group 8
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>Group 10: Type System Promotion        [ ] blocked by Group 9
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>Group 11: Developer Experience         [ ] blocked by Group 8 (can parallel 9/10)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>Group 12: Platform &amp; Compilation       [ ] blocked by Groups 9+10
 </code></pre></div>
 <hr />
+<h2 id="audit-findings-summary-what-drove-groups-812">Audit Findings Summary (what drove Groups 8–12)</h2>
+<p>The v0.5.0 senior audit (2026-03-19) found these blocking issues:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Issue</th>
+<th>Severity</th>
+<th>Group</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A1</td>
+<td><code>exec_allowed: true</code> default contradicts "security-first"</td>
+<td>Critical</td>
+<td>8</td>
+</tr>
+<tr>
+<td>A2</td>
+<td><code>const</code> keyword has no runtime enforcement</td>
+<td>Critical</td>
+<td>8</td>
+</tr>
+<tr>
+<td>A3</td>
+<td>Script signing not exposed as CLI flag</td>
+<td>High</td>
+<td>8</td>
+</tr>
+<tr>
+<td>A4</td>
+<td>Module imports pollute caller namespace</td>
+<td>Critical</td>
+<td>9</td>
+</tr>
+<tr>
+<td>A5</td>
+<td>No circular import detection</td>
+<td>High</td>
+<td>9</td>
+</tr>
+<tr>
+<td>A6</td>
+<td>Transitive dep resolution missing</td>
+<td>High</td>
+<td>9</td>
+</tr>
+<tr>
+<td>A7</td>
+<td><code>Txtcode.lock</code> not verified on load</td>
+<td>High</td>
+<td>9</td>
+</tr>
+<tr>
+<td>A8</td>
+<td>Type errors advisory by default — most users never see them</td>
+<td>Critical</td>
+<td>10</td>
+</tr>
+<tr>
+<td>A9</td>
+<td>Generics parse-and-erase — constraints never enforced</td>
+<td>High</td>
+<td>10</td>
+</tr>
+<tr>
+<td>A10</td>
+<td>No pre-built binaries — <code>install.sh</code> requires Rust toolchain</td>
+<td>Critical</td>
+<td>11</td>
+</tr>
+<tr>
+<td>A11</td>
+<td>Debugger not wired to interactive CLI (bytecode addresses only)</td>
+<td>High</td>
+<td>11</td>
+</tr>
+<tr>
+<td>A12</td>
+<td><code>txtcode doc</code> is effectively absent</td>
+<td>Medium</td>
+<td>11</td>
+</tr>
+<tr>
+<td>A13</td>
+<td>LSP missing go-to-definition, hover, rename</td>
+<td>Medium</td>
+<td>11</td>
+</tr>
+<tr>
+<td>A14</td>
+<td>No native/WASM compilation path</td>
+<td>Medium</td>
+<td>12</td>
+</tr>
+<tr>
+<td>A15</td>
+<td>Async uses OS threads — no event loop, no scale</td>
+<td>Medium</td>
+<td>12</td>
+</tr>
+<tr>
+<td>A16</td>
+<td>Struct methods (impl blocks) missing</td>
+<td>Medium</td>
+<td>12</td>
+</tr>
+<tr>
+<td>A17</td>
+<td><code>ffi_load</code> allows any path — no allowlist</td>
+<td>High</td>
+<td>8</td>
+</tr>
+<tr>
+<td>A18</td>
+<td>HashMap iteration order non-deterministic — breaks "determinism" claim</td>
+<td>Medium</td>
+<td>9</td>
+</tr>
+</tbody>
+</table>
 <hr />
-<h1 id="group-1-foundation-stability">GROUP 1 — Foundation Stability</h1>
-<p><strong>Goal:</strong> Fix correctness bugs and silent failures before adding anything new.
+<hr />
+<h1 id="groups-17-complete-v04-v050">GROUPS 1–7 — COMPLETE (v0.4 → v0.5.0)</h1>
+<blockquote>
+<p>All tasks in Groups 1–7 are <code>[x]</code>. See git history for implementation details.
+Groups 1–7 delivered: lexer, parser, AST VM, bytecode VM, 6-layer security pipeline,
+100+ stdlib functions, 20 packages, LSP server, TextMate grammar, performance docs.</p>
+</blockquote>
+<hr />
+<hr />
+<h1 id="group-8-security-correctness">GROUP 8 — Security Correctness</h1>
+<p><strong>Goal:</strong> Every security claim in the README and docs is actually true in the code.
 <strong>Unblocked by:</strong> Nothing — start here.
-<strong>Output:</strong> Correct, debuggable runtime with no silent wrong behavior.</p>
+<strong>Output:</strong> Default-deny exec; const enforced; signing as CLI flag; FFI path guard.
+<strong>Target version:</strong> 0.5.1</p>
 <hr />
-<h2 id="task-11-replace-hof-lambda-string-detection-with-valuefunctionref">Task 1.1 — Replace HOF Lambda String Detection with Value::FunctionRef</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Risk:</strong> HIGH — correctness bug that can cause wrong dispatch
-<strong>Estimated size:</strong> Medium (touches bytecode.rs, bytecode_vm.rs, value.rs, core.rs)</p>
+<h2 id="task-81-fix-exec_allowed-true-default-critical">Task 8.1 — Fix <code>exec_allowed: true</code> Default (CRITICAL)</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> CRITICAL — directly contradicts the "security-first, default-deny" positioning
+<strong>Estimated size:</strong> Small (1–3 files)</p>
 <h3 id="problem">Problem</h3>
-<p>In <code>src/runtime/core/value.rs</code> and <code>src/compiler/bytecode.rs</code>, higher-order functions
-(map, filter, reduce, find) detect lambdas by checking if a <code>Value</code> is <code>Value::String</code>
-and treating the string as a registered function name via <code>RegisterFunction</code>.</p>
-<p>A plain string value <code>"print"</code> could accidentally dispatch as a function call.</p>
+<p><code>src/runtime/vm/core.rs</code> line 37: <code>exec_allowed: true</code> in <code>VirtualMachine::new()</code>.
+Any script can call <code>exec()</code>, <code>exec_json()</code>, <code>exec_lines()</code>, <code>exec_pipe()</code>, <code>spawn()</code> without
+any permission grant unless <code>safe_mode = true</code> or <code>--safe-mode</code> is explicitly passed.
+The 6-layer security pipeline is bypassed for process execution by default.</p>
 <h3 id="what-to-do">What to Do</h3>
-<p><strong>Step 1 — Add new variant to Value enum</strong>
-- File: <code>src/runtime/core/value.rs</code>
-- Add: <code>FunctionRef(String)</code> variant to <code>Value</code> enum
-- Add <code>Display</code> impl: prints as <code>&lt;fn:name&gt;</code>
-- Add <code>type_name()</code> return: <code>"function_ref"</code></p>
-<p><strong>Step 2 — Update BytecodeCompiler</strong>
-- File: <code>src/compiler/bytecode.rs</code>
-- In <code>compile_expression</code> for lambda: emit <code>PushConstant</code> with <code>Constant::FunctionRef(name)</code> OR push <code>Value::FunctionRef(name)</code> directly
-- Add <code>FunctionRef(String)</code> variant to <code>Constant</code> enum</p>
-<p><strong>Step 3 — Update BytecodeVM HOF dispatch</strong>
-- File: <code>src/runtime/bytecode_vm.rs</code>
-- In <code>call_hof_with_bytecode_lambda</code>: change <code>Value::String(name)</code> match to <code>Value::FunctionRef(name)</code>
-- In <code>Call</code> instruction handler: change detection from <code>Value::String</code> to <code>Value::FunctionRef</code></p>
-<p><strong>Step 4 — Update all Value match arms</strong>
-- Files: any match on <code>Value::*</code> across <code>src/</code>
-- Run: <code>grep -r "Value::String" src/ --include="*.rs"</code> and check each one
-- FunctionRef should NOT match in string operations (len, split, etc.)</p>
-<p><strong>Step 5 — Update tests</strong>
-- File: <code>tests/integration/test_bytecode.rs</code>
-- Verify HOF tests still pass
-- Add test: string value <code>"map"</code> as argument should NOT dispatch as function</p>
+<p><strong>Step 1 — Change default</strong>
+- File: <code>src/runtime/vm/core.rs</code>
+- Change <code>exec_allowed: true</code> → <code>exec_allowed: false</code>
+- File: <code>src/runtime/vm/core.rs</code> — <code>with_all_options()</code> constructor
+- Same change: default <code>exec_allowed: false</code></p>
+<p><strong>Step 2 — Add --allow-exec CLI flag</strong>
+- File: <code>src/bin/txtcode.rs</code>
+- Add <code>RunArgs</code>: <code>--allow-exec</code> flag
+- File: <code>src/cli/run.rs</code>
+- Wire: if <code>--allow-exec</code> passed, call <code>vm.set_exec_allowed(true)</code> before execution</p>
+<p><strong>Step 3 — Update permission_map</strong>
+- File: <code>src/runtime/permission_map.rs</code>
+- Ensure <code>exec</code>, <code>exec_json</code>, <code>exec_lines</code>, <code>exec_pipe</code>, <code>exec_status</code>, <code>spawn</code>, <code>kill</code>,
+  <code>signal_send</code>, <code>pipe_exec</code> all map to <code>PermissionResource::System("exec")</code>
+- These should fail with clear <code>PermissionError</code> if <code>exec_allowed == false</code> and no grant</p>
+<p><strong>Step 4 — Update tests</strong>
+- File: <code>tests/integration/test_runtime.rs</code>
+- Add test: calling <code>exec("echo", [])</code> without <code>--allow-exec</code> or <code>grant_permission</code> → error
+- Add test: calling <code>exec</code> after <code>grant_permission("sys.exec", null)</code> → succeeds</p>
+<p><strong>Step 5 — Update docs</strong>
+- File: <code>README.md</code>, <code>docs/permissions.md</code>, <code>docs/security-features.md</code>
+- Change: <code>exec_allowed</code> default is now <code>false</code>; add <code>--allow-exec</code> to CLI reference</p>
 <h3 id="done-when">Done When</h3>
 <ul>
-<li><code>cargo test</code> passes all 239 tests</li>
-<li><code>grep "Value::String" src/runtime/bytecode_vm.rs</code> shows no HOF dispatch on String</li>
-<li>A test exists proving string <code>"map"</code> does not dispatch as function</li>
+<li><code>txtcode run untrusted.tc</code> (containing <code>exec("rm", ["-rf", "/tmp/test"])</code>) → permission error</li>
+<li><code>txtcode run --allow-exec script.tc</code> → exec works</li>
+<li><code>grant_permission("sys.exec", null)</code> in script → exec works</li>
+<li>All 284+ existing tests pass (update exec-using tests to grant <code>sys.exec</code> first)</li>
 </ul>
 <hr />
-<h2 id="task-12-add-source-location-linecol-to-runtimeerror">Task 1.2 — Add Source Location (line:col) to RuntimeError</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Risk:</strong> MEDIUM — no correctness impact, but debugging is very painful without it
-<strong>Estimated size:</strong> Large (touches parser, AST nodes, both VMs, all error sites)</p>
+<h2 id="task-82-enforce-const-at-runtime">Task 8.2 — Enforce <code>const</code> at Runtime</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — silent mutation of "constants" is a correctness hazard
+<strong>Estimated size:</strong> Small-Medium</p>
 <h3 id="problem_1">Problem</h3>
-<p><code>RuntimeError</code> in <code>src/runtime/errors.rs</code> has no source location.
-When a script fails at runtime, there is no way to know which line caused it.</p>
+<p><code>const x → 5</code> parses and stores the variable but a subsequent <code>store → x → 6</code> succeeds
+silently. <code>const</code> is currently pure syntactic sugar with no enforcement in either VM.</p>
 <h3 id="what-to-do_1">What to Do</h3>
-<p><strong>Step 1 — Add Span to errors.rs</strong>
-- File: <code>src/runtime/errors.rs</code>
-- Add:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cp">#[derive(Debug, Clone, Default)]</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">pub</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">Span</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">line</span><span class="p">:</span><span class="w"> </span><span class="kt">usize</span><span class="p">,</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">col</span><span class="p">:</span><span class="w"> </span><span class="kt">usize</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="k">pub</span><span class="w"> </span><span class="n">file</span><span class="p">:</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">}</span>
-</code></pre></div>
-- Add field to <code>RuntimeError</code>: <code>pub span: Option&lt;Span&gt;</code>
-- Add builder method: <code>pub fn with_span(mut self, span: Span) -&gt; Self</code></p>
-<p><strong>Step 2 — Add Span to AST nodes</strong>
-- File: <code>src/parser/ast/statements.rs</code>, <code>src/parser/ast/expressions.rs</code>
-- Add <code>span: Span</code> field to <code>Statement</code> and <code>Expression</code> enums (or their wrapper structs)
-- Parser must populate this when building AST nodes</p>
-<p><strong>Step 3 — Update Lexer to track position</strong>
-- File: <code>src/lexer/lexer.rs</code>
-- Ensure every <code>Token</code> carries <code>line: usize, col: usize</code>
-- Track line increments on <code>\n</code></p>
-<p><strong>Step 4 — Thread span through VM execution</strong>
-- File: <code>src/runtime/vm.rs</code> (and submodules in <code>src/runtime/execution/</code>)
-- When <code>execute_statement</code> or <code>execute_expression</code> produces a <code>RuntimeError</code>, attach <code>span</code> from the AST node
-- Pattern: <code>err.with_span(stmt.span.clone())</code></p>
-<p><strong>Step 5 — Thread span through BytecodeVM</strong>
+<p><strong>Step 1 — Track constants in scope</strong>
+- File: <code>src/runtime/core.rs</code> (ScopeManager or Scope struct)
+- Add: <code>constants: HashSet&lt;String&gt;</code> to the scope that owns the variable
+- When <code>Statement::Const { name, value }</code> executes: add <code>name</code> to <code>constants</code> after storing</p>
+<p><strong>Step 2 — Guard reassignment</strong>
+- File: <code>src/runtime/execution/statements/</code> (assignment handler)
+- In <code>execute_assignment</code>: before overwriting a variable, check if it is in <code>constants</code>
+- If const: return <code>RuntimeError</code> with <code>E0030</code> — "cannot reassign const 'x'"</p>
+<p><strong>Step 3 — Bytecode VM</strong>
 - File: <code>src/runtime/bytecode_vm.rs</code>
-- Add a <code>DebugInfo</code> table to <code>Bytecode</code>: <code>Vec&lt;(usize, Span)&gt;</code> mapping instruction index to source span
-- Compiler (<code>src/compiler/bytecode.rs</code>) must populate this table
-- BytecodeVM reads current <code>ip</code>, looks up span in debug table, attaches to errors</p>
-<p><strong>Step 6 — Update error display</strong>
-- File: <code>src/runtime/errors.rs</code> — <code>Display</code> impl for <code>RuntimeError</code>
-- Format: <code>Error [E0011] at file.tc:12:5 — type mismatch: expected int, got string</code></p>
+- <code>StoreVar</code> instruction: check constants set before writing
+- <code>Instruction::Const { name, value }</code>: new instruction variant, or reuse <code>StoreVar</code> with a
+  const flag in the frame</p>
+<p><strong>Step 4 — Error code</strong>
+- File: <code>src/runtime/errors.rs</code>
+- Add: <code>E0030</code> — "cannot reassign const variable"</p>
+<p><strong>Step 5 — Tests</strong>
+- Test: <code>const x → 5</code> followed by <code>store → x → 6</code> raises <code>E0030</code>
+- Test: <code>const x → 5</code> followed by <code>print → x</code> works normally</p>
 <h3 id="done-when_1">Done When</h3>
 <ul>
-<li>All runtime errors print <code>filename:line:col</code></li>
-<li>Test: a script with a type error on line 7 prints <code>line 7</code> in the error message</li>
-<li><code>cargo test</code> still passes</li>
+<li>Reassigning a <code>const</code> raises <code>E0030</code> in both VMs</li>
+<li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-13-raise-max_call_depth-to-500">Task 1.3 — Raise MAX_CALL_DEPTH to 500</h2>
-<p><strong>Status:</strong> <code>[x]</code> — Partial: default stays at 50 (AST VM uses Rust call stack; increasing causes Rust SIGABRT before guard fires in debug builds). <code>RuntimeConfig.max_call_depth</code> field added for future use. Real fix requires iterative VM (Group 7).
-<strong>Risk:</strong> LOW — one constant change
-<strong>Estimated size:</strong> Tiny</p>
+<h2 id="task-83-expose-script-signing-as-cli-flag">Task 8.3 — Expose Script Signing as CLI Flag</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — signing infrastructure exists but is unreachable without Rust API
+<strong>Estimated size:</strong> Small</p>
 <h3 id="problem_2">Problem</h3>
-<p><code>MAX_CALL_DEPTH = 50</code> in both VMs. Standard recursive fibonacci(20) requires ~20 frames.
-Any moderately recursive algorithm hits this immediately.</p>
+<p><code>src/security/auth.rs</code> — Ed25519 signing/verification exists but there is no CLI surface.
+Users cannot sign or verify scripts from the command line. The security feature is invisible.</p>
 <h3 id="what-to-do_2">What to Do</h3>
-<p><strong>Step 1 — Find and update the constant</strong>
-- Run: <code>grep -r "MAX_CALL_DEPTH\|max_call_depth\|call_depth" src/ --include="*.rs"</code>
-- Change value from <code>50</code> to <code>500</code>
-- If it appears in both VMs, update both</p>
-<p><strong>Step 2 — Make it configurable</strong>
-- File: <code>src/config.rs</code> → <code>RuntimeConfig</code>
-- Add: <code>pub max_call_depth: usize</code> with default <code>500</code>
-- Thread into VM construction</p>
-<p><strong>Step 3 — Update test</strong>
-- File: <code>tests/integration/test_runtime.rs</code>
-- Add test: <code>fibonacci(30)</code> completes without error</p>
+<p><strong>Step 1 — Add <code>txtcode sign</code> subcommand</strong>
+- File: <code>src/bin/txtcode.rs</code>
+- Add <code>Commands::Sign { file: PathBuf, key: PathBuf, output: Option&lt;PathBuf&gt; }</code>
+- Description: "Sign a .tc script with an Ed25519 private key"
+- File: <code>src/cli/sign.rs</code> (new)
+- <code>pub fn run(file, key_path, output)</code>:
+  - Read source bytes
+  - Load private key from <code>key_path</code>
+  - Call <code>ScriptAuth::sign(source_bytes, signer_id, &amp;priv_key)</code>
+  - Write signature to <code>output</code> (default: <code>file.sig</code>)</p>
+<p><strong>Step 2 — Add <code>txtcode verify</code> subcommand</strong>
+- File: <code>src/bin/txtcode.rs</code>
+- Add <code>Commands::Verify { file: PathBuf, sig: PathBuf }</code>
+- File: <code>src/cli/sign.rs</code> (extend)
+- <code>pub fn verify(file, sig_path)</code>:
+  - Read source and sig
+  - Call <code>ScriptAuth::verify(source_bytes, &amp;sig)</code>
+  - Print <code>OK</code> or <code>TAMPERED</code> with exit code</p>
+<p><strong>Step 3 — Add <code>--require-sig</code> to <code>txtcode run</code></strong>
+- File: <code>src/bin/txtcode.rs</code>, <code>src/cli/run.rs</code>
+- <code>--require-sig &lt;KEY_FILE&gt;</code> — before execution, verify <code>.tc.sig</code> sidecar with the given public key
+- If sig missing or invalid: abort with error</p>
+<p><strong>Step 4 — Add <code>txtcode keygen</code> subcommand</strong>
+- <code>txtcode keygen --output keys/</code> — generates <code>private.key</code> + <code>public.key</code> in the output dir
+- Prints warning: "Keep private.key secret. Distribute public.key with your package."</p>
 <h3 id="done-when_2">Done When</h3>
 <ul>
-<li><code>fibonacci(30)</code> runs without "max call depth exceeded"</li>
-<li>Config allows override: <code>--max-call-depth 1000</code></li>
+<li>Full round-trip: <code>txtcode keygen</code>, <code>txtcode sign script.tc</code>, <code>txtcode run --require-sig public.key script.tc</code> all work</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-14-enforce-max_memory-or-remove-the-config-field">Task 1.4 — Enforce max_memory OR Remove the Config Field</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Risk:</strong> MEDIUM (security false guarantee if left unenforced)
-<strong>Estimated size:</strong> Small-Medium</p>
+<h2 id="task-84-ffi-path-allowlisting">Task 8.4 — FFI Path Allowlisting</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> HIGH — <code>ffi_load</code> with attacker-controlled path = arbitrary code execution
+<strong>Estimated size:</strong> Small</p>
 <h3 id="problem_3">Problem</h3>
-<p><code>EnvSettings.max_memory: String</code> exists in <code>src/config.rs</code> but no code enforces it.
-A script can allocate unboundedly. This is a false security claim.</p>
-<h3 id="option-a-implement-basic-enforcement-recommended">Option A — Implement Basic Enforcement (Recommended)</h3>
-<p>Track approximate allocation size in <code>AllocationTracker</code>.</p>
-<p><strong>Step 1 — Update AllocationTracker</strong>
-- File: <code>src/runtime/gc.rs</code>
-- Add: <code>total_bytes: usize</code> field
-- Add: <code>max_bytes: Option&lt;usize&gt;</code> field
-- In <code>record_allocation(value: &amp;Value)</code>: estimate value size and add to <code>total_bytes</code>
-- Add value size estimator:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">fn</span><span class="w"> </span><span class="nf">estimate_size</span><span class="p">(</span><span class="n">v</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">Value</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="kt">usize</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="k">match</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">        </span><span class="n">Value</span><span class="p">::</span><span class="nb">String</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">64</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">len</span><span class="p">(),</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">        </span><span class="n">Value</span><span class="p">::</span><span class="n">Array</span><span class="p">(</span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">64</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">a</span><span class="p">.</span><span class="n">len</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">        </span><span class="n">Value</span><span class="p">::</span><span class="n">Map</span><span class="p">(</span><span class="n">m</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">64</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">m</span><span class="p">.</span><span class="n">len</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">        </span><span class="n">_</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
-</code></pre></div>
-- If <code>total_bytes &gt; max_bytes</code>: return <code>Err("memory limit exceeded")</code></p>
-<p><strong>Step 2 — Wire config to VM</strong>
-- File: <code>src/runtime/vm.rs</code>, <code>src/runtime/bytecode_vm.rs</code>
-- Parse <code>max_memory</code> string ("256mb", "1gb") to bytes at VM init
-- Pass to <code>GarbageCollector::with_max_bytes(n)</code></p>
-<p><strong>Step 3 — Error code</strong>
-- File: <code>src/runtime/errors.rs</code>
-- Add: <code>E0021</code> — memory limit exceeded</p>
-<h3 id="option-b-remove-the-field-simpler-but-honest">Option B — Remove the Field (Simpler but Honest)</h3>
-<ul>
-<li>Remove <code>max_memory</code> from <code>EnvConfig</code></li>
-<li>Remove from all docs</li>
-<li>Add comment: <code>// TODO: implement in v0.7</code></li>
-</ul>
-<h3 id="done-when-option-a">Done When (Option A)</h3>
-<ul>
-<li>Script allocating 1GB with limit set to 256MB fails with <code>E0021</code></li>
-<li><code>cargo test</code> passes</li>
-</ul>
-<h3 id="done-when-option-b">Done When (Option B)</h3>
-<ul>
-<li>Field removed, <code>cargo test</code> passes, docs updated</li>
-</ul>
-<hr />
-<h2 id="task-15-add-finally-block-to-trycatch">Task 1.5 — Add <code>finally</code> Block to try/catch</h2>
-<p><strong>Status:</strong> <code>[x]</code> — Was already implemented in parser + AST VM + bytecode compiler. Added 3 tests to verify.
-<strong>Risk:</strong> MEDIUM — touches parser, both VMs, bytecode instruction set
-<strong>Estimated size:</strong> Medium</p>
-<h3 id="problem_4">Problem</h3>
-<p><code>try/catch</code> has no <code>finally</code>. Resource cleanup (file handles, connections, locks) is unreliable.</p>
+<p><code>src/stdlib/ffi.rs</code> — <code>ffi_load(path)</code> accepts any filesystem path. If a script can
+control the path argument, it can load any shared library and execute arbitrary C code.
+The <code>sys.ffi</code> permission gate is necessary but not sufficient — there is no path restriction.</p>
 <h3 id="what-to-do_3">What to Do</h3>
-<p><strong>Step 1 — Update Parser</strong>
-- File: <code>src/parser/statements/</code> (control flow handler)
-- Grammar: <code>try \n body \n catch e \n handler \n finally \n cleanup \n end</code>
-- <code>finally</code> block is optional
-- AST <code>TryCatch</code> node: add <code>finally_body: Option&lt;Vec&lt;Statement&gt;&gt;</code></p>
-<p><strong>Step 2 — Update AST VM</strong>
-- File: <code>src/runtime/execution/</code> or <code>src/runtime/vm/core.rs</code>
-- In <code>TryCatch</code> execution: always run <code>finally_body</code> regardless of ok/error/throw
-- <code>finally</code> runs even if <code>return</code> is executed inside try or catch (save/restore return value)</p>
-<p><strong>Step 3 — Update Bytecode Compiler</strong>
-- File: <code>src/compiler/bytecode.rs</code>
-- Add instruction: <code>EnterFinally(usize)</code> — jump target for finally block
-- Emit <code>EnterFinally</code> before <code>PopCatch</code>
-- Finally block always executes; if exception was in flight, re-throw after finally</p>
-<p><strong>Step 4 — Update BytecodeVM</strong>
-- File: <code>src/runtime/bytecode_vm.rs</code>
-- Handle <code>EnterFinally</code> instruction in execute loop
-- Re-throw saved exception after finally completes</p>
-<p><strong>Step 5 — Add tests</strong>
-- <code>tests/integration/test_runtime.rs</code>
-- Test: finally runs on success path
-- Test: finally runs on error path
-- Test: finally runs on <code>return</code> inside try
-- Test: exception re-thrown after finally</p>
+<p><strong>Step 1 — Add FFI path allowlist to permission grant</strong>
+- File: <code>src/runtime/permissions.rs</code>
+- <code>PermissionResource::System("ffi")</code> gains optional scope (like FileSystem)
+- Scope is a path prefix: <code>grant_permission("sys.ffi", "/usr/lib/*")</code> only allows libs under <code>/usr/lib/</code></p>
+<p><strong>Step 2 — Enforce in ffi_load</strong>
+- File: <code>src/stdlib/ffi.rs</code>
+- Before <code>Library::new(path)</code>: call <code>vm.check_permission(System("ffi"), Some(path))</code>
+- The scope matching in PermissionManager already handles glob patterns</p>
+<p><strong>Step 3 — CLI flag</strong>
+- File: <code>src/bin/txtcode.rs</code>
+- Add <code>--allow-ffi PATH</code> alongside <code>--allow-fs</code>, <code>--allow-net</code></p>
+<p><strong>Step 4 — Tests</strong>
+- Test: <code>ffi_load("/evil/lib.so")</code> without allowlist grant → error
+- Test: <code>ffi_load("/usr/lib/libm.so")</code> with <code>--allow-ffi /usr/lib/*</code> → succeeds</p>
 <h3 id="done-when_3">Done When</h3>
 <ul>
-<li>All 4 test cases pass</li>
-<li><code>cargo test</code> passes all 239+ tests</li>
-</ul>
-<hr />
-<h2 id="task-16-parser-error-recovery">Task 1.6 — Parser Error Recovery</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Risk:</strong> LOW for correctness, HIGH for DX
-<strong>Estimated size:</strong> Medium-Large (touches parser significantly)</p>
-<h3 id="problem_5">Problem</h3>
-<p>A single syntax error aborts the entire parse. The REPL cannot work with multiline input.
-IDE integration is impossible without multiple error reporting.</p>
-<h3 id="what-to-do_4">What to Do</h3>
-<p><strong>Step 1 — Add error accumulator to Parser</strong>
-- File: <code>src/parser/parser.rs</code>
-- Add: <code>errors: Vec&lt;ParseError&gt;</code> to parser struct
-- Add: <code>fn emit_error(&amp;mut self, msg: String)</code> — pushes to errors, continues parsing
-- Change <code>parse_statement()</code> to return <code>Option&lt;Statement&gt;</code> and call <code>emit_error</code> instead of returning <code>Err</code></p>
-<p><strong>Step 2 — Add synchronization points</strong>
-- In <code>parse_statement()</code>: on error, advance tokens until a known synchronization token:
-  - <code>end</code>, <code>define</code>, <code>store</code>, <code>if</code>, <code>for</code>, <code>while</code>, <code>try</code>, <code>struct</code>, newline at indent 0
-- After sync, resume parsing next statement</p>
-<p><strong>Step 3 — Collect all errors</strong>
-- <code>parse()</code> returns <code>(Program, Vec&lt;ParseError&gt;)</code> instead of <code>Result&lt;Program, ParseError&gt;</code>
-- CLI <code>run</code> command: if errors exist, print all of them then abort execution
-- CLI <code>check</code> command: print all errors without running</p>
-<p><strong>Step 4 — Update callers</strong>
-- Files: <code>src/cli/run.rs</code>, <code>src/cli/check.rs</code>, <code>src/cli/repl.rs</code>
-- Handle new <code>(program, errors)</code> return from parser</p>
-<p><strong>Step 5 — REPL multiline support</strong>
-- File: <code>src/cli/repl.rs</code>
-- Detect incomplete input (unclosed <code>define...end</code>, <code>if...end</code>)
-- Show continuation prompt (<code>...</code>) and accumulate input until complete</p>
-<h3 id="done-when_4">Done When</h3>
-<ul>
-<li>Script with 3 syntax errors reports all 3, not just the first</li>
-<li>REPL shows <code>...</code> for multiline <code>define</code> blocks</li>
+<li><code>ffi_load</code> with un-allowlisted path raises permission error</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="group-1-checkpoint">Group 1 Checkpoint</h2>
-<p>Before moving to Group 2, verify:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[ ] cargo test -- passes all tests (number should be &gt;= 239)
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>[ ] fibonacci(30) runs without call depth error
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>[ ] Runtime errors print line:col
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>[ ] HOF with lambda: Value::FunctionRef used, not Value::String
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>[ ] try/catch/finally works in both AST and bytecode VM
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>[ ] max_memory is either enforced or removed from config/docs
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>[ ] Parser reports multiple errors per file
+<h2 id="task-85-audit-log-persistence">Task 8.5 — Audit Log Persistence</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — in-memory audit trail is lost on exit; security use-cases need durable logs
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="problem_4">Problem</h3>
+<p><code>AuditTrail</code> is in-memory only. No persistence. For audited automation this is a gap.</p>
+<h3 id="what-to-do_4">What to Do</h3>
+<p><strong>Step 1 — Add <code>--audit-log FILE</code> to <code>txtcode run</code></strong>
+- File: <code>src/bin/txtcode.rs</code>, <code>src/cli/run.rs</code>
+- On <code>--audit-log &lt;path&gt;</code>: after execution completes, serialize audit trail to JSON and write</p>
+<p><strong>Step 2 — AuditTrail serialization</strong>
+- File: <code>src/runtime/audit.rs</code>
+- Add <code>#[derive(Serialize)]</code> to <code>AuditEvent</code>, <code>AuditTrail</code>
+- Add <code>fn to_json(&amp;self) -&gt; String</code> using <code>serde_json::to_string_pretty</code></p>
+<p><strong>Step 3 — Streaming write (optional)</strong>
+- For long-running scripts: write each audit event to the log file as it occurs
+- Use <code>BufWriter&lt;File&gt;</code> opened at startup and flushed after each event</p>
+<p><strong>Step 4 — Tests</strong>
+- Test: <code>txtcode run --audit-log /tmp/audit.json script.tc</code> → audit file exists with correct events</p>
+<h3 id="done-when_4">Done When</h3>
+<ul>
+<li><code>--audit-log</code> flag writes a valid JSON audit trail file</li>
+<li><code>cargo test</code> passes</li>
+</ul>
+<hr />
+<h2 id="group-8-checkpoint">Group 8 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[ ] exec_allowed defaults to false; exec requires explicit grant or --allow-exec
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>[ ] const reassignment raises E0030 in both VMs
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>[ ] txtcode sign / verify / keygen / run --require-sig all work end-to-end
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>[ ] ffi_load requires path-scoped sys.ffi permission grant
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>[ ] --audit-log flag writes persistent JSON audit trail
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>[ ] cargo test passes (all existing tests updated where needed)
 </code></pre></div>
 <hr />
 <hr />
-<h1 id="group-2-language-completeness">GROUP 2 — Language Completeness</h1>
-<p><strong>Goal:</strong> Core language handles all common programming patterns.
-<strong>Unblocked by:</strong> Group 1 complete.
-<strong>Output:</strong> Programs that work correctly and predictably.</p>
+<h1 id="group-9-module-system-overhaul">GROUP 9 — Module System Overhaul</h1>
+<p><strong>Goal:</strong> Multi-file projects work correctly without namespace collisions or reproducibility risks.
+<strong>Unblocked by:</strong> Group 8 complete.
+<strong>Output:</strong> Isolated module namespaces; locked transitive deps; deterministic map iteration.
+<strong>Target version:</strong> 0.6.0</p>
 <hr />
-<h2 id="task-21-hex-binary-octal-integer-literals">Task 2.1 — Hex / Binary / Octal Integer Literals</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Estimated size:</strong> Small</p>
+<h2 id="task-91-module-namespace-isolation-critical">Task 9.1 — Module Namespace Isolation (CRITICAL)</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> CRITICAL — without this, any multi-file project risks silent name collisions
+<strong>Estimated size:</strong> Large</p>
+<h3 id="problem_5">Problem</h3>
+<p><code>src/runtime/module.rs</code> — When a module is imported, its definitions are executed in the
+caller's scope. Two modules that both define <code>format()</code> silently overwrite each other.
+There is no module-level namespace. <code>exported_symbols</code> set exists but is not enforced.</p>
 <h3 id="what-to-do_5">What to Do</h3>
-<ul>
-<li>File: <code>src/lexer/lexer.rs</code></li>
-<li>In number lexing: detect <code>0x</code>, <code>0b</code>, <code>0o</code> prefixes</li>
-<li>Parse accordingly and produce <code>Token::Integer(i64)</code></li>
-<li>Tests: <code>0xFF == 255</code>, <code>0b1010 == 10</code>, <code>0o777 == 511</code></li>
-</ul>
+<p><strong>Step 1 — Execute modules in isolated scope</strong>
+- File: <code>src/runtime/module.rs</code>
+- <code>load_module(name)</code> must:
+  1. Create a fresh child VM with a NEW isolated scope (not the caller's scope)
+  2. Execute the module AST in that isolated VM
+  3. Collect only the symbols listed in <code>export</code> statements from the isolated scope
+  4. Return a <code>ModuleExports { symbols: HashMap&lt;String, Value&gt; }</code></p>
+<p><strong>Step 2 — Qualified import binding</strong>
+- When <code>from "npl-math/math" import gcd, factorial</code> is executed:
+  - Extract only <code>gcd</code> and <code>factorial</code> from <code>ModuleExports</code>
+  - Bind them in the caller's scope under their imported names
+  - Wildcard <code>import *</code> binds all exports (with warning)
+- When <code>import "npl-math/math" as math</code> is executed:
+  - Create a <code>Value::Map</code> of all exports
+  - Bind it as <code>math</code> in the caller's scope
+  - Access via <code>math.gcd(a, b)</code></p>
+<p><strong>Step 3 — Export enforcement</strong>
+- File: <code>src/runtime/execution/statements/</code> (export statement handler)
+- Only symbols declared with <code>export</code> in the module are visible to importers
+- Private module-internal functions/variables remain invisible</p>
+<p><strong>Step 4 — Circular import detection</strong>
+- File: <code>src/runtime/module.rs</code>
+- The existing <code>import_stack: Vec&lt;String&gt;</code> in VirtualMachine is the right tool
+- Before loading module N: check if N is already in <code>import_stack</code>
+- If yes: return <code>RuntimeError</code> — "circular import: module 'A' → 'B' → 'A'"</p>
+<p><strong>Step 5 — Bytecode VM module parity</strong>
+- File: <code>src/runtime/bytecode_vm.rs</code> — <code>ImportModule</code> instruction handler
+- Same isolation: sub-VM, collect exports, bind in caller scope
+- Currently sub-VM shares too much state — fix the isolation boundary</p>
+<p><strong>Step 6 — Tests</strong>
+- Test: two modules both define <code>helper()</code> — no collision
+- Test: circular import raises RuntimeError
+- Test: unexported symbol not accessible in importer
+- Test: <code>import as</code> creates qualified access</p>
 <h3 id="done-when_5">Done When</h3>
 <ul>
-<li>All three prefix formats work in scripts</li>
+<li>Two modules with same function name coexist without collision</li>
+<li>Circular imports raise an error instead of infinite loop/panic</li>
+<li>Unexported symbols are not visible to importers</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-22-binary-bytes-type">Task 2.2 — Binary / Bytes Type</h2>
-<p><strong>Status:</strong> <code>[x]</code>
+<h2 id="task-92-transitive-dependency-resolution">Task 9.2 — Transitive Dependency Resolution</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> HIGH — <code>package install</code> silently skips transitive deps
 <strong>Estimated size:</strong> Medium</p>
+<h3 id="problem_6">Problem</h3>
+<p><code>src/cli/package.rs</code> — <code>install_dependencies()</code> installs direct deps listed in <code>Txtcode.toml</code>
+but does not recursively install their dependencies. A package that depends on <code>npl-collections</code>
+will fail at import time if the user only installed the top-level package.</p>
 <h3 id="what-to-do_6">What to Do</h3>
-<p><strong>Step 1 — Add Value::Bytes</strong>
-- File: <code>src/runtime/core/value.rs</code>
-- Add: <code>Bytes(Vec&lt;u8&gt;)</code> to <code>Value</code> enum
-- Display: <code>&lt;bytes:len&gt;</code>
-- Literal syntax: <code>b"\x00\xFF\xAB"</code> or <code>bytes([0, 255, 171])</code></p>
-<p><strong>Step 2 — Stdlib functions</strong>
-- File: <code>src/stdlib/core.rs</code> or new <code>src/stdlib/bytes.rs</code>
-- <code>bytes_new(len)</code> → Bytes of zeros
-- <code>bytes_from_hex(s)</code> → Bytes
-- <code>bytes_to_hex(b)</code> → String
-- <code>bytes_get(b, i)</code> → Integer
-- <code>bytes_set(b, i, v)</code> → Bytes
-- <code>bytes_len(b)</code> → Integer
-- <code>bytes_slice(b, start, end)</code> → Bytes
-- <code>bytes_concat(b1, b2)</code> → Bytes</p>
-<p><strong>Step 3 — Bytecode instruction update</strong>
-- Handle <code>Value::Bytes</code> in Index/SetIndex instructions</p>
+<p><strong>Step 1 — Recursive resolve function</strong>
+- File: <code>src/cli/package.rs</code>
+- Add: <code>fn resolve_transitive(name, ver, registry, visited) -&gt; Vec&lt;(String, String)&gt;</code>
+- Algorithm:
+  1. Look up package in registry
+  2. For each dep in <code>entry.dependencies</code>: if not in <code>visited</code>, recurse
+  3. Return flat list of all packages to install (deps before dependents)
+- Use <code>visited: HashSet&lt;String&gt;</code> to break cycles</p>
+<p><strong>Step 2 — Conflict detection</strong>
+- If two packages require different incompatible versions of the same dep:
+  - Print warning: "conflict: pkg-A needs foo ^1.0, pkg-B needs foo ^2.0"
+  - For now: install latest compatible version; print warning</p>
+<p><strong>Step 3 — Update install flow</strong>
+- <code>package install</code> calls <code>resolve_transitive</code> before installing anything
+- Prints: "Resolving dependencies... installing X packages"</p>
+<p><strong>Step 4 — Tests</strong>
+- Test: installing a package with deps installs all transitive deps
+- Test: dep cycle in registry is detected and reported</p>
 <h3 id="done-when_6">Done When</h3>
 <ul>
-<li>Can read binary file: <code>store → data → read_file_bytes("input.bin")</code></li>
-<li>Can inspect byte: <code>bytes_get(data, 0)</code></li>
+<li><code>txtcode package install npl-http-client</code> automatically installs <code>npl-retry</code> if it is a dep</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-23-enum-variants-with-associated-data">Task 2.3 — Enum Variants with Associated Data</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Estimated size:</strong> Large (parser + both VMs + pattern matching)</p>
-<h3 id="problem_6">Problem</h3>
-<p>Current enums: <code>Value::Enum(String, String)</code> — only name + variant name.
-No data can be attached to a variant. Cannot express <code>Option(Some, value)</code> or <code>Result(Ok, value)</code> in user code.</p>
+<h2 id="task-93-lockfile-enforcement">Task 9.3 — Lockfile Enforcement</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> HIGH — without lockfile verification, builds are not reproducible
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="problem_7">Problem</h3>
+<p><code>Txtcode.lock</code> is written by <code>package install</code> but never read back to verify installed
+packages match the lock. Every install resolves fresh from the registry regardless.</p>
 <h3 id="what-to-do_7">What to Do</h3>
-<p><strong>Step 1 — Update Value::Enum</strong>
-- File: <code>src/runtime/core/value.rs</code>
-- Change: <code>Enum(String, String)</code> → <code>Enum(String, String, Option&lt;Box&lt;Value&gt;&gt;)</code>
-- Enum name, variant name, optional payload</p>
-<p><strong>Step 2 — Update Parser</strong>
-- File: <code>src/parser/statements/types.rs</code> (or wherever enum defs are parsed)
-- Allow: <code>enum Option { Some(value) | None }</code>
-- Store variant with optional type annotation</p>
-<p><strong>Step 3 — Update pattern matching</strong>
-- File: <code>src/parser/patterns.rs</code> and VM execution
-- Allow: <code>match x { Some(v) =&gt; ..., None =&gt; ... }</code>
-- Destructure payload into bound variable <code>v</code></p>
-<p><strong>Step 4 — Update match in both VMs</strong>
-- Both VMs: when matching <code>Value::Enum(_, variant, Some(payload))</code>, bind payload to pattern variable</p>
-<p><strong>Step 5 — Standard enums in stdlib</strong>
-- Add <code>Option</code> and <code>Result</code> as built-in enum types usable in type annotations</p>
+<p><strong>Step 1 — Write lockfile with transitive deps and hashes</strong>
+- File: <code>src/cli/package.rs</code>
+- After <code>resolve_transitive</code>: write <code>Txtcode.lock</code> (TOML format)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">[[package]]</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;npl-math&quot;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.1.0&quot;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">sha256</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;abc123...&quot;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">source</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;local:packages/npl-math&quot;</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="k">[[package]]</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;npl-collections&quot;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">version</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.1.0&quot;</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">sha256</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;def456...&quot;</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">source</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;local:packages/npl-collections&quot;</span>
+</code></pre></div></p>
+<p><strong>Step 2 — Verify on install (lock mode)</strong>
+- <code>package install</code> (no args): if <code>Txtcode.lock</code> exists, read locked versions
+  - Do NOT resolve from registry — install exactly what lock says
+  - Verify SHA-256 of each installed package against lock entry
+  - If hash mismatch: abort with error "lockfile hash mismatch for npl-math"
+- <code>package update</code>: re-resolve, update lock file</p>
+<p><strong>Step 3 — Verify on module import (optional strict mode)</strong>
+- <code>--strict-lock</code> flag on <code>txtcode run</code>: verify loaded modules are in lock
+- If a module is loaded that is not in <code>Txtcode.lock</code>: error (possible tampered install)</p>
+<p><strong>Step 4 — Tests</strong>
+- Test: install with lock → subsequent install uses lock, not fresh resolve
+- Test: modified package fails hash check</p>
 <h3 id="done-when_7">Done When</h3>
 <ul>
-<li><code>enum Shape { Circle(radius) | Square(side) | Point }</code> works</li>
-<li>Pattern matching destructures payload</li>
+<li><code>Txtcode.lock</code> read and verified on <code>package install</code></li>
+<li><code>package update</code> regenerates lock</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-24-default-parameter-values">Task 2.4 — Default Parameter Values</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Estimated size:</strong> Small-Medium</p>
+<h2 id="task-94-deterministic-map-iteration">Task 9.4 — Deterministic Map Iteration</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — breaks "deterministic execution" claim; hard to debug
+<strong>Estimated size:</strong> Small</p>
+<h3 id="problem_8">Problem</h3>
+<p><code>Value::Map</code> uses <code>HashMap</code> internally. Iterating over a map in a <code>for</code> loop produces
+different key orders across runs. This breaks the "deterministic execution" claim in docs
+and makes scripts that process maps non-reproducible.</p>
 <h3 id="what-to-do_8">What to Do</h3>
-<ul>
-<li>File: <code>src/parser/statements/functions.rs</code></li>
-<li>Allow: <code>define → greet → (name, greeting = "Hello")</code></li>
-<li>AST <code>Parameter</code>: add <code>default: Option&lt;Expression&gt;</code></li>
-<li>VM: at call time, if argument not provided, evaluate default expression</li>
-</ul>
+<p><strong>Step 1 — Switch to IndexMap</strong>
+- File: <code>Cargo.toml</code> — add <code>indexmap = "2"</code>
+- File: <code>src/runtime/core/value.rs</code> — change <code>HashMap&lt;String, Value&gt;</code> in <code>Value::Map</code> to
+  <code>IndexMap&lt;String, Value&gt;</code> (insertion-ordered)
+- This preserves insertion order, making iteration deterministic</p>
+<p><strong>Step 2 — Update all map construction sites</strong>
+- Run: <code>grep -r "HashMap::new()" src/ --include="*.rs"</code> for map value construction
+- Change relevant sites to <code>IndexMap::new()</code></p>
+<p><strong>Step 3 — Update sort for display</strong>
+- <code>print(my_map)</code> — display order is now insertion order (deterministic)</p>
+<p><strong>Step 4 — Tests</strong>
+- Test: <code>store → m → {a: 1, b: 2, c: 3}</code> iterated with <code>for</code> → always yields a, b, c in order</p>
 <h3 id="done-when_8">Done When</h3>
 <ul>
-<li><code>greet("Alice")</code> works with default <code>greeting</code></li>
-<li><code>greet("Alice", "Hi")</code> overrides default</li>
+<li>Map iteration order matches insertion order</li>
+<li>All existing map tests pass</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-25-variadic-functions">Task 2.5 — Variadic Functions</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Estimated size:</strong> Small-Medium</p>
+<h2 id="task-95-update-deterministic-documentation">Task 9.5 — Update "Deterministic" Documentation</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> LOW — documentation fix
+<strong>Estimated size:</strong> Tiny</p>
 <h3 id="what-to-do_9">What to Do</h3>
 <ul>
-<li>File: <code>src/parser/statements/functions.rs</code></li>
-<li>Allow: <code>define → sum → (*nums)</code></li>
-<li>AST <code>Parameter</code>: add <code>variadic: bool</code> flag — must be last parameter</li>
-<li>VM: collect remaining arguments into <code>Value::Array</code></li>
+<li>File: <code>README.md</code>, <code>docs/index.md</code>, <code>docs/language-spec.md</code></li>
+<li>Replace vague "deterministic execution" with accurate description:
+  "<strong>Permission-transparent execution</strong> — every privileged side effect requires an
+  explicit grant; no hidden network, filesystem, or process calls."</li>
+<li>Add note: "Map iteration order is insertion-order (deterministic as of v0.6)."</li>
+<li>Remove any claim that non-deterministic operations (HTTP, time, exec) are deterministic.</li>
 </ul>
 <h3 id="done-when_9">Done When</h3>
 <ul>
-<li><code>sum(1, 2, 3, 4)</code> with <code>*nums</code> collects <code>[1, 2, 3, 4]</code></li>
-<li><code>cargo test</code> passes</li>
+<li>Docs accurately describe what "deterministic" means in Txtcode context</li>
 </ul>
 <hr />
-<h2 id="task-26-match-guard-clauses">Task 2.6 — Match Guard Clauses</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Estimated size:</strong> Small</p>
+<h2 id="group-9-checkpoint">Group 9 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[ ] Module imports execute in isolated scope; unexported names invisible to importer
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>[ ] Circular imports detected and reported with clear error
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>[ ] Transitive deps resolved and installed automatically
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>[ ] Txtcode.lock written and verified on install; package update regenerates it
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>[ ] Map iteration order is insertion-order (IndexMap)
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>[ ] &quot;Deterministic&quot; documentation corrected in README and spec
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>[ ] cargo test passes
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-10-type-system-promotion">GROUP 10 — Type System Promotion</h1>
+<p><strong>Goal:</strong> Type annotations are enforced by default, not decorative.
+<strong>Unblocked by:</strong> Group 9 complete.
+<strong>Output:</strong> Type errors are warnings by default; generics have partial runtime support.
+<strong>Target version:</strong> 0.6.5</p>
+<hr />
+<h2 id="task-101-make-type-warnings-the-default">Task 10.1 — Make Type Warnings the Default</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> HIGH — changing default behavior; needs clean migration path
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="problem_9">Problem</h3>
+<p>Type errors are silently ignored unless <code>--strict-types</code> is passed. Most users run
+<code>txtcode run script.tc</code> and never see type mismatches. Type annotations are decoration.</p>
 <h3 id="what-to-do_10">What to Do</h3>
-<ul>
-<li>File: <code>src/parser/patterns.rs</code></li>
-<li>Allow: <code>match x { n if n &gt; 0 =&gt; "positive", n if n &lt; 0 =&gt; "negative", _ =&gt; "zero" }</code></li>
-<li>AST <code>MatchArm</code>: add <code>guard: Option&lt;Expression&gt;</code></li>
-<li>Both VMs: evaluate guard after pattern match; skip arm if guard is false</li>
-</ul>
+<p><strong>Step 1 — Add three type-check modes</strong>
+- <code>--no-type-check</code> — skip type checker entirely (old default behavior)
+- <em>(new default)</em> — run type checker; print warnings for violations; continue execution
+- <code>--strict-types</code> — run type checker; abort on any violation (existing flag)</p>
+<p><strong>Step 2 — Wire default mode in run.rs</strong>
+- File: <code>src/cli/run.rs</code>
+- After parsing, always run <code>TypeChecker::check(program)</code>
+- If warnings: print each with <code>[WARNING] type: ...</code> prefix (do NOT abort)
+- If <code>--strict-types</code>: abort with exit 1</p>
+<p><strong>Step 3 — Suppress with --no-type-check</strong>
+- Existing scripts that have type-annotation-free code continue to work silently
+- Scripts with type annotations see useful feedback immediately</p>
+<p><strong>Step 4 — Formatter: preserve type annotations</strong>
+- File: <code>src/tools/formatter.rs</code>
+- Ensure type annotations are not stripped by formatter</p>
+<p><strong>Step 5 — Tests</strong>
+- Test: script with type mismatch prints warning but runs
+- Test: <code>--strict-types</code> aborts on same script
+- Test: <code>--no-type-check</code> prints nothing</p>
 <h3 id="done-when_10">Done When</h3>
 <ul>
-<li>Guard clauses work in both VMs</li>
+<li>Default <code>txtcode run</code> shows type warnings without aborting</li>
+<li><code>--strict-types</code> aborts</li>
+<li><code>--no-type-check</code> silences all type output</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-27-mutable-closure-captures">Task 2.7 — Mutable Closure Captures</h2>
-<p><strong>Status:</strong> <code>[x]</code> — Documented: closures capture by value (copy semantics). Workaround: reassign the outer variable with <code>store → x → closure(x)</code>.
-<strong>Estimated size:</strong> Medium</p>
-<h3 id="problem_7">Problem</h3>
-<p><code>Value::Function(name, params, body, captured_env)</code> — <code>captured_env</code> is a <code>HashMap&lt;String, Value&gt;</code>.
-When the closure modifies a captured variable, the outer scope does not see the change (copy semantics).</p>
+<h2 id="task-102-enforce-generics-for-built-in-collection-types">Task 10.2 — Enforce Generics for Built-in Collection Types</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — partial implementation; full generics deferred to v0.8
+<strong>Estimated size:</strong> Medium-Large</p>
+<h3 id="problem_10">Problem</h3>
+<p>Generic parameters <code>&lt;T&gt;</code> are parsed then discarded. <code>Array&lt;int&gt;</code> and <code>Array&lt;string&gt;</code> are
+identical at runtime. Partial enforcement for the built-in collection types is achievable
+without a full generics implementation.</p>
 <h3 id="what-to-do_11">What to Do</h3>
-<ul>
-<li>Decide: implement reference-cell semantics (complex) or document the limitation clearly</li>
-<li><strong>Minimal approach</strong>: wrap captured mutable values in <code>Rc&lt;RefCell&lt;Value&gt;&gt;</code></li>
-<li>Add new <code>Value::CapturedRef(Rc&lt;RefCell&lt;Value&gt;&gt;)</code> that closures use for mutable captures</li>
-<li>Alternatively: document that closures capture by value, add <code>ref</code> keyword for explicit capture by reference</li>
-</ul>
+<p><strong>Step 1 — Track element type on typed array/map literals</strong>
+- File: <code>src/typecheck/checker.rs</code>
+- When type annotation says <code>Array&lt;int&gt;</code> and an array literal contains a non-int: type warning/error
+- Same for <code>Map&lt;string, int&gt;</code> — key must be string, value must be int</p>
+<p><strong>Step 2 — Enforce on push/insert</strong>
+- When <code>array_push(arr, value)</code> is called and arr has a declared element type:
+  - In strict mode: error if <code>value</code> does not match element type
+  - In default mode: warning</p>
+<p><strong>Step 3 — Type-erase at module boundary</strong>
+- Generic type params on user-defined functions remain erased (v0.8 work)
+- Only built-in collection type annotations (<code>Array&lt;T&gt;</code>, <code>Map&lt;K,V&gt;</code>) get enforcement</p>
+<p><strong>Step 4 — Tests</strong>
+- Test: <code>store → nums: Array&lt;int&gt; → [1, 2, "three"]</code> → warning in default, error in strict</p>
 <h3 id="done-when_11">Done When</h3>
 <ul>
-<li>Closure can increment a counter in outer scope, OR</li>
-<li>Documentation explicitly states "closures capture by value" with workaround example</li>
+<li>Built-in collection type annotations produce meaningful errors/warnings when violated</li>
+<li>User-defined generic functions still compile (type-erased, no change)</li>
+<li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="group-2-checkpoint">Group 2 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>[ ] Hex/binary/octal literals parse and evaluate correctly
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>[ ] Bytes type exists with basic stdlib functions
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>[ ] Enum variants with associated data work in pattern matching
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>[ ] Default parameters work
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>[ ] Variadic functions work
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>[ ] Match guards work
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>[ ] Closure capture semantics documented or fixed
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>[ ] cargo test passes all tests
-</code></pre></div>
-<hr />
-<hr />
-<h1 id="group-3-type-enforcement">GROUP 3 — Type Enforcement</h1>
-<p><strong>Goal:</strong> Type annotations become useful, not decorative.
-<strong>Unblocked by:</strong> Group 2 complete.
-<strong>Output:</strong> <code>--strict-types</code> mode catches type errors before execution.</p>
-<hr />
-<h2 id="task-31-promote-type-checker-to-blocking-mode">Task 3.1 — Promote Type Checker to Blocking Mode</h2>
-<p><strong>Status:</strong> <code>[x]</code>
+<h2 id="task-103-type-checker-coverage-expansion">Task 10.3 — Type Checker Coverage Expansion</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> LOW — additive; improves existing checker without breaking changes
 <strong>Estimated size:</strong> Medium</p>
-<h3 id="problem_8">Problem</h3>
-<p><code>src/typecheck/checker.rs</code> exists but <code>--strict-types</code> flag does not block execution on type errors.
-Type checker runs but errors are advisory.</p>
+<h3 id="problem_11">Problem</h3>
+<p>The type checker (<code>src/typecheck/checker.rs</code>) has basic coverage but misses:
+- Function return type mismatch
+- Calling a non-function value
+- Passing wrong number of arguments
+- <code>null</code> used in arithmetic context</p>
 <h3 id="what-to-do_12">What to Do</h3>
-<ul>
-<li>File: <code>src/cli/run.rs</code></li>
-<li>After type check phase: if <code>strict_types == true</code> AND type errors exist → print errors and <code>process::exit(1)</code></li>
-<li>File: <code>src/typecheck/checker.rs</code></li>
-<li>Ensure checker returns <code>Vec&lt;TypeError&gt;</code> not just warnings</li>
-<li>Add <code>TypeError</code> struct with span, message, expected type, actual type</li>
-</ul>
+<p><strong>Step 1 — Return type checking</strong>
+- In <code>check_function_def</code>: track return type annotation
+- In <code>check_return</code>: compare returned expression type against declared return type
+- Warn/error on mismatch</p>
+<p><strong>Step 2 — Arity checking</strong>
+- In <code>check_function_call</code>: if callee is known (defined in same file), check arg count
+- Warn if arg count != param count (excluding variadic functions)</p>
+<p><strong>Step 3 — Null arithmetic warning</strong>
+- In <code>check_binary_op</code>: if either operand might be <code>Null</code>, warn
+- "Potential null dereference in arithmetic: left operand may be null"</p>
+<p><strong>Step 4 — Tests</strong>
+- Test: function declared <code>→ int</code> but returns string → warning
+- Test: calling <code>f(a, b, c)</code> where <code>f</code> takes 2 params → warning
+- Test: <code>x + null</code> → warning</p>
 <h3 id="done-when_12">Done When</h3>
 <ul>
-<li><code>txtcode run --strict-types script.tc</code> fails with exit code 1 on type mismatch</li>
-<li>Error message includes line:col and types involved</li>
+<li>Return type, arity, and null arithmetic checks work in default and strict modes</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-32-enforce-struct-field-types-at-assignment">Task 3.2 — Enforce Struct Field Types at Assignment</h2>
-<p><strong>Status:</strong> <code>[x]</code>
-<strong>Estimated size:</strong> Small-Medium</p>
-<h3 id="problem_9">Problem</h3>
-<p>E0016 error code exists but struct field type enforcement is inconsistent.</p>
+<h2 id="group-10-checkpoint">Group 10 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>[ ] Default txtcode run shows type warnings without aborting
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>[ ] --strict-types aborts on type violations
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>[ ] --no-type-check silences type output
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>[ ] Array&lt;T&gt; / Map&lt;K,V&gt; annotations produce errors/warnings when violated
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>[ ] Return type checking implemented in type checker
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>[ ] Arity checking implemented in type checker
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>[ ] Null arithmetic warnings implemented
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>[ ] cargo test passes
+</code></pre></div>
+<hr />
+<hr />
+<h1 id="group-11-developer-experience">GROUP 11 — Developer Experience</h1>
+<p><strong>Goal:</strong> Txtcode is installable without Rust; debugger is actually usable; LSP is complete enough for real editing.
+<strong>Unblocked by:</strong> Group 8 complete (can work in parallel with Groups 9 and 10).
+<strong>Output:</strong> Pre-built binaries; interactive debugger CLI; doc generation; complete LSP.
+<strong>Target version:</strong> 0.7.0</p>
+<hr />
+<h2 id="task-111-pre-built-binaries-and-release-pipeline-critical">Task 11.1 — Pre-Built Binaries and Release Pipeline (CRITICAL)</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> CRITICAL — without binaries, <code>install.sh</code> requires Rust toolchain; blocks all non-Rust users
+<strong>Estimated size:</strong> Small (CI configuration)</p>
+<h3 id="problem_12">Problem</h3>
+<p><code>release/</code> directory is empty. <code>install.sh</code> falls back to <code>cargo build</code> when no binary is found.
+This requires a Rust toolchain install (~1GB, ~10 min compile) as a prerequisite.
+No pre-built binaries exist on GitHub Releases.</p>
 <h3 id="what-to-do_13">What to Do</h3>
-<ul>
-<li>File: <code>src/runtime/vm/</code> (struct assignment path)</li>
-<li>When assigning to struct field: look up field type from <code>struct_defs</code></li>
-<li>If type does not match value type: raise <code>E0016</code></li>
-<li>Same enforcement in bytecode VM</li>
-</ul>
+<p><strong>Step 1 — GitHub Actions release workflow</strong>
+- File: <code>.github/workflows/release.yml</code> (new)
+- Trigger: <code>on: push: tags: 'v*'</code>
+- Matrix: <code>[ubuntu-latest, macos-latest, windows-latest]</code>
+- Steps per platform:
+  1. <code>cargo build --release</code>
+  2. Strip binary (Linux/macOS)
+  3. Rename: <code>txtcode-linux-x86_64</code>, <code>txtcode-macos-aarch64</code>, <code>txtcode-windows-x86_64.exe</code>
+  4. Upload to GitHub Release as asset
+  5. Compute SHA-256 and upload <code>checksums.txt</code></p>
+<p><strong>Step 2 — Update install.sh</strong>
+- File: <code>install.sh</code>
+- Detect OS + arch
+- Construct download URL: <code>https://github.com/iga2x/txtcode/releases/latest/download/txtcode-&lt;os&gt;-&lt;arch&gt;</code>
+- Download binary, verify SHA-256 against <code>checksums.txt</code>
+- Install to <code>~/.local/bin/txtcode</code>
+- Fall back to <code>cargo build</code> only if no binary exists for the platform</p>
+<p><strong>Step 3 — Add cross-compilation targets</strong>
+- <code>Cargo.toml</code>: add <code>.cargo/config.toml</code> with cross-compilation targets
+- Additional targets: <code>aarch64-unknown-linux-gnu</code>, <code>x86_64-pc-windows-gnu</code>
+- Use <code>cross</code> tool or GitHub Actions matrix for cross-compilation</p>
+<p><strong>Step 4 — Test the installer</strong>
+- Test: <code>curl -sSf .../install.sh | sh</code> on clean Ubuntu 22.04 (no Rust) → txtcode installed
+- Test: <code>txtcode --version</code> works after install</p>
 <h3 id="done-when_13">Done When</h3>
 <ul>
-<li>Assigning <code>int</code> to a <code>string</code> field raises E0016</li>
-<li><code>cargo test</code> passes</li>
+<li>GitHub Release has binaries for Linux x86_64, macOS arm64, Windows x86_64</li>
+<li><code>install.sh</code> installs from binary on these platforms (no cargo needed)</li>
+<li><code>txtcode doctor</code> reports correct installation</li>
 </ul>
 <hr />
-<h2 id="task-33-null-safety-mode">Task 3.3 — Null Safety Mode</h2>
-<p><strong>Status:</strong> <code>[x]</code>
+<h2 id="task-112-interactive-debugger-cli">Task 11.2 — Interactive Debugger CLI</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — infrastructure exists; needs interactive loop and source-line mapping
 <strong>Estimated size:</strong> Medium</p>
+<h3 id="problem_13">Problem</h3>
+<p><code>src/tools/debugger.rs</code> — <code>step()</code>, <code>continue_execution()</code>, <code>inspect_variable()</code> all work
+at bytecode level. But <code>txtcode debug file.tc</code> compiles and runs without stopping — there
+is no interactive loop exposed to the user. Breakpoints are by bytecode address (not line).</p>
 <h3 id="what-to-do_14">What to Do</h3>
-<ul>
-<li>File: <code>src/typecheck/checker.rs</code></li>
-<li>In strict mode: track which variables can be <code>Null</code></li>
-<li>Warn/error when a potentially-null value is used without null check</li>
-<li>Introduce <code>T?</code> syntax for nullable types in annotations</li>
-<li><code>?.</code> operator (already exists) is the safe access path</li>
-</ul>
+<p><strong>Step 1 — Add debug symbol table to compiler</strong>
+- File: <code>src/compiler/bytecode.rs</code>
+- Add: <code>debug_info: Vec&lt;(usize, usize)&gt;</code> to <code>Bytecode</code> struct
+  - Each entry: <code>(instruction_index, source_line_number)</code>
+- Compiler: when emitting each instruction, record the source line from the AST span</p>
+<p><strong>Step 2 — Add line-based breakpoints to Debugger</strong>
+- File: <code>src/tools/debugger.rs</code>
+- Add: <code>fn add_breakpoint_at_line(&amp;mut self, line: usize)</code> — looks up line in debug_info,
+  adds the corresponding instruction index to <code>breakpoints</code></p>
+<p><strong>Step 3 — Interactive REPL loop in <code>txtcode debug</code></strong>
+- File: <code>src/cli/debug_cmd.rs</code> (new, or extend existing)
+- Start debugger, enter loop:
+  <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>(txtcode-dbg) run          → run until breakpoint or end
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>(txtcode-dbg) step         → execute one instruction, print state
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>(txtcode-dbg) break 15     → set breakpoint at source line 15
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>(txtcode-dbg) print x      → print variable x
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>(txtcode-dbg) vars         → print all variables in scope
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>(txtcode-dbg) stack        → print operand stack
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>(txtcode-dbg) continue     → resume until next breakpoint
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>(txtcode-dbg) quit         → exit debugger
+</code></pre></div>
+- Use <code>rustyline</code> (already may be a dep via REPL) for readline in debugger loop</p>
+<p><strong>Step 4 — Source context display</strong>
+- When breaking at instruction I: print the source line that generated it
+  (read source file, display line N with <code>→</code> marker)</p>
+<p><strong>Step 5 — Tests</strong>
+- Test: debugger breaks at line 5 when <code>break 5</code> set before <code>run</code>
+- Test: <code>step</code> advances one instruction at a time
+- Test: <code>print x</code> shows current value of variable</p>
 <h3 id="done-when_14">Done When</h3>
 <ul>
-<li><code>--strict-types</code>: using a nullable variable without null check produces a warning</li>
-<li><code>?.</code> operator suppresses the warning</li>
-<li><code>cargo test</code> passes</li>
+<li><code>txtcode debug script.tc</code> enters interactive loop</li>
+<li><code>break &lt;line&gt;</code>, <code>step</code>, <code>continue</code>, <code>print &lt;var&gt;</code>, <code>vars</code>, <code>quit</code> all work</li>
+<li>Source line shown at each break</li>
 </ul>
 <hr />
-<h2 id="task-34-clean-up-generics">Task 3.4 — Clean Up Generics</h2>
-<p><strong>Status:</strong> <code>[x]</code> — Option A: removed <code>&lt;T&gt;</code> parsing block from <code>calls.rs</code>. AST field kept for v0.8.
-<strong>Estimated size:</strong> Small</p>
-<h3 id="decision-required">Decision required</h3>
-<p>Generics are "parsed, erased at runtime" — this is misleading.</p>
-<p><strong>Option A:</strong> Remove generic syntax from language spec and parser entirely. Add to roadmap for v0.8.
-<strong>Option B:</strong> Implement mono-morphized generics for simple cases (<code>Array&lt;int&gt;</code>, <code>Map&lt;string, int&gt;</code>).</p>
-<p><strong>Recommended:</strong> Option A (simpler, honest). Remove generic <code>&lt;T&gt;</code> syntax from parser and spec. Add note in CHANGELOG.</p>
+<h2 id="task-113-real-doc-generation-txtcode-doc">Task 11.3 — Real Doc Generation (<code>txtcode doc</code>)</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — <code>txtcode doc</code> listed in CLI but produces no output
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="problem_14">Problem</h3>
+<p><code>txtcode doc</code> subcommand is listed in CLI help but does nothing useful. There is no
+documentation generation for Txtcode packages or scripts.</p>
+<h3 id="what-to-do_15">What to Do</h3>
+<p><strong>Step 1 — Extract doc comments from source</strong>
+- File: <code>src/tools/docgen.rs</code> (new)
+- Parse <code>.tc</code> files; extract <code>##</code> block comments immediately before <code>define → fn → (params)</code> or <code>struct</code>
+- Build: <code>DocItem { kind: Function|Struct, name, params, doc_comment, return_type }</code></p>
+<p><strong>Step 2 — Markdown output</strong>
+- File: <code>src/tools/docgen.rs</code>
+- Generate: one <code>.md</code> file per <code>.tc</code> source file
+- Format per function:
+  <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="gu">## gcd(a, b)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>Greatest common divisor of a and b.
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="gs">**Parameters:**</span> a: int, b: int
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="gs">**Returns:**</span> int
+</code></pre></div></p>
+<p><strong>Step 3 — Wire to CLI</strong>
+- File: <code>src/cli/doc_cmd.rs</code> (new or extend existing)
+- <code>txtcode doc [path]</code> — default: scan <code>src/</code> and <code>packages/</code>, output to <code>docs/api/</code>
+- <code>txtcode doc --format json</code> — output JSON for tooling
+- <code>txtcode doc --output DIR</code> — custom output directory</p>
+<p><strong>Step 4 — Package doc index</strong>
+- For packages: generate <code>docs/api/index.md</code> listing all packages with their exports</p>
+<p><strong>Step 5 — Tests</strong>
+- Test: <code>txtcode doc examples/hello_world.tc</code> produces a markdown file with function docs</p>
 <h3 id="done-when_15">Done When</h3>
 <ul>
-<li>Generics syntax removed from parser (or basic generic types work end-to-end)</li>
-<li>Language spec updated</li>
+<li><code>txtcode doc packages/npl-math</code> generates correct markdown documentation</li>
+<li><code>txtcode doc --format json</code> produces parseable JSON</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="group-3-checkpoint">Group 3 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>[x] --strict-types blocks execution on type errors
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>[x] Struct field type mismatch raises E0016 reliably
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>[x] Null safety warnings in strict mode
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>[x] Generics: removed from parser (deferred to v0.8)
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>[x] cargo test passes
-</code></pre></div>
-<hr />
-<hr />
-<h1 id="group-4-async-runtime">GROUP 4 — Async Runtime</h1>
-<p><strong>Goal:</strong> Replace <code>Option&lt;()&gt;</code> executor with real async execution.
-<strong>Unblocked by:</strong> Group 1 complete (can work in parallel with Group 2/3).
-<strong>Output:</strong> I/O-bound programs work without blocking.</p>
-<hr />
-<h2 id="task-41-wire-tokio-executor">Task 4.1 — Wire Tokio Executor</h2>
-<p><strong>Status:</strong> <code>[x]</code> — Removed dead <code>_async_executor: Option&lt;()&gt;</code>. Added <code>Instruction::Await</code> to bytecode + handler in bytecode VM. HTTP functions now return <code>Value::Future</code> immediately via <code>std::thread::spawn</code> (thread-based, no tokio runtime stored on VM).
-<strong>Estimated size:</strong> Large</p>
-<h3 id="problem_10">Problem</h3>
-<p><code>_async_executor: Option&lt;()&gt;</code> in <code>VirtualMachine</code> is a stub. <code>tokio</code> is already a dependency.</p>
-<h3 id="what-to-do_15">What to Do</h3>
-<p><strong>Step 1 — Replace placeholder</strong>
-- File: <code>src/runtime/vm.rs</code>
-- Change <code>_async_executor: Option&lt;()&gt;</code> to <code>async_runtime: Option&lt;tokio::runtime::Runtime&gt;</code>
-- Initialize: <code>async_runtime: Some(tokio::runtime::Runtime::new().unwrap())</code></p>
-<p><strong>Step 2 — Add Await instruction to bytecode</strong>
-- File: <code>src/compiler/bytecode.rs</code>
-- Add: <code>Instruction::Await</code>
-- Compiler: emit <code>Await</code> after calling an async function</p>
-<p><strong>Step 3 — Handle Await in BytecodeVM</strong>
-- File: <code>src/runtime/bytecode_vm.rs</code>
-- When <code>Value::Future(handle)</code> is on stack and <code>Await</code> executes: block thread until future resolves
-- Use <code>FutureHandle</code>'s <code>Mutex&lt;Option&lt;Result&gt;&gt;</code> + <code>Condvar</code></p>
-<p><strong>Step 4 — Make stdlib network functions async</strong>
-- File: <code>src/stdlib/net.rs</code>
-- <code>http_get</code>, <code>http_post</code> etc: return <code>Value::Future</code> immediately
-- Spawn tokio task that resolves the future when HTTP response arrives</p>
-<p><strong>Step 5 — AST VM async support</strong>
-- File: <code>src/runtime/execution/</code> — wherever function calls are dispatched
-- When calling a function marked <code>async_functions.contains(name)</code>: use tokio runtime to block-on</p>
+<h2 id="task-114-lsp-go-to-definition-hover-rename">Task 11.4 — LSP: Go-to-Definition, Hover, Rename</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — LSP server exists; needs symbol resolution
+<strong>Estimated size:</strong> Medium-Large</p>
+<h3 id="problem_15">Problem</h3>
+<p><code>src/cli/lsp.rs</code> — handles <code>initialize</code>, diagnostics, completion. Does NOT handle:
+- <code>textDocument/definition</code> — go-to-definition
+- <code>textDocument/hover</code> — show function signature on hover
+- <code>textDocument/references</code> — find all usages
+- <code>textDocument/rename</code> — rename symbol across file
+- <code>textDocument/signatureHelp</code> — show param info while typing</p>
+<p>Without these, the LSP is not useful beyond syntax highlighting and basic completion.</p>
+<h3 id="what-to-do_16">What to Do</h3>
+<p><strong>Step 1 — Build a symbol table from AST</strong>
+- File: <code>src/tools/symbol_table.rs</code> (new) or extend type checker
+- <code>SymbolTable</code> built by walking AST:
+  - Maps each function/variable name → definition location (file, line, col)
+  - Maps each usage location → definition location</p>
+<p><strong>Step 2 — textDocument/definition</strong>
+- In <code>lsp.rs</code>: handle <code>textDocument/definition</code> request
+- Given cursor position: find the token at that position, look up in symbol table
+- Return: <code>Location { uri, range }</code> of the definition</p>
+<p><strong>Step 3 — textDocument/hover</strong>
+- Handle <code>textDocument/hover</code>
+- For a function call: return <code>{ contents: "fn_name(params) → return_type\ndoc_comment" }</code>
+- For a variable: return its inferred type (from type checker)</p>
+<p><strong>Step 4 — textDocument/rename</strong>
+- Handle <code>textDocument/rename</code>
+- Find all occurrences of the symbol in the file
+- Return <code>WorkspaceEdit</code> replacing each occurrence</p>
+<p><strong>Step 5 — Async LSP (non-blocking)</strong>
+- Current LSP is synchronous stdin/stdout blocking
+- For large files, diagnostics on every keystroke will block
+- Add debounce: only re-parse 300ms after last change</p>
+<p><strong>Step 6 — Tests</strong>
+- Integration test: send <code>textDocument/definition</code> LSP request, get correct location back
+- Integration test: <code>textDocument/hover</code> returns function signature</p>
 <h3 id="done-when_16">Done When</h3>
 <ul>
-<li><code>store → resp → await http_get("https://example.com")</code> works</li>
-<li>HTTP request does not freeze the whole runtime</li>
-<li><code>cargo test</code> passes</li>
+<li>Go-to-definition works for functions defined in the same file</li>
+<li>Hover shows function signature and doc comment</li>
+<li>Rename works within a single file</li>
+<li>LSP debounces re-parsing</li>
 </ul>
 <hr />
-<h2 id="task-42-async-test-support">Task 4.2 — Async Test Support</h2>
-<p><strong>Status:</strong> <code>[x]</code> — Test runner resolves <code>Value::Future</code> results automatically. AST VM's thread-based await already handles async test files transparently.
-<strong>Estimated size:</strong> Small</p>
-<h3 id="what-to-do_16">What to Do</h3>
-<ul>
-<li>File: <code>src/cli/test_cmd.rs</code></li>
-<li>Test runner: detect async test functions and run them inside tokio runtime</li>
-<li>File: <code>src/stdlib/test.rs</code></li>
-<li><code>test_run</code> helper: support async callbacks</li>
-</ul>
+<h2 id="task-115-repl-multiline-input-and-history">Task 11.5 — REPL Multiline Input and History</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> LOW — quality of life
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="problem_16">Problem</h3>
+<p>REPL does not support multiline input. Typing a <code>define → f → (x)</code> and pressing Enter
+immediately tries to parse the incomplete input and fails. No <code>...</code> continuation prompt.
+History works per-line but multi-line blocks cannot be re-used from history.</p>
+<h3 id="what-to-do_17">What to Do</h3>
+<p><strong>Step 1 — Detect incomplete input</strong>
+- File: <code>src/cli/repl.rs</code>
+- After each input line: try to parse
+- If parse error is "unexpected EOF" (unclosed <code>define...end</code>, <code>if...end</code>, <code>while...end</code>):
+  - Show <code>...</code> prompt and accumulate lines
+- Else: execute immediately</p>
+<p><strong>Step 2 — Continuation prompt</strong>
+- Current prompt: <code>txtcode&gt;</code>
+- Continuation prompt: <code>...</code> (aligned with 4-space indent)</p>
+<p><strong>Step 3 — Persistent history</strong>
+- Save REPL history to <code>~/.txtcode/repl_history</code> across sessions
+- Load on startup: last 1000 entries</p>
+<p><strong>Step 4 — <code>:clear</code> and <code>:reset</code> commands</strong>
+- <code>:clear</code> — clear screen
+- <code>:reset</code> — reset VM state (clear all variables)
+- <code>:help</code> — show available commands</p>
 <h3 id="done-when_17">Done When</h3>
 <ul>
-<li>Test file can contain <code>define → test_http → () ... await http_get ...</code></li>
-<li>Test runner passes async tests</li>
+<li>Multi-line <code>define → f → (x)\n  return x\nend</code> works in REPL</li>
+<li>History persists across sessions</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="group-4-checkpoint">Group 4 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>[x] _async_executor: Option&lt;()&gt; removed (thread-based runtime already present)
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>[x] await expression works in both VMs (Instruction::Await in bytecode VM)
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>[x] http_get/http_post return Future, resolve on await
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>[x] Async tests work in test runner (Future results auto-resolved)
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>[x] cargo test passes
+<h2 id="group-11-checkpoint">Group 11 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[ ] Pre-built binaries on GitHub Releases for Linux x86_64, macOS arm64, Windows x64
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>[ ] install.sh installs from binary without requiring Rust toolchain
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>[ ] txtcode debug &lt;file&gt; enters interactive loop with break/step/print/continue/quit
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>[ ] Source line shown at each debugger break
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>[ ] txtcode doc generates markdown API docs from ## comments
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>[ ] LSP: go-to-definition works for same-file symbols
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>[ ] LSP: hover shows function signature
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>[ ] REPL: multiline input with continuation prompt
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>[ ] REPL: history persists across sessions
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>[ ] cargo test passes
 </code></pre></div>
 <hr />
 <hr />
-<h1 id="group-5-standard-library-gaps">GROUP 5 — Standard Library Gaps</h1>
-<p><strong>Goal:</strong> Stdlib covers real automation and scripting use cases.
-<strong>Unblocked by:</strong> Group 1 complete.
-<strong>Output:</strong> Scripts can do real work without reimplementing basics.</p>
+<h1 id="group-12-platform-and-compilation">GROUP 12 — Platform and Compilation</h1>
+<p><strong>Goal:</strong> Txtcode has a path to native performance and broader deployment.
+<strong>Unblocked by:</strong> Groups 9 and 10 complete.
+<strong>Output:</strong> Async event loop; struct methods; WASM target; LLVM planning.
+<strong>Target version:</strong> 0.8.0</p>
 <hr />
-<h2 id="task-51-basic-http-server">Task 5.1 — Basic HTTP Server</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>http_serve</code>, <code>http_response</code>, <code>http_request_method/path/body</code> implemented in <code>net.rs</code>. Uses <code>std::net::TcpListener</code> (no extra deps). HTTP futures use <code>std::thread::spawn</code> + <code>FutureHandle</code>.
-<strong>Estimated size:</strong> Medium-Large</p>
-<h3 id="what-to-do_17">What to Do</h3>
-<ul>
-<li>File: <code>src/stdlib/net.rs</code></li>
-<li>Add functions:</li>
-<li><code>http_serve(port, handler_fn)</code> — starts HTTP server, calls handler for each request</li>
-<li><code>http_response(status, body, headers)</code> — builds response value</li>
-<li><code>http_request_method(req)</code> — extracts method</li>
-<li><code>http_request_path(req)</code> — extracts path</li>
-<li><code>http_request_body(req)</code> — extracts body</li>
-<li>Use <code>tokio</code> + basic HTTP parsing (hyper or tiny_http crate)</li>
-<li>Add <code>tiny_http</code> or <code>hyper</code> to <code>Cargo.toml</code> under <code>[dependencies]</code> (optional, net feature)</li>
-<li>Handler function is called as a Txtcode function/lambda for each request</li>
-</ul>
+<h2 id="task-121-async-event-loop-tokio-integration">Task 12.1 — Async Event Loop (Tokio Integration)</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> HIGH — architectural change to how async functions execute
+<strong>Estimated size:</strong> Very Large</p>
+<h3 id="problem_17">Problem</h3>
+<p>Current async: <code>async define</code> spawns one OS thread per call. This does not scale.
+<code>http_serve</code> spawns a thread per request. 100 concurrent requests = 100 threads.
+No <code>select</code>, no <code>join!</code>, no cancellation, no backpressure.</p>
+<h3 id="what-to-do_18">What to Do</h3>
+<p><strong>Step 1 — Add Tokio runtime to VirtualMachine</strong>
+- File: <code>src/runtime/vm.rs</code>
+- Replace <code>_async_executor: Option&lt;()&gt;</code> with <code>tokio_rt: Arc&lt;tokio::runtime::Runtime&gt;</code>
+- Initialize with <code>tokio::runtime::Builder::new_multi_thread().build()</code>
+- Feature-gated behind <code>features = ["async"]</code> (already a Cargo feature)</p>
+<p><strong>Step 2 — Async function execution via Tokio</strong>
+- File: <code>src/runtime/execution/</code> — function call handler
+- When calling an <code>async_function</code>: <code>tokio_rt.spawn(async { ... })</code> → <code>Value::Future(JoinHandle)</code>
+- <code>await handle</code> → <code>tokio_rt.block_on(handle)</code> in sync context, or native <code>.await</code> in async context</p>
+<p><strong>Step 3 — Async-safe stdlib</strong>
+- File: <code>src/stdlib/net.rs</code>
+- Convert <code>http_get</code>, <code>http_post</code>, <code>http_serve</code> to <code>tokio::spawn</code> async tasks
+- Handler function in <code>http_serve</code> called via <code>tokio::spawn</code> per request (no thread per request)</p>
+<p><strong>Step 4 — Language: join!/select! syntax</strong>
+- Add <code>await_all([future1, future2])</code> stdlib function — waits for all
+- Add <code>await_any([future1, future2])</code> stdlib function — waits for first</p>
+<p><strong>Step 5 — Cancellation</strong>
+- Add <code>cancel(future)</code> stdlib function — cancels a pending future via <code>AbortHandle</code></p>
+<p><strong>Step 6 — Tests</strong>
+- Test: 100 concurrent HTTP requests via <code>await_all</code> — completes without 100 threads
+- Test: <code>cancel(future)</code> stops the task</p>
 <h3 id="done-when_18">Done When</h3>
 <ul>
-<li>Simple echo server works in Txtcode</li>
-<li>Server handles GET and POST</li>
+<li><code>http_serve</code> handles concurrent requests without spawning OS threads</li>
+<li><code>await_all</code> / <code>await_any</code> work</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-52-timezone-aware-datetime">Task 5.2 — Timezone-Aware Date/Time</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>now_utc</code>, <code>now_local</code>, <code>parse_datetime</code>, <code>format_datetime</code>, <code>datetime_add</code>, <code>datetime_diff</code> added to <code>time.rs</code>. UTC and local only (no IANA tz, no <code>chrono-tz</code> dep).
-<strong>Estimated size:</strong> Small (<code>chrono</code> already a dependency)</p>
-<h3 id="what-to-do_18">What to Do</h3>
-<ul>
-<li>File: <code>src/stdlib/time.rs</code></li>
-<li>Add:</li>
-<li><code>now_utc()</code> → string ISO 8601</li>
-<li><code>now_local()</code> → string ISO 8601 with timezone</li>
-<li><code>parse_datetime(s, format)</code> → timestamp integer</li>
-<li><code>format_datetime(ts, format, tz)</code> → string</li>
-<li><code>datetime_add(ts, amount, unit)</code> → new timestamp (unit: "seconds", "minutes", "hours", "days")</li>
-<li><code>datetime_diff(ts1, ts2, unit)</code> → integer</li>
-</ul>
+<h2 id="task-122-struct-methods-impl-blocks">Task 12.2 — Struct Methods (impl Blocks)</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — additive; does not break existing struct usage
+<strong>Estimated size:</strong> Large</p>
+<h3 id="problem_18">Problem</h3>
+<p>Structs are data-only. No method calls. <code>point.distance(other)</code> is impossible.
+All behavior must be passed as function references. This limits expressivity significantly
+for domain modeling.</p>
+<h3 id="what-to-do_19">What to Do</h3>
+<p><strong>Step 1 — Parser: <code>impl</code> block syntax</strong>
+- File: <code>src/parser/statements/</code>
+- New statement type: <code>Statement::Impl { struct_name: String, methods: Vec&lt;FunctionDef&gt; }</code>
+- Syntax:
+  <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>impl → Point
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  define → distance → (self, other)
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    return → sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  end
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>end
+</code></pre></div></p>
+<p><strong>Step 2 — Method registration</strong>
+- File: <code>src/runtime/vm.rs</code> (or struct_defs HashMap)
+- <code>struct_methods: HashMap&lt;String, HashMap&lt;String, Value&gt;&gt;</code> — struct_name → method_name → function
+- When <code>Statement::Impl</code> executes: register methods</p>
+<p><strong>Step 3 — Method dispatch</strong>
+- File: <code>src/runtime/execution/expressions/member_access.rs</code>
+- When <code>obj.method_name(args)</code> is evaluated:
+  1. Get <code>obj</code> type name from <code>Value::type_name()</code>
+  2. Look up <code>struct_methods[type_name][method_name]</code>
+  3. Call with <code>obj</code> as first argument (self)</p>
+<p><strong>Step 4 — Bytecode VM method dispatch</strong>
+- File: <code>src/runtime/bytecode_vm.rs</code>
+- <code>CallMethod</code> instruction: already exists; extend to check struct_methods registry</p>
+<p><strong>Step 5 — <code>self</code> parameter</strong>
+- <code>self</code> is a conventional first parameter — not a keyword (keeps parser simple)
+- Caller: <code>point.distance(other)</code> → desugars to <code>distance(point, other)</code></p>
+<p><strong>Step 6 — Tests</strong>
+- Test: <code>struct Point(x, y)</code> + <code>impl Point { define → len → (self) ... }</code> + <code>point.len()</code> works
+- Test: method calling another method via <code>self.other_method()</code></p>
 <h3 id="done-when_19">Done When</h3>
 <ul>
-<li><code>format_datetime(now_utc(), "%Y-%m-%d", "UTC")</code> returns correct date</li>
+<li>Struct methods can be defined and called</li>
+<li>Both VMs support method dispatch</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-53-csv-write">Task 5.3 — CSV Write</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>csv_write(path, rows)</code> in <code>io.rs</code>, <code>csv_to_string(rows)</code> alias in <code>core.rs</code>. Routing fixed (excluded from <code>csv_</code> CoreLib prefix; added explicit IOLib route).
-<strong>Estimated size:</strong> Small</p>
-<h3 id="what-to-do_19">What to Do</h3>
-<ul>
-<li>File: <code>src/stdlib/io.rs</code></li>
-<li>Add <code>csv_write(path, rows)</code> — <code>rows</code> is <code>Array</code> of <code>Array</code></li>
-<li>Add <code>csv_to_string(rows)</code> — returns CSV as string without writing file</li>
-</ul>
+<h2 id="task-123-wasm-compilation-target">Task 12.3 — WASM Compilation Target</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> MEDIUM — new backend; additive
+<strong>Estimated size:</strong> Very Large</p>
+<h3 id="problem_19">Problem</h3>
+<p>No compilation path beyond bytecode VM. WASM would enable browser-side Txtcode,
+edge function deployment, and plugin sandboxing.</p>
+<h3 id="what-to-do_20">What to Do</h3>
+<p><strong>Step 1 — Bytecode → WAT (WebAssembly Text Format)</strong>
+- File: <code>src/compiler/wasm.rs</code> (new)
+- New backend: <code>WasmCompiler</code> that walks <code>Bytecode</code> instructions and emits WAT
+- Start with a minimal subset: arithmetic, variables, function calls, if/while</p>
+<p><strong>Step 2 — WASM stdlib shim</strong>
+- Most stdlib functions (HTTP, filesystem) are unavailable in WASM
+- Define a <code>wasm_stdlib</code> shim that either:
+  - Raises <code>RuntimeError("not available in WASM context")</code> for unavailable functions
+  - Provides WASM-safe alternatives (e.g., <code>console.log</code> for print)</p>
+<p><strong>Step 3 — CLI: <code>txtcode compile --target wasm</code></strong>
+- <code>txtcode compile script.tc --target wasm -o script.wasm</code>
+- Uses <code>wasm-opt</code> for optimization if available</p>
+<p><strong>Step 4 — Runtime: wasm execution via wasmtime</strong>
+- <code>txtcode run --target wasm script.wasm</code> — runs via <code>wasmtime</code> crate
+- Feature-gated: <code>--features wasm</code></p>
+<p><strong>Step 5 — Tests</strong>
+- Test: simple arithmetic script compiles to WASM and produces correct output</p>
 <h3 id="done-when_20">Done When</h3>
 <ul>
-<li>Can write CSV and read it back correctly</li>
-<li><code>cargo test</code> passes</li>
+<li><code>txtcode compile --target wasm hello.tc -o hello.wasm</code> produces valid WASM</li>
+<li><code>txtcode run --target wasm hello.wasm</code> runs it</li>
+<li><code>cargo test</code> passes for WASM feature</li>
 </ul>
 <hr />
-<h2 id="task-54-zip-create">Task 5.4 — ZIP Create</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>zip_create</code> and <code>zip_extract</code> already existed; verified with integration test.
-<strong>Estimated size:</strong> Small (<code>zip</code> crate already present)</p>
-<h3 id="what-to-do_20">What to Do</h3>
-<ul>
-<li>File: <code>src/stdlib/io.rs</code></li>
-<li>Add <code>zip_create(output_path, files)</code> — <code>files</code> is <code>Array</code> of file paths</li>
-<li>Add <code>zip_extract(zip_path, dest_dir)</code> — already may exist; verify</li>
-</ul>
+<h2 id="task-124-llvm-native-compilation-planning">Task 12.4 — LLVM Native Compilation Planning</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> LOW (planning only) — implementation in v1.0
+<strong>Estimated size:</strong> Small (planning document)</p>
+<h3 id="what-to-do_21">What to Do</h3>
+<p><strong>This task is planning/research only. No code.</strong></p>
+<p>Write <code>docs/llvm-backend.md</code>:
+1. Evaluate: <code>inkwell</code> (LLVM Rust bindings) vs <code>cranelift</code> (Rust-native code gen, no LLVM dep)
+2. <strong>Recommendation</strong>: <code>cranelift</code> — pure Rust, lighter, used by Wasmtime; avoids LLVM toolchain dep
+3. Design: <code>src/compiler/native.rs</code> — <code>NativeCompiler</code> that emits Cranelift IR from <code>Bytecode</code>
+4. Scope for v1.0:
+   - Integers, floats, strings (heap-allocated)
+   - Function calls (direct, no dynamic dispatch)
+   - Basic control flow (if/while/for)
+   - Stdlib calls via C FFI into a <code>libtxtcode_rt.a</code> runtime library
+5. Performance target: 10× faster than bytecode VM for compute-heavy scripts
+6. Timeline: design in v0.8, prototype in v0.9, release in v1.0</p>
 <h3 id="done-when_21">Done When</h3>
 <ul>
-<li>Can create a zip, extract it, verify contents</li>
-<li><code>cargo test</code> passes</li>
+<li><code>docs/llvm-backend.md</code> written with specific recommendation and design</li>
+<li>Decision recorded in CHANGELOG</li>
 </ul>
 <hr />
-<h2 id="task-55-streaming-file-io">Task 5.5 — Streaming File I/O</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>file_open/read_line/write_line/file_close</code> added to <code>io.rs</code> using global <code>lazy_static</code> <code>Mutex&lt;HashMap&lt;i64, BufReader/BufWriter&gt;&gt;</code>. Handles returned as <code>Value::Integer(id)</code>.
-<strong>Estimated size:</strong> Medium</p>
-<h3 id="what-to-do_21">What to Do</h3>
-<ul>
-<li>File: <code>src/stdlib/io.rs</code></li>
-<li>Add:</li>
-<li><code>file_open(path, mode)</code> → file_handle (Value::Map with handle metadata or new Value::FileHandle)</li>
-<li><code>file_read_line(handle)</code> → string (one line)</li>
-<li><code>file_write_line(handle, line)</code> → null</li>
-<li><code>file_close(handle)</code> → null</li>
-<li>Alternative: use iterator approach — <code>file_lines(path)</code> returns <code>Array</code> of lines (lazy loaded)</li>
-</ul>
+<h2 id="task-125-or-patterns-and-range-patterns-in-match">Task 12.5 — Or-Patterns and Range Patterns in Match</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> LOW — additive language feature
+<strong>Estimated size:</strong> Small-Medium</p>
+<h3 id="problem_20">Problem</h3>
+<p>Match patterns lack:
+- Or-patterns: <code>match x { 1 | 2 | 3 =&gt; "small", _ =&gt; "other" }</code>
+- Range patterns: <code>match x { 1..=5 =&gt; "low", 6..=10 =&gt; "mid", _ =&gt; "high" }</code>
+- <code>as</code> bindings: <code>match x { SomeStruct { x, y } as s =&gt; use_s(s) }</code></p>
+<h3 id="what-to-do_22">What to Do</h3>
+<p><strong>Step 1 — Parser: or-patterns</strong>
+- File: <code>src/parser/patterns.rs</code>
+- Add: <code>Pattern::Or(Vec&lt;Pattern&gt;)</code> variant
+- Parse: <code>1 | 2 | 3</code> in match arm pattern position</p>
+<p><strong>Step 2 — Parser: range patterns</strong>
+- Add: <code>Pattern::Range(Expression, Expression)</code> using <code>..=</code> syntax
+- Parse: <code>1..=5</code> in pattern position</p>
+<p><strong>Step 3 — VM: match evaluation</strong>
+- Both VMs: when <code>Pattern::Or</code>: try each sub-pattern; succeed if any matches
+- Both VMs: when <code>Pattern::Range</code>: evaluate bounds, check value in range</p>
+<p><strong>Step 4 — Tests</strong>
+- Test: <code>match 2 { 1 | 2 | 3 =&gt; "yes", _ =&gt; "no" }</code> → "yes"
+- Test: <code>match 4 { 1..=5 =&gt; "low", _ =&gt; "high" }</code> → "low"</p>
 <h3 id="done-when_22">Done When</h3>
 <ul>
-<li>Can process a 100MB file line by line without loading all into memory</li>
+<li>Or-patterns and range patterns work in match expressions in both VMs</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="task-56-process-stdin-piping">Task 5.6 — Process stdin Piping</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>exec</code> updated with optional <code>{stdin, capture_stderr}</code> options Map. <code>exec_pipe(commands)</code> added for OS-level pipelines.
-<strong>Estimated size:</strong> Small</p>
-<h3 id="what-to-do_22">What to Do</h3>
-<ul>
-<li>File: <code>src/stdlib/sys.rs</code></li>
-<li>Update <code>exec(cmd, args, options)</code>:</li>
-<li>Add <code>stdin</code> option: string content to pipe to process stdin</li>
-<li>Add <code>capture_stderr</code> option: include stderr in result</li>
-<li>Add <code>exec_pipe(commands)</code> — runs pipeline: <code>["grep foo", "sort", "uniq"]</code></li>
-</ul>
+<h2 id="task-126-error-propagation-operator">Task 12.6 — <code>?</code> Error Propagation Operator</h2>
+<p><strong>Status:</strong> <code>[ ]</code>
+<strong>Risk:</strong> LOW — additive; improves ergonomics significantly
+<strong>Estimated size:</strong> Medium</p>
+<h3 id="problem_21">Problem</h3>
+<p>Error handling requires explicit <code>try/catch</code> or <code>unwrap</code>. There is no ergonomic propagation.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a># Current: verbose
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>store → result → do_something()
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>if → is_err(result)
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  return → result
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>end
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a># Target: concise
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>store → result → do_something()?
+</code></pre></div></p>
+<h3 id="what-to-do_23">What to Do</h3>
+<p><strong>Step 1 — Lexer: <code>?</code> as postfix operator</strong>
+- File: <code>src/lexer/lexer.rs</code>
+- <code>?</code> after an expression (not <code>?.</code> optional chain): <code>Propagate</code> token</p>
+<p><strong>Step 2 — Parser: postfix <code>?</code></strong>
+- File: <code>src/parser/expressions/</code>
+- Parse <code>expr?</code> as <code>Expression::Propagate(Box&lt;Expression&gt;)</code></p>
+<p><strong>Step 3 — VM: propagation semantics</strong>
+- When <code>Expression::Propagate(expr)</code> evaluates:
+  1. Evaluate inner expression → result
+  2. If <code>Value::Result(false, err)</code> (error): return <code>err</code> from current function (early return)
+  3. If <code>Value::Result(true, val)</code>: unwrap to <code>val</code>
+  4. If not a Result value: pass through unchanged</p>
+<p><strong>Step 4 — Bytecode instruction</strong>
+- File: <code>src/compiler/bytecode.rs</code>
+- Add: <code>Instruction::Propagate</code> — pops stack; if Err, early-return; if Ok, unwrap</p>
+<p><strong>Step 5 — Tests</strong>
+- Test: <code>err("oops")?</code> in a function causes the function to return <code>err("oops")</code>
+- Test: <code>ok(42)?</code> unwraps to <code>42</code></p>
 <h3 id="done-when_23">Done When</h3>
 <ul>
-<li><code>exec("cat", [], {stdin: "hello world"})</code> returns <code>"hello world"</code></li>
+<li><code>?</code> operator works in both VMs</li>
 <li><code>cargo test</code> passes</li>
 </ul>
 <hr />
-<h2 id="group-5-checkpoint">Group 5 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[x] HTTP server: basic serve/request/response API works
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>[x] Date/time: timezone-aware, duration arithmetic works
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>[x] CSV write works
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>[x] ZIP create works
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>[x] Streaming file I/O: line-by-line large file processing
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>[x] Process stdin piping works
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>[x] cargo test passes (194 tests)
-</code></pre></div>
-<hr />
-<hr />
-<h1 id="group-6-ecosystem">GROUP 6 — Ecosystem</h1>
-<p><strong>Goal:</strong> Txtcode has enough packages and tooling for real adoption.
-<strong>Unblocked by:</strong> Group 5 complete.
-<strong>Output:</strong> Developers can find and use packages; editors support Txtcode.</p>
-<hr />
-<h2 id="task-61-lsp-language-server-protocol">Task 6.1 — LSP (Language Server Protocol)</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>src/cli/lsp.rs</code> — synchronous JSON-RPC stdio server (no tower-lsp). <code>txtcode lsp</code> subcommand wired. Supports: initialize, didOpen/didChange → publishDiagnostics, completion (stdlib+keywords), shutdown/exit.
-<strong>Estimated size:</strong> Very Large (separate crate or major addition)</p>
-<h3 id="what-to-do_23">What to Do</h3>
-<p><strong>Option A — Minimal LSP (recommended first step)</strong>
-- New crate: <code>txtcode-lsp</code> or new binary <code>txtcode lsp</code>
-- Implement LSP protocol via <code>tower-lsp</code> crate
-- Features for v1:
-  - Diagnostics (syntax errors → LSP diagnostics)
-  - Hover (variable type, function signature)
-  - Completion (stdlib function names, local variables)
-  - Go-to-definition (local functions)</p>
-<p><strong>Step 1 — Add <code>tower-lsp</code> to Cargo.toml (optional feature <code>lsp</code>)</strong></p>
-<p><strong>Step 2 — New file: <code>src/cli/lsp.rs</code></strong>
-- <code>txtcode lsp</code> starts LSP server on stdio
-- Wire parser → diagnostics
-- Wire symbol table → hover/completion</p>
-<p><strong>Step 3 — VS Code extension (minimal)</strong>
-- New directory: <code>editors/vscode/</code>
-- <code>package.json</code>: declares language server client
-- <code>extension.ts</code>: starts <code>txtcode lsp</code> and connects</p>
-<h3 id="done-when_24">Done When</h3>
-<ul>
-<li><code>txtcode lsp</code> runs without crash</li>
-<li>VS Code extension shows syntax errors in editor</li>
-<li>Autocomplete lists stdlib function names</li>
-</ul>
-<hr />
-<h2 id="task-62-textmate-grammar-syntax-highlighting">Task 6.2 — TextMate Grammar (Syntax Highlighting)</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>editors/txtcode.tmLanguage.json</code> + <code>editors/txtcode-language-configuration.json</code> created. Scopes: keywords, strings (f""/r""/"""/regular), comments, numbers, operators, function defs/calls, type annotations.
-<strong>Estimated size:</strong> Small (JSON grammar file)</p>
-<h3 id="what-to-do_24">What to Do</h3>
-<ul>
-<li>New file: <code>editors/txtcode.tmLanguage.json</code></li>
-<li>Define scopes for: keywords, strings, comments, numbers, operators, function names</li>
-<li>Test in VS Code via language configuration</li>
-</ul>
-<h3 id="done-when_25">Done When</h3>
-<ul>
-<li><code>.tc</code> files get syntax highlighting in VS Code</li>
-<li>Grammar published to editors/ directory</li>
-</ul>
-<hr />
-<h2 id="task-63-public-package-registry-setup">Task 6.3 — Public Package Registry Setup</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>registry/index.json</code> with all 20 packages. Added <code>local_path</code> field to <code>RegistryVersionEntry</code>. <code>download_package</code> uses <code>install_local_package</code> when <code>local_path</code> is set. <code>TXTCODE_REGISTRY_INDEX_FILE</code> env var for local override already existed.
-<strong>Estimated size:</strong> Medium-Large</p>
-<h3 id="minimal-approach">Minimal approach</h3>
-<ul>
-<li>Host <code>registry/index.json</code> on GitHub Pages or a static server</li>
-<li>Registry format: <code>{ "packages": [ { "name": "npl-math", "version": "1.0.0", "url": "...", "sha256": "..." } ] }</code></li>
-<li><code>txtcode package install npl-math</code> downloads from registry URL, verifies SHA-256</li>
-</ul>
-<h3 id="what-to-do_25">What to Do</h3>
-<ul>
-<li>File: <code>src/cli/package.rs</code></li>
-<li>Add: configurable registry URL (default: <code>https://registry.txtcode.dev</code> or GitHub raw URL)</li>
-<li>Add: download package tarball, verify SHA-256, extract to <code>.txtcode-env/{active}/packages/</code></li>
-<li>Publish 4 existing packages to registry</li>
-</ul>
-<h3 id="done-when_26">Done When</h3>
-<ul>
-<li><code>txtcode package install npl-math</code> downloads and installs from public URL</li>
-<li>SHA-256 verification works</li>
-<li>4 starter packages published</li>
-</ul>
-<hr />
-<h2 id="task-64-lockfile-txtcodelock">Task 6.4 — Lockfile (Txtcode.lock)</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>LockFile</code> struct and <code>install_dependencies</code> already wrote Txtcode.lock. Verified: generated on install, respected on re-install, removed on update.
-<strong>Estimated size:</strong> Small-Medium</p>
-<h3 id="what-to-do_26">What to Do</h3>
-<ul>
-<li>File: <code>src/cli/package.rs</code></li>
-<li>After install: write <code>Txtcode.lock</code> with exact versions + SHA-256 hashes</li>
-<li>On <code>install</code>: if lock file exists, use locked versions instead of resolving</li>
-<li>Format: TOML</li>
-</ul>
-<h3 id="done-when_27">Done When</h3>
-<ul>
-<li>Reproducible installs: same lock file = same packages</li>
-<li><code>cargo test</code> passes</li>
-</ul>
-<hr />
-<h2 id="task-65-20-core-packages">Task 6.5 — 20 Core Packages</h2>
-<p><strong>Status:</strong> <code>[x]</code> — All 20 packages written under <code>packages/</code>. 4 pre-existing (npl-math, npl-strings, npl-collections, npl-datetime) + 16 new. All in registry/index.json with local_path entries.
-<strong>Estimated size:</strong> Large (content work, not core engineering)</p>
-<h3 id="package-list-to-write-and-publish">Package list to write and publish</h3>
-<table>
-<thead>
-<tr>
-<th>Package</th>
-<th>Contents</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>npl-math</code></td>
-<td>Already exists — verify + publish</td>
-</tr>
-<tr>
-<td><code>npl-strings</code></td>
-<td>Already exists — verify + publish</td>
-</tr>
-<tr>
-<td><code>npl-collections</code></td>
-<td>Already exists — verify + publish</td>
-</tr>
-<tr>
-<td><code>npl-datetime</code></td>
-<td>Already exists — verify + publish</td>
-</tr>
-<tr>
-<td><code>npl-http-client</code></td>
-<td>Wrapper around http_get/post with retries, headers</td>
-</tr>
-<tr>
-<td><code>npl-http-server</code></td>
-<td>Wrapper around http_serve with routing</td>
-</tr>
-<tr>
-<td><code>npl-json-schema</code></td>
-<td>JSON schema validation</td>
-</tr>
-<tr>
-<td><code>npl-csv</code></td>
-<td>CSV read/write utilities</td>
-</tr>
-<tr>
-<td><code>npl-env</code></td>
-<td>.env file loading into variables</td>
-</tr>
-<tr>
-<td><code>npl-template</code></td>
-<td>Simple string templating</td>
-</tr>
-<tr>
-<td><code>npl-semver</code></td>
-<td>Semver parsing/comparison</td>
-</tr>
-<tr>
-<td><code>npl-base64</code></td>
-<td>Base64 encode/decode (thin wrapper)</td>
-</tr>
-<tr>
-<td><code>npl-uuid</code></td>
-<td>UUID generation (thin wrapper)</td>
-</tr>
-<tr>
-<td><code>npl-retry</code></td>
-<td>Retry logic with backoff</td>
-</tr>
-<tr>
-<td><code>npl-assert</code></td>
-<td>Extended assertion utilities for testing</td>
-</tr>
-<tr>
-<td><code>npl-cli-args</code></td>
-<td>CLI argument parsing helpers</td>
-</tr>
-<tr>
-<td><code>npl-colors</code></td>
-<td>Terminal color output</td>
-</tr>
-<tr>
-<td><code>npl-table</code></td>
-<td>Print data as formatted tables</td>
-</tr>
-<tr>
-<td><code>npl-hash</code></td>
-<td>Consistent hash utilities</td>
-</tr>
-<tr>
-<td><code>npl-path</code></td>
-<td>Advanced path manipulation</td>
-</tr>
-</tbody>
-</table>
-<h3 id="done-when_28">Done When</h3>
-<ul>
-<li>All 20 packages installable via <code>txtcode package install &lt;name&gt;</code></li>
-<li>Each package has tests</li>
-<li>Registry updated</li>
-</ul>
-<hr />
-<h2 id="group-6-checkpoint">Group 6 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>[x] LSP: txtcode lsp runs, shows errors via publishDiagnostics
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>[x] Syntax highlighting grammar published (editors/)
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>[x] Public registry serves packages (registry/index.json + local_path installs)
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>[x] Lockfile generated and respected
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>[x] 20 core packages available and installable
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>[x] cargo test passes (194 tests)
-</code></pre></div>
-<hr />
-<hr />
-<h1 id="group-7-performance-baseline">GROUP 7 — Performance Baseline</h1>
-<p><strong>Goal:</strong> Know what Txtcode's performance envelope is. Publish it. Plan for improvement.
-<strong>Unblocked by:</strong> Group 2 complete.
-<strong>Output:</strong> Documented benchmarks; clear path to bytecode-only production runtime.</p>
-<hr />
-<h2 id="task-71-publish-benchmark-results">Task 7.1 — Publish Benchmark Results</h2>
-<p><strong>Status:</strong> <code>[x]</code> — <code>docs/performance.md</code> written with real numbers from <code>cargo bench</code>. Added 5 new benchmark programs and 7 new criterion bench functions. Key numbers: ast_loop 327 µs, ast_fib20 50.4 ms, ast_array_ops 138 µs, ast_json_ops 318 µs, ast_gc_alloc_10k 5.76 ms.
-<strong>Estimated size:</strong> Small</p>
-<h3 id="what-to-do_27">What to Do</h3>
-<ul>
-<li>File: <code>benches/benchmarks.rs</code> — already exists with criterion</li>
-<li>Run: <code>cargo bench</code></li>
-<li>Add benchmarks for:</li>
-<li>fibonacci(30) — recursion</li>
-<li>Array of 10,000 elements: map, filter, sort</li>
-<li>String concatenation 10,000 times</li>
-<li>JSON encode/decode 1,000 objects</li>
-<li>File write 1,000 lines</li>
-<li>Write results to: <code>docs/performance.md</code></li>
-<li>Include: comparison table (AST VM vs Bytecode VM)</li>
-</ul>
-<h3 id="done-when_29">Done When</h3>
-<ul>
-<li><code>docs/performance.md</code> exists with real numbers</li>
-<li>AST VM vs Bytecode VM comparison documented</li>
-</ul>
-<hr />
-<h2 id="task-72-plan-bytecode-only-production-path">Task 7.2 — Plan Bytecode-Only Production Path</h2>
-<p><strong>Status:</strong> <code>[x]</code> — Documented below.</p>
-<h3 id="bytecode-only-production-path-v08-plan">Bytecode-Only Production Path (v0.8 plan)</h3>
-<h4 id="current-state-v05">Current state (v0.5)</h4>
-<table>
-<thead>
-<tr>
-<th>Component</th>
-<th>Role</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>AST VM</td>
-<td>Default for <code>txtcode run</code>, REPL, tests, type-check mode</td>
-</tr>
-<tr>
-<td>Bytecode VM</td>
-<td>Experimental — available via <code>--features bytecode</code></td>
-</tr>
-<tr>
-<td><code>txtcode compile</code></td>
-<td>Produces <code>.txtc</code> bytecode binary</td>
-</tr>
-</tbody>
-</table>
-<h4 id="v06-target">v0.6 target</h4>
-<ul>
-<li>Bytecode VM becomes <strong>default</strong> for <code>txtcode run</code> when <code>--features bytecode</code> is in the default feature set</li>
-<li>AST VM retained for: <code>txtcode repl</code>, <code>txtcode debug</code>, <code>--type-check</code> / <code>--strict-types</code> flags</li>
-<li>Both VMs share the same stdlib, permission system, and audit trail</li>
-</ul>
-<h4 id="v08-target-txtcode-exec">v0.8 target — <code>txtcode exec</code></h4>
-<ul>
-<li><code>txtcode compile main.tc -o app.txtc</code> → produces standalone bytecode file</li>
-<li><code>txtcode exec app.txtc</code> → runs bytecode directly, NO source re-parsing</li>
-<li>Cold-start target: &lt; 5 ms for a 500-line program</li>
-<li>AST VM: kept for <code>repl</code> + <code>debug</code> only; not used in production deploys</li>
-<li>This enables: distributing <code>.txtc</code> binaries without shipping source code</li>
-</ul>
-<h4 id="deprecation-plan-for-ast-vm">Deprecation plan for AST VM</h4>
-<ul>
-<li>v0.6: AST VM is secondary; bytecode VM is default for <code>run</code></li>
-<li>v0.8: AST VM is debug-only; <code>txtcode run</code> always uses bytecode VM</li>
-<li>v1.0: AST VM may be removed from release builds (kept in dev builds)</li>
-<li>NOT before v1.0: REPL and error messages still need AST walking for good diagnostics</li>
-</ul>
-<hr />
-<h2 id="task-73-document-gc-behavior">Task 7.3 — Document GC Behavior</h2>
-<p><strong>Status:</strong> <code>[x]</code> — Extensive doc comments added to <code>src/runtime/gc.rs</code> explaining RAII model, what <code>collect()</code> actually does (no-op counter reset), performance numbers, and future arena allocator plan. <code>docs/performance.md</code> has "Memory Management" section with the same explanation.
-<strong>Estimated size:</strong> Small</p>
-<h3 id="what-to-do_28">What to Do</h3>
-<ul>
-<li>File: <code>src/runtime/gc.rs</code></li>
-<li>Add doc comment explaining: "Rust RAII handles memory. AllocationTracker monitors allocation count. collect() is a suggestion, not a sweep."</li>
-<li>Update <code>docs/performance.md</code>: section "Memory Management" explaining the model honestly</li>
-<li>Add benchmark: 100,000 object allocation loop — measure if GC overhead is visible</li>
-</ul>
-<h3 id="done-when_30">Done When</h3>
-<ul>
-<li><code>docs/performance.md</code> has "Memory Management" section</li>
-<li>GC code is accurately documented</li>
-</ul>
-<hr />
-<h2 id="group-7-checkpoint">Group 7 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>[x] Benchmark results published in docs/performance.md
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>[x] AST VM vs Bytecode VM comparison documented (see performance.md)
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>[x] Bytecode-only production path planned (see Task 7.2 above)
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>[x] GC behavior documented honestly (gc.rs + performance.md)
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>[x] cargo test passes (194 tests)
+<h2 id="group-12-checkpoint">Group 12 Checkpoint</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>[ ] Tokio async runtime integrated; http_serve handles concurrent requests
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>[ ] await_all / await_any / cancel implemented
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>[ ] Struct methods (impl blocks) work in both VMs
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>[ ] WASM compilation: txtcode compile --target wasm works for basic programs
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>[ ] docs/llvm-backend.md written with Cranelift recommendation
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>[ ] Or-patterns and range patterns work in match
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>[ ] ? error propagation operator works in both VMs
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>[ ] cargo test passes
 </code></pre></div>
 <hr />
 <hr />
@@ -1662,54 +1758,48 @@ Type checker runs but errors are advisory.</p>
 <th>Milestone</th>
 <th>Version</th>
 <th>Groups</th>
-<th>What It Unlocks</th>
+<th>What It Delivers</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Stable Core</strong></td>
+<td><strong>Security Correctness</strong></td>
+<td>0.5.1</td>
+<td>8</td>
+<td>exec default-deny; const enforced; signing CLI; FFI path guard</td>
+</tr>
+<tr>
+<td><strong>Module Platform</strong></td>
 <td>0.6.0</td>
-<td>1</td>
-<td>Trustworthy foundation</td>
+<td>8+9</td>
+<td>Isolated namespaces; transitive deps; lockfile; deterministic maps</td>
 </tr>
 <tr>
-<td><strong>Complete Language</strong></td>
+<td><strong>Type-Safe Core</strong></td>
+<td>0.6.5</td>
+<td>8+9+10</td>
+<td>Type warnings by default; collection generics; better checker</td>
+</tr>
+<tr>
+<td><strong>Developer Platform</strong></td>
 <td>0.7.0</td>
-<td>1+2+3</td>
-<td>Real programs work</td>
+<td>8+11</td>
+<td>Pre-built binaries; interactive debugger; real doc gen; complete LSP</td>
 </tr>
 <tr>
-<td><strong>Async + Full Stdlib</strong></td>
-<td>0.7.5</td>
-<td>1+4+5</td>
-<td>I/O-bound automation</td>
-</tr>
-<tr>
-<td><strong>Platform</strong></td>
+<td><strong>Production Platform</strong></td>
 <td>0.8.0</td>
-<td>1+2+3+4+5+6</td>
-<td>Adoption possible</td>
+<td>8+9+10+11+12</td>
+<td>Async event loop; struct methods; WASM; <code>?</code> operator; or-patterns</td>
 </tr>
 <tr>
-<td><strong>Production</strong></td>
+<td><strong>v1.0 Release</strong></td>
 <td>1.0.0</td>
-<td>All groups</td>
-<td>All groups complete</td>
+<td>All</td>
+<td>LLVM backend; full generics; community registry; stable API</td>
 </tr>
 </tbody>
 </table>
-<hr />
-<h1 id="session-resume-instructions">Session Resume Instructions</h1>
-<p>If you hit context limit and resume in a new session:</p>
-<ol>
-<li>Read this file: <code>docs/dev-plan.md</code></li>
-<li>Read memory: <code>/home/iganomono/.claude/projects/-home-iganomono-test-NPL/memory/MEMORY.md</code></li>
-<li>Find the first task with status <code>[ ]</code> or <code>[~]</code></li>
-<li>Read the target files listed in that task</li>
-<li>Continue from where you left off</li>
-<li>Update status symbols in this file after each task</li>
-<li>Run <code>cargo test</code> after every task to verify nothing broke</li>
-</ol>
 <hr />
 <h1 id="quick-reference-key-files-per-group">Quick Reference: Key Files per Group</h1>
 <table>
@@ -1721,83 +1811,110 @@ Type checker runs but errors are advisory.</p>
 </thead>
 <tbody>
 <tr>
-<td>1.1 HOF FunctionRef</td>
-<td><code>src/runtime/core/value.rs</code>, <code>src/compiler/bytecode.rs</code>, <code>src/runtime/bytecode_vm.rs</code></td>
+<td>8.1 exec default</td>
+<td><code>src/runtime/vm/core.rs</code>, <code>src/cli/run.rs</code>, <code>src/bin/txtcode.rs</code></td>
 </tr>
 <tr>
-<td>1.2 Source location</td>
-<td><code>src/runtime/errors.rs</code>, <code>src/lexer/lexer.rs</code>, <code>src/parser/ast/</code>, both VMs</td>
+<td>8.2 const enforce</td>
+<td><code>src/runtime/core.rs</code> (ScopeManager), <code>src/runtime/execution/</code></td>
 </tr>
 <tr>
-<td>1.3 Call depth</td>
-<td><code>src/runtime/vm.rs</code>, <code>src/runtime/bytecode_vm.rs</code>, <code>src/config.rs</code></td>
+<td>8.3 signing CLI</td>
+<td><code>src/cli/sign.rs</code> (new), <code>src/bin/txtcode.rs</code>, <code>src/security/auth.rs</code></td>
 </tr>
 <tr>
-<td>1.4 Memory limit</td>
-<td><code>src/runtime/gc.rs</code>, <code>src/config.rs</code>, both VMs</td>
+<td>8.4 FFI allowlist</td>
+<td><code>src/stdlib/ffi.rs</code>, <code>src/runtime/permissions.rs</code>, <code>src/bin/txtcode.rs</code></td>
 </tr>
 <tr>
-<td>1.5 Finally</td>
-<td><code>src/parser/statements/</code>, <code>src/compiler/bytecode.rs</code>, both VMs</td>
+<td>8.5 audit persist</td>
+<td><code>src/runtime/audit.rs</code>, <code>src/cli/run.rs</code></td>
 </tr>
 <tr>
-<td>1.6 Error recovery</td>
-<td><code>src/parser/parser.rs</code>, <code>src/cli/run.rs</code>, <code>src/cli/repl.rs</code></td>
+<td>9.1 module isolation</td>
+<td><code>src/runtime/module.rs</code>, <code>src/runtime/vm.rs</code>, <code>src/runtime/bytecode_vm.rs</code></td>
 </tr>
 <tr>
-<td>2.1 Hex literals</td>
-<td><code>src/lexer/lexer.rs</code></td>
+<td>9.2 transitive deps</td>
+<td><code>src/cli/package.rs</code></td>
 </tr>
 <tr>
-<td>2.2 Bytes type</td>
-<td><code>src/runtime/core/value.rs</code>, <code>src/stdlib/</code></td>
+<td>9.3 lockfile enforce</td>
+<td><code>src/cli/package.rs</code></td>
 </tr>
 <tr>
-<td>2.3 Enum data</td>
-<td><code>src/parser/</code>, <code>src/runtime/core/value.rs</code>, both VMs</td>
+<td>9.4 deterministic maps</td>
+<td><code>src/runtime/core/value.rs</code>, <code>Cargo.toml</code> (indexmap)</td>
 </tr>
 <tr>
-<td>2.4 Default params</td>
-<td><code>src/parser/statements/functions.rs</code>, both VMs</td>
+<td>10.1 type warnings default</td>
+<td><code>src/cli/run.rs</code>, <code>src/typecheck/checker.rs</code></td>
 </tr>
 <tr>
-<td>2.5 Variadics</td>
-<td><code>src/parser/statements/functions.rs</code>, both VMs</td>
+<td>10.2 collection generics</td>
+<td><code>src/typecheck/checker.rs</code>, <code>src/stdlib/core.rs</code></td>
 </tr>
 <tr>
-<td>2.6 Match guards</td>
+<td>10.3 checker coverage</td>
+<td><code>src/typecheck/checker.rs</code></td>
+</tr>
+<tr>
+<td>11.1 pre-built bins</td>
+<td><code>.github/workflows/release.yml</code> (new), <code>install.sh</code></td>
+</tr>
+<tr>
+<td>11.2 interactive debugger</td>
+<td><code>src/tools/debugger.rs</code>, <code>src/compiler/bytecode.rs</code>, <code>src/cli/debug_cmd.rs</code></td>
+</tr>
+<tr>
+<td>11.3 doc generation</td>
+<td><code>src/tools/docgen.rs</code> (new), <code>src/cli/</code></td>
+</tr>
+<tr>
+<td>11.4 LSP complete</td>
+<td><code>src/cli/lsp.rs</code>, <code>src/tools/symbol_table.rs</code> (new)</td>
+</tr>
+<tr>
+<td>11.5 REPL multiline</td>
+<td><code>src/cli/repl.rs</code></td>
+</tr>
+<tr>
+<td>12.1 tokio async</td>
+<td><code>src/runtime/vm.rs</code>, <code>src/stdlib/net.rs</code>, <code>Cargo.toml</code></td>
+</tr>
+<tr>
+<td>12.2 struct methods</td>
+<td><code>src/parser/statements/</code>, <code>src/runtime/vm.rs</code>, <code>src/runtime/bytecode_vm.rs</code></td>
+</tr>
+<tr>
+<td>12.3 WASM target</td>
+<td><code>src/compiler/wasm.rs</code> (new), <code>src/bin/txtcode.rs</code></td>
+</tr>
+<tr>
+<td>12.4 LLVM planning</td>
+<td><code>docs/llvm-backend.md</code> (new)</td>
+</tr>
+<tr>
+<td>12.5 or/range patterns</td>
 <td><code>src/parser/patterns.rs</code>, both VMs</td>
 </tr>
 <tr>
-<td>3.1 Type blocking</td>
-<td><code>src/typecheck/checker.rs</code>, <code>src/cli/run.rs</code></td>
-</tr>
-<tr>
-<td>3.2 Struct types</td>
-<td>both VMs, struct_defs lookup</td>
-</tr>
-<tr>
-<td>4.1 Async</td>
-<td><code>src/runtime/vm.rs</code>, <code>src/runtime/bytecode_vm.rs</code>, <code>src/compiler/bytecode.rs</code></td>
-</tr>
-<tr>
-<td>5.1 HTTP server</td>
-<td><code>src/stdlib/net.rs</code>, <code>Cargo.toml</code></td>
-</tr>
-<tr>
-<td>5.2 DateTime</td>
-<td><code>src/stdlib/time.rs</code></td>
-</tr>
-<tr>
-<td>6.1 LSP</td>
-<td><code>src/cli/lsp.rs</code> (new), <code>editors/vscode/</code> (new)</td>
-</tr>
-<tr>
-<td>6.3 Registry</td>
-<td><code>src/cli/package.rs</code></td>
+<td>12.6 ? operator</td>
+<td><code>src/lexer/lexer.rs</code>, <code>src/parser/expressions/</code>, both VMs, <code>src/compiler/bytecode.rs</code></td>
 </tr>
 </tbody>
 </table>
+<hr />
+<h1 id="session-resume-instructions">Session Resume Instructions</h1>
+<ol>
+<li>Read this file: <code>docs/dev-plan.md</code></li>
+<li>Read memory: <code>/home/iganomono/.claude/projects/-home-iganomono-test-NPL/memory/MEMORY.md</code></li>
+<li>Find the first task with status <code>[ ]</code> or <code>[~]</code></li>
+<li>Read the target files listed in that task</li>
+<li>Continue from where you left off</li>
+<li>Update status symbols in this file after each task</li>
+<li>Run <code>cargo test</code> after every task to verify nothing broke</li>
+</ol>
 <hr />
 <p><em>End of dev-plan.md — commit this file after every session.</em></p>
 
