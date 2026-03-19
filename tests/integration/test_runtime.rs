@@ -1274,3 +1274,24 @@ m
 "#);
     assert_eq!(result.unwrap(), txtcode::runtime::Value::String("POST".to_string()));
 }
+
+// ---------------------------------------------------------------------------
+// Task 8.2 — const enforcement in the AST VM
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_ast_const_cannot_be_reassigned() {
+    let result = run_ast_repl("const → x → 10\nstore → x → 20");
+    assert!(result.is_err(), "reassigning a const must be a runtime error in AST VM");
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("const") || msg.contains("Cannot reassign"),
+        "error message should mention const, got: {msg}"
+    );
+}
+
+#[test]
+fn test_ast_const_value_is_readable() {
+    let result = run_ast_repl("const → pi → 3\npi");
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(3));
+}

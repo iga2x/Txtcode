@@ -79,6 +79,8 @@ pub struct BytecodeVM {
     current_bytecode: Option<(Vec<crate::compiler::bytecode::Instruction>, Vec<crate::compiler::bytecode::Constant>)>,
     /// Garbage collector — tracks allocation metrics (Rust drop handles real memory).
     gc: GarbageCollector,
+    /// Const variable names — reassignment is a runtime error.
+    const_vars: std::collections::HashSet<String>,
 }
 
 impl BytecodeVM {
@@ -110,6 +112,7 @@ impl BytecodeVM {
             cancel_flag: None,
             current_bytecode: None,
             gc: GarbageCollector::new(),
+            const_vars: std::collections::HashSet::new(),
         }
     }
 
@@ -561,6 +564,20 @@ impl BytecodeVM {
                     .stack
                     .pop()
                     .ok_or_else(|| RuntimeError::new("Stack underflow".to_string()))?;
+                if self.const_vars.contains(name) {
+                    return Err(RuntimeError::new(format!(
+                        "Cannot reassign const variable '{}'",
+                        name
+                    )));
+                }
+                self.variables.insert(name.clone(), value);
+            }
+            Instruction::StoreConst(name) => {
+                let value = self
+                    .stack
+                    .pop()
+                    .ok_or_else(|| RuntimeError::new("Stack underflow".to_string()))?;
+                self.const_vars.insert(name.clone());
                 self.variables.insert(name.clone(), value);
             }
             Instruction::LoadGlobal(name) => {
@@ -1280,6 +1297,9 @@ impl BytecodeVM {
                     Value::Struct(_, _) => "struct",
                     Value::Enum(_, _, _) => "enum",
                     Value::Result(_, _) => "result",
+                    Value::Future(_) => "future",
+                    Value::FunctionRef(_) => "function",
+                    Value::Bytes(_) => "bytes",
                 };
                 self.stack.push(Value::String(type_name.to_string()));
             }

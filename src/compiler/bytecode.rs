@@ -86,6 +86,7 @@ pub enum Instruction {
     // Variable operations
     LoadVar(String),    // Load variable onto stack
     StoreVar(String),   // Store top of stack to variable
+    StoreConst(String), // Store top of stack to immutable constant variable
     LoadGlobal(String), // Load global variable
 
     // Arithmetic operations
@@ -570,7 +571,7 @@ impl BytecodeCompiler {
             }
             Statement::Const { name, value, .. } => {
                 self.compile_expression(value, instructions);
-                instructions.push(Instruction::StoreVar(name.clone()));
+                instructions.push(Instruction::StoreConst(name.clone()));
             }
             Statement::Match {
                 value,

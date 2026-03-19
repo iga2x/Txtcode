@@ -1114,3 +1114,26 @@ fn test_bytecode_reduce_with_lambda() {
         "reduce with lambda must sum all elements"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 8.2 — const enforcement in the bytecode VM
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_bytecode_const_cannot_be_reassigned() {
+    let result = compile_and_run(
+        "const → x → 10\nstore → x → 20\nreturn → x",
+    );
+    assert!(result.is_err(), "reassigning a const must be a runtime error");
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("Cannot reassign const") || msg.contains("const"),
+        "error message should mention const reassignment, got: {msg}"
+    );
+}
+
+#[test]
+fn test_bytecode_const_value_is_readable() {
+    let result = run_ok("const → pi → 3\nreturn → pi");
+    assert_eq!(result, Value::Integer(3));
+}
