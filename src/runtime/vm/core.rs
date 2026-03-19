@@ -23,7 +23,7 @@ impl VirtualMachine {
             debug: false,
             verbose: false,
             strict_types: false,
-            exec_allowed: true,
+            exec_allowed: false,
             permission_manager: crate::runtime::permissions::PermissionManager::new(),
             audit_trail: crate::runtime::audit::AuditTrail::new(),
             ai_metadata: crate::runtime::audit::AIMetadata::new(),
@@ -58,7 +58,7 @@ impl VirtualMachine {
             debug,
             verbose,
             strict_types: false,
-            exec_allowed: !safe_mode,
+            exec_allowed: false,
             permission_manager: crate::runtime::permissions::PermissionManager::new(),
             audit_trail: crate::runtime::audit::AuditTrail::new(),
             ai_metadata: crate::runtime::audit::AIMetadata::new(),
@@ -154,9 +154,10 @@ impl VirtualMachine {
 
     pub fn set_exec_allowed(&mut self, allowed: bool) {
         self.exec_allowed = allowed;
-
-        // Map to permissions for backward compatibility
-        if !allowed {
+        if allowed {
+            // Grant permission when explicitly enabled (e.g. --allow-exec or grant_permission)
+            self.grant_permission(PermissionResource::System("exec".to_string()), None);
+        } else {
             self.deny_permission(PermissionResource::System("exec".to_string()), None);
         }
     }

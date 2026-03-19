@@ -187,7 +187,7 @@ pub fn run_file(
     debug: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, false)
+    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, false, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -202,6 +202,7 @@ fn run_file_inner(
     allow_ffi: &[String],
     cancel_flag: Option<Arc<AtomicBool>>,
     strict_types: bool,
+    audit_log: Option<&std::path::Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     logger::log_info(&format!("Running file: {}", file.display()));
 
@@ -315,9 +316,18 @@ fn run_file_inner(
     apply_env_permissions(&mut vm);
     apply_cli_allowlists(&mut vm, allow_fs, allow_net, allow_ffi);
 
-    vm.interpret(&program)
-        .map_err(|e| format!("Runtime error: {}", e))?;
+    let result = vm.interpret(&program)
+        .map_err(|e| format!("Runtime error: {}", e));
 
+    // Write audit trail to file if requested (even on error — partial logs are useful).
+    if let Some(log_path) = audit_log {
+        let json = vm.export_audit_trail_json();
+        if let Err(e) = fs::write(log_path, json) {
+            eprintln!("Warning: could not write audit log to '{}': {}", log_path.display(), e);
+        }
+    }
+
+    result?;
     Ok(())
 }
 
@@ -332,12 +342,13 @@ pub fn run_file_with_allowlists(
     allow_net: &[String],
     allow_ffi: &[String],
     strict_types: bool,
+    audit_log: Option<&std::path::Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if allow_fs.is_empty() && allow_net.is_empty() && allow_ffi.is_empty() {
-        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, strict_types);
+        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, strict_types, audit_log);
     }
     run_file_inner(
-        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, allow_ffi, None, strict_types,
+        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, allow_ffi, None, strict_types, audit_log,
     )
 }
 
@@ -372,6 +383,7 @@ pub fn run_file_with_timeout(
     allow_net: &[String],
     allow_ffi: &[String],
     strict_types: bool,
+    audit_log: Option<std::path::PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let duration = parse_duration(timeout_str).ok_or_else(|| {
         format!(
@@ -400,6 +412,7 @@ pub fn run_file_with_timeout(
             &allow_fs, &allow_net, &allow_ffi,
             Some(cancel_flag_worker),
             strict_types,
+            audit_log.as_deref(),
         )
         .map_err(|e| e.to_string());
         let _ = tx.send(result);
@@ -443,7 +456,7 @@ pub fn run_file_watch(
 
     let mut prev_mtime = get_mtime(file);
     let _ = run_file_with_allowlists(
-        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false,
+        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false, None,
     );
 
     loop {
@@ -457,7 +470,7 @@ pub fn run_file_watch(
         if changed {
             println!("\n── file changed, re-running ──\n");
             let _ = run_file_with_allowlists(
-                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false,
+                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false, None,
             );
             prev_mtime = cur;
         }

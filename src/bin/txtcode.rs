@@ -110,6 +110,9 @@ pub enum Commands {
         /// Require a valid .tc.sig sidecar file before running — abort if missing or invalid.
         #[arg(long)]
         require_sig: bool,
+        /// Append security audit events to this JSON file after execution.
+        #[arg(long, value_name = "FILE")]
+        audit_log: Option<PathBuf>,
     },
     /// Sign a Txt-code script with an Ed25519 private key (produces a .tc.sig sidecar)
     Sign {
@@ -507,6 +510,7 @@ pub fn main() {
                     strict_types,
                     permissions_report,
                     require_sig,
+                    audit_log,
                 } => {
                     if *no_color || std::env::var_os("NO_COLOR").is_some() {
                         std::env::set_var("NO_COLOR", "1");
@@ -633,6 +637,7 @@ pub fn main() {
                             allow_net,
                             allow_ffi,
                             *strict_types,
+                            audit_log.clone(),
                         )
                     } else {
                         run_cli::run_file_with_allowlists(
@@ -645,6 +650,7 @@ pub fn main() {
                             allow_net,
                             allow_ffi,
                             *strict_types,
+                            audit_log.as_deref(),
                         )
                     };
                     if let Err(e) = result {
