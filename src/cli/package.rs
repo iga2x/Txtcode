@@ -707,6 +707,176 @@ impl DependencyResolver {
 }
 
 // ---------------------------------------------------------------------------
+// Transitive dependency resolver (registry-based)
+// ---------------------------------------------------------------------------
+
+/// Pick the highest version in `pkg`'s index entry that satisfies `constraint`.
+/// Falls back to `latest_version()` for non-semver constraints, or `None` if
+/// the package has no matching version at all.
+fn resolve_version_from_registry(pkg: &RegistryPackageEntry, constraint: &str) -> Option<String> {
+    match VersionReq::parse(constraint) {
+        Ok(req) => {
+            let mut matching: Vec<Version> = pkg
+                .versions
+                .keys()
+                .filter_map(|v| Version::parse(v).ok())
+                .filter(|v| req.matches(v))
+                .collect();
+            matching.sort();
+            matching.last().map(|v| v.to_string())
+        }
+        Err(_) => {
+            // Non-semver constraint: treat as exact pin, or fall back to latest.
+            if pkg.versions.contains_key(constraint) {
+                Some(constraint.to_string())
+            } else {
+                pkg.latest_version()
+            }
+        }
+    }
+}
+
+/// Internal recursive traversal for [`resolve_transitive`].
+///
+/// * `visited`  — packages already fully resolved (deduplicate).
+/// * `in_stack` — packages currently in the DFS call stack (cycle detection).
+/// * `result`   — accumulates `(name, resolved_version)` in topological order.
+fn resolve_transitive_recursive(
+    name: &str,
+    version_req: &str,
+    registry: &RegistryIndex,
+    visited: &mut std::collections::HashSet<String>,
+    in_stack: &mut std::collections::HashSet<String>,
+    result: &mut Vec<(String, String)>,
+) {
+    // Cycle detection: package is already in the current DFS path.
+    if in_stack.contains(name) {
+        eprintln!(
+            "Warning: circular dependency detected involving '{}' — skipping to break cycle.",
+            name
+        );
+        return;
+    }
+
+    // Deduplication: package was already fully resolved in a prior branch.
+    if visited.contains(name) {
+        return;
+    }
+
+    in_stack.insert(name.to_string());
+
+    // Resolve the best concrete version from the registry index.
+    let resolved_version = registry
+        .get_package(name)
+        .and_then(|pkg| resolve_version_from_registry(pkg, version_req))
+        .unwrap_or_else(|| version_req.to_string());
+
+    // Recurse into transitive deps BEFORE adding this package so that
+    // dependencies appear earlier in the install order (topological sort).
+    if let Some(pkg) = registry.get_package(name) {
+        if let Some(ver_entry) = pkg.versions.get(&resolved_version) {
+            for (dep_name, dep_ver_req) in &ver_entry.dependencies {
+                resolve_transitive_recursive(
+                    dep_name,
+                    dep_ver_req,
+                    registry,
+                    visited,
+                    in_stack,
+                    result,
+                );
+            }
+        }
+    }
+
+    result.push((name.to_string(), resolved_version));
+    in_stack.remove(name);
+    visited.insert(name.to_string());
+}
+
+/// Resolve all transitive dependencies of `name@version_req` using the registry
+/// index (not locally-installed packages).
+///
+/// Returns a list of `(package_name, resolved_version)` in topological install
+/// order — dependencies appear before the packages that depend on them.
+///
+/// `visited` is shared across multiple top-level calls so that shared
+/// transitive deps are not duplicated in the result.
+pub fn resolve_transitive(
+    name: &str,
+    version_req: &str,
+    registry: &RegistryIndex,
+    visited: &mut std::collections::HashSet<String>,
+) -> Vec<(String, String)> {
+    let mut result = Vec::new();
+    let mut in_stack = std::collections::HashSet::new();
+    resolve_transitive_recursive(name, version_req, registry, visited, &mut in_stack, &mut result);
+    result
+}
+
+/// Detect version conflicts across a resolved package set.
+///
+/// A conflict exists when two resolved packages both depend on a third package
+/// but with incompatible version constraints (no single released version
+/// satisfies all constraints simultaneously).
+///
+/// Returns a list of human-readable warning strings.
+pub fn detect_version_conflicts(
+    resolved: &[(String, String)],
+    registry: &RegistryIndex,
+) -> Vec<String> {
+    // Build map: dep_name → vec of (requirer_name, version_constraint)
+    let mut requirements: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for (pkg_name, pkg_version) in resolved {
+        if let Some(pkg) = registry.get_package(pkg_name) {
+            if let Some(ver_entry) = pkg.versions.get(pkg_version) {
+                for (dep_name, dep_req) in &ver_entry.dependencies {
+                    requirements
+                        .entry(dep_name.clone())
+                        .or_default()
+                        .push((pkg_name.clone(), dep_req.clone()));
+                }
+            }
+        }
+    }
+
+    let mut warnings = Vec::new();
+    for (dep_name, requirers) in &requirements {
+        if requirers.len() < 2 {
+            continue;
+        }
+
+        // Collect parseable constraints.
+        let reqs: Vec<VersionReq> = requirers
+            .iter()
+            .filter_map(|(_, v)| VersionReq::parse(v).ok())
+            .collect();
+        if reqs.len() < 2 {
+            continue;
+        }
+
+        // If no single version in the registry satisfies ALL constraints, it's a conflict.
+        let pkg = match registry.get_package(dep_name) {
+            Some(p) => p,
+            None => continue,
+        };
+        let has_compatible = pkg
+            .versions
+            .keys()
+            .filter_map(|v| Version::parse(v).ok())
+            .any(|v| reqs.iter().all(|req| req.matches(&v)));
+
+        if !has_compatible {
+            let req_strs: Vec<String> = requirers
+                .iter()
+                .map(|(r, v)| format!("{} needs {} {}", r, dep_name, v))
+                .collect();
+            warnings.push(format!("conflict: {}", req_strs.join(", ")));
+        }
+    }
+    warnings
+}
+
+// ---------------------------------------------------------------------------
 // Public CLI entry points
 // ---------------------------------------------------------------------------
 
@@ -725,24 +895,65 @@ pub fn install_dependencies() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let config = PackageConfig::load(&config_path)?;
-    println!("Installing {} dependencies...", config.dependencies.len());
+    println!("Installing {} direct dependencies...", config.dependencies.len());
 
     Config::ensure_directories()
         .map_err(|e| format!("Failed to initialize txtcode directories: {}", e))?;
 
     let lock_path = PathBuf::from("Txtcode.lock");
 
-    // If lockfile exists, use locked versions
-    let resolved = if lock_path.exists() {
+    // If lockfile exists, use locked (pinned) versions — no resolution needed.
+    let resolved: Vec<(String, String)> = if lock_path.exists() {
         println!("Using Txtcode.lock for pinned versions.");
         let lock = LockFile::load(&lock_path)?;
-        lock.packages
+        let mut pairs: Vec<(String, String)> = lock
+            .packages
             .into_iter()
             .map(|(name, pkg)| (name, pkg.version))
-            .collect::<HashMap<String, String>>()
+            .collect();
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        pairs
     } else {
-        let resolver = DependencyResolver::new()?;
-        resolver.resolve(&config)?
+        // Try registry-based transitive resolution first.
+        let packages_dir = Config::get_packages_dir()
+            .map_err(|e| format!("Failed to get packages directory: {}", e))?;
+        let registry_obj = PackageRegistry::new(packages_dir);
+
+        match registry_obj.load_index() {
+            Ok(index) => {
+                let mut all_resolved: Vec<(String, String)> = Vec::new();
+                let mut visited = std::collections::HashSet::new();
+
+                for (name, version_req) in &config.dependencies {
+                    let transitive = resolve_transitive(name, version_req, &index, &mut visited);
+                    for item in transitive {
+                        if !all_resolved.iter().any(|(n, _)| n == &item.0) {
+                            all_resolved.push(item);
+                        }
+                    }
+                }
+
+                // Warn about incompatible version constraints.
+                let conflicts = detect_version_conflicts(&all_resolved, &index);
+                for warning in &conflicts {
+                    eprintln!("Warning: {}", warning);
+                }
+
+                println!(
+                    "Resolving dependencies... installing {} package(s)",
+                    all_resolved.len()
+                );
+                all_resolved
+            }
+            Err(_) => {
+                // Registry unavailable — fall back to local resolver.
+                let resolver = DependencyResolver::new()?;
+                let resolved_map = resolver.resolve(&config)?;
+                let mut pairs: Vec<(String, String)> = resolved_map.into_iter().collect();
+                pairs.sort_by(|a, b| a.0.cmp(&b.0));
+                pairs
+            }
+        }
     };
 
     let packages_dir = Config::get_packages_dir()
@@ -769,7 +980,7 @@ pub fn install_dependencies() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Generate and save lockfile if it doesn't already exist
+    // Generate and save lockfile if it doesn't already exist.
     if !lock_path.exists() && !lock.packages.is_empty() {
         lock.save(&lock_path)?;
         println!("Generated Txtcode.lock");
@@ -1322,5 +1533,151 @@ mod tests {
                 name
             );
         }
+    }
+
+    // --- resolve_transitive ---
+
+    /// Registry JSON with a transitive dependency chain:
+    ///   pkg-a@1.0.0 → depends on pkg-b@^1.0
+    ///   pkg-b@1.0.0 → no deps
+    const TRANSITIVE_INDEX: &str = r#"{
+  "version": "1",
+  "packages": {
+    "pkg-a": {
+      "description": "Package A",
+      "versions": {
+        "1.0.0": { "url": "", "sha256": "", "dependencies": { "pkg-b": "^1.0" } }
+      }
+    },
+    "pkg-b": {
+      "description": "Package B",
+      "versions": {
+        "1.0.0": { "url": "", "sha256": "", "dependencies": {} }
+      }
+    }
+  }
+}"#;
+
+    #[test]
+    fn resolve_transitive_installs_transitive_deps() {
+        let index = RegistryIndex::from_str(TRANSITIVE_INDEX).unwrap();
+        let mut visited = std::collections::HashSet::new();
+        let result = resolve_transitive("pkg-a", "1.0.0", &index, &mut visited);
+
+        let names: Vec<&str> = result.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"pkg-a"), "pkg-a must be in result");
+        assert!(names.contains(&"pkg-b"), "pkg-b (transitive dep) must be in result");
+
+        // Topological order: pkg-b (dep) must appear before pkg-a (dependent).
+        let pos_a = names.iter().position(|&n| n == "pkg-a").unwrap();
+        let pos_b = names.iter().position(|&n| n == "pkg-b").unwrap();
+        assert!(pos_b < pos_a, "pkg-b should be installed before pkg-a");
+    }
+
+    #[test]
+    fn resolve_transitive_deduplicates_shared_dep() {
+        // pkg-a and pkg-c both depend on pkg-b; pkg-b must appear only once.
+        let index_json = r#"{
+  "version": "1",
+  "packages": {
+    "pkg-a": { "description": "A", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": { "pkg-b": "^1.0" } } } },
+    "pkg-c": { "description": "C", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": { "pkg-b": "^1.0" } } } },
+    "pkg-b": { "description": "B", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": {} } } }
+  }
+}"#;
+        let index = RegistryIndex::from_str(index_json).unwrap();
+        let mut visited = std::collections::HashSet::new();
+
+        let mut all: Vec<(String, String)> = Vec::new();
+        for (name, req) in &[("pkg-a", "1.0.0"), ("pkg-c", "1.0.0")] {
+            let r = resolve_transitive(name, req, &index, &mut visited);
+            for item in r {
+                if !all.iter().any(|(n, _)| n == &item.0) {
+                    all.push(item);
+                }
+            }
+        }
+
+        let b_count = all.iter().filter(|(n, _)| n == "pkg-b").count();
+        assert_eq!(b_count, 1, "pkg-b should appear exactly once despite two dependents");
+    }
+
+    #[test]
+    fn resolve_transitive_detects_dep_cycle() {
+        // pkg-x depends on pkg-y; pkg-y depends on pkg-x — a cycle.
+        let index_json = r#"{
+  "version": "1",
+  "packages": {
+    "pkg-x": { "description": "X", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": { "pkg-y": "^1.0" } } } },
+    "pkg-y": { "description": "Y", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": { "pkg-x": "^1.0" } } } }
+  }
+}"#;
+        let index = RegistryIndex::from_str(index_json).unwrap();
+        let mut visited = std::collections::HashSet::new();
+
+        // Must not infinite-loop; must terminate and include at least pkg-x.
+        let result = resolve_transitive("pkg-x", "1.0.0", &index, &mut visited);
+        assert!(
+            result.iter().any(|(n, _)| n == "pkg-x"),
+            "pkg-x should be resolved despite the cycle"
+        );
+    }
+
+    // --- detect_version_conflicts ---
+
+    #[test]
+    fn detect_version_conflicts_warns_on_incompatible_versions() {
+        // pkg-a needs shared ^1.0, pkg-b needs shared ^2.0 — incompatible.
+        let index_json = r#"{
+  "version": "1",
+  "packages": {
+    "pkg-a": { "description": "A", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": { "shared": "^1.0" } } } },
+    "pkg-b": { "description": "B", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": { "shared": "^2.0" } } } },
+    "shared": { "description": "S", "versions": {
+      "1.0.0": { "url": "", "sha256": "", "dependencies": {} },
+      "2.0.0": { "url": "", "sha256": "", "dependencies": {} }
+    }}
+  }
+}"#;
+        let index = RegistryIndex::from_str(index_json).unwrap();
+        let resolved = vec![
+            ("pkg-a".to_string(), "1.0.0".to_string()),
+            ("pkg-b".to_string(), "1.0.0".to_string()),
+            ("shared".to_string(), "1.0.0".to_string()),
+        ];
+
+        let warnings = detect_version_conflicts(&resolved, &index);
+        assert!(!warnings.is_empty(), "Should warn about incompatible shared dep");
+        assert!(
+            warnings[0].contains("conflict"),
+            "Warning should contain 'conflict'"
+        );
+    }
+
+    #[test]
+    fn detect_version_conflicts_no_warning_on_compatible_constraints() {
+        // pkg-a needs shared ^1.0, pkg-b needs shared >=1.0 — both satisfied by 1.0.0.
+        let index_json = r#"{
+  "version": "1",
+  "packages": {
+    "pkg-a": { "description": "A", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": { "shared": "^1.0" } } } },
+    "pkg-b": { "description": "B", "versions": { "1.0.0": { "url": "", "sha256": "", "dependencies": { "shared": ">=1.0" } } } },
+    "shared": { "description": "S", "versions": {
+      "1.0.0": { "url": "", "sha256": "", "dependencies": {} }
+    }}
+  }
+}"#;
+        let index = RegistryIndex::from_str(index_json).unwrap();
+        let resolved = vec![
+            ("pkg-a".to_string(), "1.0.0".to_string()),
+            ("pkg-b".to_string(), "1.0.0".to_string()),
+            ("shared".to_string(), "1.0.0".to_string()),
+        ];
+
+        let warnings = detect_version_conflicts(&resolved, &index);
+        assert!(
+            warnings.is_empty(),
+            "No conflict warning expected when constraints are compatible"
+        );
     }
 }
