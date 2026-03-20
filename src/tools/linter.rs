@@ -371,7 +371,8 @@ fn collect_stmt_used(stmt: &Statement, used: &mut HashSet<String>) {
         | Statement::Permission { .. }
         | Statement::Break { .. }
         | Statement::Continue { .. }
-        | Statement::TypeAlias { .. } => {}
+        | Statement::TypeAlias { .. }
+        | Statement::Impl { .. } => {}
         Statement::NamedError { message, .. } => collect_expr_idents(message, used),
     }
 }
@@ -602,7 +603,8 @@ fn stmt_line(stmt: &Statement) -> usize {
         | Statement::Const { span, .. }
         | Statement::Permission { span, .. }
         | Statement::TypeAlias { span, .. }
-        | Statement::NamedError { span, .. } => span.line,
+        | Statement::NamedError { span, .. }
+        | Statement::Impl { span, .. } => span.line,
         Statement::Expression(e) => expr_span_line(e),
     }
 }

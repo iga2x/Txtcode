@@ -444,6 +444,15 @@ impl Lexer {
                         "...".to_string(),
                         (start_line, start_col),
                     )
+                } else if self.source[self.position..].starts_with(".=") {
+                    // Range inclusive: ..=
+                    self.advance(); // consume second .
+                    self.advance(); // consume =
+                    Token::new(
+                        TokenKind::RangeInclusive,
+                        "..=".to_string(),
+                        (start_line, start_col),
+                    )
                 } else {
                     Token::new(TokenKind::Dot, String::from(ch), (start_line, start_col))
                 }

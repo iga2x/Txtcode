@@ -165,20 +165,31 @@ pub fn call_method_on_value<VM: ExpressionVM>(
 }
 
 fn call_method<VM: ExpressionVM>(
-    _vm: &mut VM,
+    vm: &mut VM,
     obj: Value,
     method: &str,
     args: &[Value],
     obj_name: &str,
 ) -> Result<Value, RuntimeError> {
+    // Struct method dispatch: look up impl methods registered for this struct type
+    if let Value::Struct(ref type_name, _) = obj {
+        if let Some(func_val) = vm.lookup_struct_method(type_name, method) {
+            // Call the method with `self` (the struct) prepended to args
+            let mut full_args = vec![obj.clone()];
+            full_args.extend_from_slice(args);
+            if let Value::Function(_, params, body, captured_env) = func_val {
+                return call_user_function(vm, method, &params, &body, &captured_env, &full_args, &Expression::Identifier(method.to_string()));
+            }
+        }
+    }
     match &obj {
         Value::String(s) => call_string_method(s, method, args, obj_name),
         Value::Array(arr) => call_array_method(arr, method, args, obj_name),
         Value::Map(map) => call_map_method(map, method, args, obj_name),
         Value::Set(set) => call_set_method(set, method, args, obj_name),
         _ => Err(RuntimeError::new(format!(
-            "Type {:?} has no method '{}'",
-            obj, method
+            "Type '{}' has no method '{}'",
+            obj.type_name(), method
         ))),
     }
 }

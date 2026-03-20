@@ -116,7 +116,7 @@ impl Parser {
                         let canonical = canonicalize_keyword(&next_val);
                         match canonical.as_str() {
                             "store" | "define" | "if" | "while" | "for" | "return"
-                            | "try" | "import" | "export" | "struct" | "enum"
+                            | "try" | "import" | "export" | "struct" | "enum" | "impl"
                             | "match" | "const" | "break" | "continue" | "repeat"
                             | "async" | "permission" | "type" | "error" => break,
                             "end" | "catch" | "finally" | "else" | "elseif" => {
@@ -135,7 +135,7 @@ impl Parser {
                 let canonical = canonicalize_keyword(&value);
                 match canonical.as_str() {
                     "store" | "define" | "if" | "while" | "for" | "return"
-                    | "try" | "import" | "export" | "struct" | "enum"
+                    | "try" | "import" | "export" | "struct" | "enum" | "impl"
                     | "match" | "const" | "break" | "continue" | "repeat"
                     | "async" | "permission" | "end" => break,
                     _ => {}
@@ -201,6 +201,7 @@ impl Parser {
                     "const" => crate::parser::statements::assignment::parse_const(self),
                     "enum" => crate::parser::statements::types::parse_enum(self),
                     "struct" => crate::parser::statements::types::parse_struct(self),
+                    "impl" => crate::parser::statements::types::parse_impl(self),
                     "match" | "switch" => {
                         // Consume the keyword (match or switch, both canonicalize to "match")
                         self.advance();

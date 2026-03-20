@@ -62,6 +62,8 @@ pub trait ExpressionVM {
     fn ai_metadata(&self) -> &crate::runtime::audit::AIMetadata;
     fn struct_defs(&self) -> &HashMap<String, Vec<(String, Type)>>;
     fn enum_defs(&self) -> &HashMap<String, Vec<(String, Option<Expression>)>>;
+    /// Look up an impl method registered for a struct type. Returns None if not found.
+    fn lookup_struct_method(&self, struct_name: &str, method_name: &str) -> Option<Value>;
     fn gc_register_allocation(&mut self, value: &Value);
     fn debug(&self) -> bool;
     fn verbose(&self) -> bool;

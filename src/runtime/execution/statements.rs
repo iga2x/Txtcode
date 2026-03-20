@@ -290,6 +290,20 @@ impl StatementExecutor {
                 vm.set_variable(format!("__named_error_{}", name), msg)?;
                 Ok(Value::Null)
             }
+            Statement::Impl { struct_name, methods, .. } => {
+                // Execute each method definition, then register it under the struct name.
+                for method_stmt in methods {
+                    // Execute the FunctionDef so it lands in the current scope,
+                    // then retrieve the Value::Function and register it as a method.
+                    vm.execute_nested_statement(method_stmt)?;
+                    if let Statement::FunctionDef { name, .. } = method_stmt {
+                        if let Some(func_val) = vm.get_variable(name) {
+                            vm.register_struct_method(struct_name, name.clone(), func_val);
+                        }
+                    }
+                }
+                Ok(Value::Null)
+            }
             // Control flow statements are handled by ControlFlowExecutor
             // These should not reach here
             Statement::If { .. }
@@ -337,4 +351,8 @@ pub trait StatementVM {
     /// Mark `name` as an async function so the expression evaluator can spawn a
     /// thread when it is called without `await`.
     fn register_async_function(&mut self, name: &str);
+    /// Register a method on a struct type (impl block).
+    fn register_struct_method(&mut self, struct_name: &str, method_name: String, func: Value);
+    /// Execute a nested statement (used by impl block to define methods in scope).
+    fn execute_nested_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError>;
 }

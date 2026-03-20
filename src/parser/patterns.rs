@@ -1,20 +1,79 @@
-use crate::parser::ast::Pattern;
+use crate::parser::ast::{Expression, Literal, Pattern, Span};
 use crate::parser::parser::Parser;
 
 pub fn parse_pattern(parser: &mut Parser) -> Result<Pattern, String> {
-    // Check for literal patterns: integers, floats, strings, booleans, null
-    let token = parser.peek();
+    let first = parse_single_pattern(parser)?;
 
-    // Handle literal value patterns
+    // Or-pattern: first_pat | second_pat | ...
+    if parser.check(crate::lexer::token::TokenKind::BitOr) {
+        let mut pats = vec![first];
+        while parser.check(crate::lexer::token::TokenKind::BitOr) {
+            parser.advance(); // consume '|'
+            pats.push(parse_single_pattern(parser)?);
+        }
+        return Ok(Pattern::Or(pats));
+    }
+
+    Ok(first)
+}
+
+fn parse_single_pattern(parser: &mut Parser) -> Result<Pattern, String> {
+    // Check for literal patterns: integers, floats, strings, booleans, null
+    let token = parser.peek().clone();
+
+    // Handle literal value patterns — also check for range `lit..=lit`
     if matches!(
         token.kind,
         crate::lexer::token::TokenKind::Integer
             | crate::lexer::token::TokenKind::Float
-            | crate::lexer::token::TokenKind::String
-            | crate::lexer::token::TokenKind::Char
     ) {
-        // For literals in patterns, we'll store them as special identifier patterns
-        // The runtime will handle matching literal values
+        let value = token.value.clone();
+        let tok_kind = token.kind;
+        parser.advance();
+
+        // Check for range inclusive: 1..=5
+        if parser.check(crate::lexer::token::TokenKind::RangeInclusive) {
+            parser.advance(); // consume ..=
+            let end_tok = parser.peek().clone();
+            if matches!(
+                end_tok.kind,
+                crate::lexer::token::TokenKind::Integer | crate::lexer::token::TokenKind::Float
+            ) {
+                let end_val = end_tok.value.clone();
+                parser.advance();
+                let start_expr = if tok_kind == crate::lexer::token::TokenKind::Integer {
+                    Expression::Literal(Literal::Integer(
+                        value.parse::<i64>().map_err(|_| format!("Invalid integer '{}'", value))?,
+                    ))
+                } else {
+                    Expression::Literal(Literal::Float(
+                        value.parse::<f64>().map_err(|_| format!("Invalid float '{}'", value))?,
+                    ))
+                };
+                let end_expr = if end_tok.kind == crate::lexer::token::TokenKind::Integer {
+                    Expression::Literal(Literal::Integer(
+                        end_val.parse::<i64>().map_err(|_| format!("Invalid integer '{}'", end_val))?,
+                    ))
+                } else {
+                    Expression::Literal(Literal::Float(
+                        end_val.parse::<f64>().map_err(|_| format!("Invalid float '{}'", end_val))?,
+                    ))
+                };
+                return Ok(Pattern::Range(Box::new(start_expr), Box::new(end_expr)));
+            } else {
+                return Err(format!(
+                    "Expected number after '..=' in range pattern at line {}:{}",
+                    end_tok.span.0, end_tok.span.1
+                ));
+            }
+        }
+        return Ok(Pattern::Identifier(format!("__literal_{}", value)));
+    }
+
+    if matches!(
+        token.kind,
+        crate::lexer::token::TokenKind::String | crate::lexer::token::TokenKind::Char
+    ) {
         let value = token.value.clone();
         parser.advance();
         return Ok(Pattern::Identifier(format!("__literal_{}", value)));

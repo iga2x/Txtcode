@@ -137,6 +137,12 @@ pub enum Statement {
         message: Expression,
         span: Span,
     },
+    /// impl → StructName ... end  — attach methods to a struct type
+    Impl {
+        struct_name: String,
+        methods: Vec<Statement>, // Each element is Statement::FunctionDef
+        span: Span,
+    },
 }
 
 impl Statement {
@@ -166,7 +172,8 @@ impl Statement {
             | Statement::Const { span, .. }
             | Statement::Permission { span, .. }
             | Statement::TypeAlias { span, .. }
-            | Statement::NamedError { span, .. } => Some(span),
+            | Statement::NamedError { span, .. }
+            | Statement::Impl { span, .. } => Some(span),
             Statement::Expression(_) => None,
         };
         span.map(|s| (s.line, s.column))

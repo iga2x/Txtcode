@@ -356,6 +356,41 @@ impl StdLib {
                 "Capability function '{}' requires VM executor. Use grant_capability() etc. from VM context.",
                 name
             )))
+        } else if name == "await_all" || name == "await_any" {
+            // Task 12.1: concurrent future combinators
+            let futures: Vec<_> = match args.first() {
+                Some(crate::runtime::Value::Array(arr)) => arr.clone(),
+                _ => return Err(crate::runtime::RuntimeError::new(format!(
+                    "{} expects an array of Future values", name
+                ))),
+            };
+            if name == "await_all" {
+                // Block on all futures and collect results in order
+                let mut results = Vec::with_capacity(futures.len());
+                for fut in futures {
+                    match fut {
+                        crate::runtime::Value::Future(handle) => {
+                            let v = handle.resolve().map_err(|e| crate::runtime::RuntimeError::new(e))?;
+                            results.push(v);
+                        }
+                        other => results.push(other), // non-future: pass through
+                    }
+                }
+                Ok(crate::runtime::Value::Array(results))
+            } else {
+                // await_any: return first future to resolve
+                // Naive implementation: resolve in order, return first Ok
+                for fut in futures {
+                    match fut {
+                        crate::runtime::Value::Future(handle) => {
+                            let v = handle.resolve().map_err(|e| crate::runtime::RuntimeError::new(e))?;
+                            return Ok(v);
+                        }
+                        other => return Ok(other),
+                    }
+                }
+                Ok(crate::runtime::Value::Null)
+            }
         } else if name.starts_with("bytes_") {
             BytesLib::call_function(name, args)
         } else if name == "ffi_load" || name == "ffi_call" || name == "ffi_close" {

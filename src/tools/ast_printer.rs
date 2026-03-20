@@ -274,6 +274,14 @@ impl AstPrinter {
                     .join(", ");
                 format!("{}struct {}({})", ind, name, fields_str)
             }
+            Statement::Impl { struct_name, methods, .. } => {
+                let method_names = methods
+                    .iter()
+                    .filter_map(|s| if let Statement::FunctionDef { name, .. } = s { Some(name.as_str()) } else { None })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}impl → {} {{ {} }}", ind, struct_name, method_names)
+            }
             Statement::Match {
                 value,
                 cases,

@@ -167,3 +167,49 @@ fn generate_cache_key(source: &str, optimize: &str) -> Result<String, Box<dyn st
     let hash = hasher.finalize();
     Ok(hex::encode(&hash[..16]))
 }
+
+#[cfg(not(feature = "bytecode"))]
+pub fn compile_wasm(
+    _file: &PathBuf,
+    _output: Option<&std::path::Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    Err("The 'compile --target wasm' command requires the 'bytecode' feature. \
+         Rebuild with: cargo build --features bytecode"
+        .into())
+}
+
+/// Task 12.3 — Compile a Txt-code file to WebAssembly Text Format (WAT)
+#[cfg(feature = "bytecode")]
+pub fn compile_wasm(
+    file: &PathBuf,
+    output: Option<&std::path::Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::compiler::wasm::WasmCompiler;
+    use crate::compiler::bytecode::BytecodeCompiler;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::validator::Validator;
+
+    let source = std::fs::read_to_string(file)?;
+    let mut lexer = Lexer::new(source.clone());
+    let tokens = lexer.tokenize()?;
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse()?;
+    Validator::validate_program(&program)?;
+
+    // First compile to bytecode, then translate bytecode → WAT
+    let mut bc_compiler = BytecodeCompiler::new();
+    let bytecode = bc_compiler.compile(&program);
+
+    let mut wasm_compiler = WasmCompiler::new();
+    let wat = wasm_compiler.compile(&bytecode);
+
+    let out_path = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| file.with_extension("wat"));
+
+    std::fs::write(&out_path, &wat)?;
+    println!("Compiled (WASM/WAT) to: {}", out_path.display());
+    println!("  To convert to binary: wat2wasm {} -o {}", out_path.display(), out_path.with_extension("wasm").display());
+    Ok(())
+}

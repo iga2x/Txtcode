@@ -1463,3 +1463,112 @@ outer()
         "? on Err should early-return the Err from the function"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 12.2: Struct Methods (impl blocks)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_impl_block_method_call() {
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::vm::VirtualMachine;
+    use txtcode::runtime::Value;
+
+    let source = r#"
+struct Point(x: int, y: int)
+
+impl → Point
+  define → sum → (self)
+    return → self.x + self.y
+  end
+end
+
+store → p → Point { x: 3, y: 4 }
+p.sum()
+"#;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    let result = vm.interpret_repl(&program).unwrap();
+    assert_eq!(result, Value::Integer(7), "Point.sum() should return x + y = 7");
+}
+
+#[test]
+fn test_impl_block_method_with_arg() {
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::vm::VirtualMachine;
+    use txtcode::runtime::Value;
+
+    let source = r#"
+struct Counter(value: int)
+
+impl → Counter
+  define → add → (self, n)
+    return → self.value + n
+  end
+end
+
+store → c → Counter { value: 10 }
+c.add(5)
+"#;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    let result = vm.interpret_repl(&program).unwrap();
+    assert_eq!(result, Value::Integer(15), "Counter.add(5) should return 10 + 5 = 15");
+}
+
+// ---------------------------------------------------------------------------
+// Task 12.1: await_all / await_any combinators
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_await_all_collects_results() {
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::vm::VirtualMachine;
+    use txtcode::runtime::Value;
+
+    // await_all on a non-future array should pass values through
+    let source = r#"
+store → vals → await_all([1, 2, 3])
+vals
+"#;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    let result = vm.interpret_repl(&program).unwrap();
+    assert_eq!(
+        result,
+        Value::Array(vec![Value::Integer(1), Value::Integer(2), Value::Integer(3)]),
+        "await_all on plain values should collect them into an array"
+    );
+}
+
+#[test]
+fn test_await_any_returns_first() {
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::vm::VirtualMachine;
+    use txtcode::runtime::Value;
+
+    // await_any on plain values returns the first
+    let source = r#"
+await_any([42, 99, 0])
+"#;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    let result = vm.interpret_repl(&program).unwrap();
+    assert_eq!(result, Value::Integer(42), "await_any should return the first value");
+}

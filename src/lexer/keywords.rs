@@ -19,7 +19,7 @@ pub fn is_keyword(word: &str) -> bool {
         // Literals
         "true" | "false" | "null" |
         // Type system
-        "enum" | "struct" |
+        "enum" | "struct" | "impl" |
         // Module system
         "import" | "use" | "from" | "as" | "export" |
         // Permissions
@@ -63,7 +63,7 @@ pub fn get_keywords() -> Vec<&'static str> {
         "continue", "match", "case", "try", "catch", "finally", // Logical operators
         "and", "or", "not", // Literals
         "true", "false", "null", // Type system
-        "enum", "struct", // Module system
+        "enum", "struct", "impl", // Module system
         "import", "export", "from", "as", // Loop keywords
         "in", "to", "step", // Async/await
         "async", "await",

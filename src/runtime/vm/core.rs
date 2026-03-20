@@ -34,6 +34,7 @@ impl VirtualMachine {
             runtime_security: crate::runtime::security::RuntimeSecurity::new(),
             cancel_flag: None,
             async_functions: std::collections::HashSet::new(),
+            struct_methods: std::collections::HashMap::new(),
         }
     }
 
@@ -69,6 +70,7 @@ impl VirtualMachine {
             runtime_security: crate::runtime::security::RuntimeSecurity::new(),
             cancel_flag: None,
             async_functions: std::collections::HashSet::new(),
+            struct_methods: std::collections::HashMap::new(),
         };
 
         // If safe_mode is enabled, deny exec by default

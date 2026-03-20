@@ -146,3 +146,45 @@ pub fn parse_struct(parser: &mut Parser) -> Result<Option<Statement>, String> {
     let span = token_span_to_ast_span(&start_token);
     Ok(Some(Statement::Struct { name, fields, span }))
 }
+
+/// Parse `impl → StructName\n  define → method → (self, ...) ... end\nend`
+pub fn parse_impl(parser: &mut Parser) -> Result<Option<Statement>, String> {
+    let start_token = parser.peek().clone();
+    parser.expect_keyword("impl")?;
+    parser.skip_optional_arrow();
+    let struct_name = parser.expect_identifier()?;
+
+    // Skip whitespace / newlines before the method definitions
+    while !parser.is_at_end()
+        && (parser.peek().kind == crate::lexer::token::TokenKind::Newline
+            || parser.peek().kind == crate::lexer::token::TokenKind::Whitespace)
+    {
+        parser.advance();
+    }
+
+    let mut methods = Vec::new();
+    // Collect define (and async define) statements until the matching `end`
+    while !parser.is_at_end() && !parser.check_keyword("end") {
+        // Skip blank lines
+        while !parser.is_at_end()
+            && (parser.peek().kind == crate::lexer::token::TokenKind::Newline
+                || parser.peek().kind == crate::lexer::token::TokenKind::Whitespace)
+        {
+            parser.advance();
+        }
+        if parser.check_keyword("end") {
+            break;
+        }
+        if parser.check_keyword("define") || parser.check_keyword("async") || parser.check_keyword("def") {
+            if let Some(stmt) = crate::parser::statements::functions::parse_define(parser)? {
+                methods.push(stmt);
+            }
+        } else {
+            return parser.error("Expected 'define' inside impl block");
+        }
+    }
+    parser.expect_keyword("end")?;
+
+    let span = token_span_to_ast_span(&start_token);
+    Ok(Some(Statement::Impl { struct_name, methods, span }))
+}

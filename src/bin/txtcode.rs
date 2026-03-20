@@ -166,9 +166,12 @@ pub enum Commands {
         /// Output file
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Optimization level (none, basic, aggressive)
+        /// Optimization level (none, basic, aggressive) — only for bytecode target
         #[arg(long, default_value = "basic")]
         optimize: String,
+        /// Compilation target: bytecode (default) or wasm (WebAssembly Text Format)
+        #[arg(long, default_value = "bytecode")]
+        target: String,
     },
     /// Format Txt-code source files
     Format {
@@ -642,8 +645,14 @@ pub fn main() {
                     file,
                     output,
                     optimize,
+                    target,
                 } => {
-                    if let Err(e) = compile::compile_file(file, output.as_ref(), optimize) {
+                    let result = if target == "wasm" {
+                        compile::compile_wasm(file, output.as_deref())
+                    } else {
+                        compile::compile_file(file, output.as_ref(), optimize)
+                    };
+                    if let Err(e) = result {
                         eprintln!("Error: {}", e);
                         std::process::exit(1);
                     }

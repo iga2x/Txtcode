@@ -38,6 +38,8 @@ pub struct VirtualMachine {
     scope_manager: ScopeManager,
     enum_defs: HashMap<String, Vec<(String, Option<Expression>)>>,
     struct_defs: HashMap<String, Vec<(String, Type)>>,
+    /// Struct method registry: struct_name → method_name → Function value
+    struct_methods: HashMap<String, HashMap<String, Value>>,
     call_stack: CallStack,
     gc: GarbageCollector,
     module_resolver: ModuleResolver,
@@ -316,6 +318,17 @@ impl StatementVM for VirtualMachine {
 
     fn register_struct(&mut self, name: String, fields: Vec<(String, Type)>) {
         self.struct_defs.insert(name, fields);
+    }
+
+    fn register_struct_method(&mut self, struct_name: &str, method_name: String, func: Value) {
+        self.struct_methods
+            .entry(struct_name.to_string())
+            .or_default()
+            .insert(method_name, func);
+    }
+
+    fn execute_nested_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError> {
+        self.execute_statement(stmt)
     }
 
     fn execute_import(
@@ -669,6 +682,13 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
 
     fn enum_defs(&self) -> &HashMap<String, Vec<(String, Option<Expression>)>> {
         &self.enum_defs
+    }
+
+    fn lookup_struct_method(&self, struct_name: &str, method_name: &str) -> Option<Value> {
+        self.struct_methods
+            .get(struct_name)
+            .and_then(|methods| methods.get(method_name))
+            .cloned()
     }
 
     fn gc_register_allocation(&mut self, value: &Value) {

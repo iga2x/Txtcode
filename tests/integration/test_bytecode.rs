@@ -1168,3 +1168,56 @@ fn test_bytecode_propagate_err_returns() {
         Err(e) => panic!("unexpected error: {e}"),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Task 12.3: WASM Compilation Target
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_wasm_compile_simple_arithmetic() {
+    use txtcode::compiler::wasm::WasmCompiler;
+    use txtcode::compiler::bytecode::BytecodeCompiler;
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+
+    let source = "store → x → 3 + 4\nreturn → x";
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+
+    let mut bc_compiler = BytecodeCompiler::new();
+    let bytecode = bc_compiler.compile(&program);
+
+    let mut wasm_compiler = WasmCompiler::new();
+    let wat = wasm_compiler.compile(&bytecode);
+
+    // The WAT should be a valid module string
+    assert!(wat.contains("(module"), "WAT output should start with (module");
+    assert!(wat.contains("i64.add"), "WAT output should contain i64.add for + operator");
+    assert!(wat.contains("i64.const 3"), "WAT should contain constant 3");
+    assert!(wat.contains("i64.const 4"), "WAT should contain constant 4");
+}
+
+#[test]
+fn test_wasm_compile_produces_func_export() {
+    use txtcode::compiler::wasm::WasmCompiler;
+    use txtcode::compiler::bytecode::BytecodeCompiler;
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+
+    let source = "store → a → 1\nstore → b → 2\nreturn → a + b";
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+
+    let mut bc_compiler = BytecodeCompiler::new();
+    let bytecode = bc_compiler.compile(&program);
+
+    let mut wasm_compiler = WasmCompiler::new();
+    let wat = wasm_compiler.compile(&bytecode);
+
+    assert!(wat.contains("(export \"main\")"), "WAT should export main function");
+    assert!(wat.contains("(memory"), "WAT should include memory declaration");
+}

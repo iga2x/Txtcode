@@ -85,6 +85,9 @@ pub enum TokenKind {
     Dot,          // .
     Spread,       // ... (spread/rest operator)
 
+    // Range
+    RangeInclusive, // ..=
+
     // Special
     Eof,
     Newline,

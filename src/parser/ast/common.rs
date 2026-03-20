@@ -92,6 +92,13 @@ pub enum Pattern {
         args: Vec<Pattern>, // e.g., [10, 20] or [x, y]
     },
     Ignore, // _ pattern
+    /// Or-pattern: `1 | 2 | 3` — matches any of the sub-patterns
+    Or(Vec<Pattern>),
+    /// Inclusive range pattern: `1..=5` — matches integers/floats in [start, end]
+    Range(
+        Box<crate::parser::ast::Expression>,
+        Box<crate::parser::ast::Expression>,
+    ),
 }
 
 /// Segment of an interpolated string
