@@ -913,7 +913,7 @@
 
 <h1 id="txt-code-programming-language">Txt-code Programming Language</h1>
 <p><strong>Txt-code</strong> © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.</p>
-<p>Txtcode is a <strong>deterministic cyber orchestration DSL</strong> — a policy-enforced execution engine designed for security-sensitive automation and experimentation. It provides a safe bridge between AI planning and real-world actions, with built-in audit trails and permission systems.</p>
+<p>Txtcode is a <strong>permission-transparent cyber orchestration DSL</strong> — a policy-enforced execution engine designed for security-sensitive automation and experimentation. It provides a safe bridge between AI planning and real-world actions, with built-in audit trails and permission systems.</p>
 <hr />
 <h2 id="features">Features</h2>
 <ul>
@@ -921,7 +921,7 @@
 <li><strong>Cyber Orchestration</strong> — Safe, permission-controlled execution of external tools</li>
 <li><strong>Execution Transparency</strong> — Full trace logging and replayable execution graphs</li>
 <li><strong>Policy Enforcement</strong> — Intent declarations, capability scoping, and rate limiting</li>
-<li><strong>AI-Safe Design</strong> — Structured error output and deterministic execution for AI agents</li>
+<li><strong>AI-Safe Design</strong> — Structured error output and permission-transparent execution for AI agents</li>
 <li><strong>Developer Tooling</strong> — REPL, formatter, linter, debugger, LSP server (<code>txtcode lsp</code>), TextMate grammar</li>
 <li><strong>Package Manager</strong> — 20 core packages, <code>registry/index.json</code>, <code>Txtcode.lock</code> lockfile</li>
 <li><strong>Async/Await</strong> — thread-based <code>Value::Future</code>, <code>await</code> in both AST and Bytecode VMs</li>
@@ -932,7 +932,8 @@
 <h2 id="goals">Goals</h2>
 <ul>
 <li>Safe, auditable automation of security-sensitive tasks</li>
-<li>Deterministic execution with predictable, reproducible results</li>
+<li><strong>Permission-transparent execution</strong> — every privileged side effect (network, filesystem, process) requires an explicit grant; no hidden escalation</li>
+<li>Map iteration order is insertion-order (deterministic as of v0.6)</li>
 <li>AI-compatible scripting with structured, machine-readable output</li>
 <li>Transparent policy enforcement with zero silent privilege escalation</li>
 <li>Bridging AI planning with real-world system actions safely</li>

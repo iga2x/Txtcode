@@ -685,11 +685,12 @@
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>Group 6: Ecosystem                     [x] COMPLETE (194 tests passing)
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>Group 7: Performance Baseline          [x] COMPLETE (194 tests passing)
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>─────────────────────────────────────────────────────────────────────
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>Group 8: Security Correctness          [ ] NEXT — start here
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>Group 9: Module System Overhaul        [ ] blocked by Group 8
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>Group 10: Type System Promotion        [ ] blocked by Group 9
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>Group 11: Developer Experience         [ ] blocked by Group 8 (can parallel 9/10)
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>Group 12: Platform &amp; Compilation       [ ] blocked by Groups 9+10
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>Group 8: Security Correctness          [x] COMPLETE (202 tests passing)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>Group 9: Module System Overhaul        [x] COMPLETE (209 tests passing)
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>Group 10: Type System Promotion        [x] COMPLETE (311 tests passing)
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>Group 11: Developer Experience         [x] COMPLETE (322 tests passing)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>─────────────────────────────────────────────────────────────────────
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>Group 12: Platform &amp; Compilation       [ ] NEXT — start here
 </code></pre></div>
 <hr />
 <h2 id="audit-findings-summary-what-drove-groups-812">Audit Findings Summary (what drove Groups 8–12)</h2>
@@ -831,7 +832,7 @@ Groups 1–7 delivered: lexer, parser, AST VM, bytecode VM, 6-layer security pip
 <strong>Target version:</strong> 0.5.1</p>
 <hr />
 <h2 id="task-81-fix-exec_allowed-true-default-critical">Task 8.1 — Fix <code>exec_allowed: true</code> Default (CRITICAL)</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> CRITICAL — directly contradicts the "security-first, default-deny" positioning
 <strong>Estimated size:</strong> Small (1–3 files)</p>
 <h3 id="problem">Problem</h3>
@@ -871,7 +872,7 @@ The 6-layer security pipeline is bypassed for process execution by default.</p>
 </ul>
 <hr />
 <h2 id="task-82-enforce-const-at-runtime">Task 8.2 — Enforce <code>const</code> at Runtime</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — silent mutation of "constants" is a correctness hazard
 <strong>Estimated size:</strong> Small-Medium</p>
 <h3 id="problem_1">Problem</h3>
@@ -904,7 +905,7 @@ silently. <code>const</code> is currently pure syntactic sugar with no enforceme
 </ul>
 <hr />
 <h2 id="task-83-expose-script-signing-as-cli-flag">Task 8.3 — Expose Script Signing as CLI Flag</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — signing infrastructure exists but is unreachable without Rust API
 <strong>Estimated size:</strong> Small</p>
 <h3 id="problem_2">Problem</h3>
@@ -943,7 +944,7 @@ Users cannot sign or verify scripts from the command line. The security feature 
 </ul>
 <hr />
 <h2 id="task-84-ffi-path-allowlisting">Task 8.4 — FFI Path Allowlisting</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> HIGH — <code>ffi_load</code> with attacker-controlled path = arbitrary code execution
 <strong>Estimated size:</strong> Small</p>
 <h3 id="problem_3">Problem</h3>
@@ -972,7 +973,7 @@ The <code>sys.ffi</code> permission gate is necessary but not sufficient — the
 </ul>
 <hr />
 <h2 id="task-85-audit-log-persistence">Task 8.5 — Audit Log Persistence</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — in-memory audit trail is lost on exit; security use-cases need durable logs
 <strong>Estimated size:</strong> Small-Medium</p>
 <h3 id="problem_4">Problem</h3>
@@ -997,12 +998,12 @@ The <code>sys.ffi</code> permission gate is necessary but not sufficient — the
 </ul>
 <hr />
 <h2 id="group-8-checkpoint">Group 8 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[ ] exec_allowed defaults to false; exec requires explicit grant or --allow-exec
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>[ ] const reassignment raises E0030 in both VMs
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>[ ] txtcode sign / verify / keygen / run --require-sig all work end-to-end
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>[ ] ffi_load requires path-scoped sys.ffi permission grant
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>[ ] --audit-log flag writes persistent JSON audit trail
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>[ ] cargo test passes (all existing tests updated where needed)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[x] exec_allowed defaults to false; exec requires explicit grant or --allow-exec
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>[x] const reassignment raises E0030 in both VMs
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>[x] txtcode sign / verify / keygen / run --require-sig all work end-to-end
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>[x] ffi_load requires path-scoped sys.ffi permission grant
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>[x] --audit-log flag writes persistent JSON audit trail
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>[x] cargo test passes (all existing tests updated where needed)
 </code></pre></div>
 <hr />
 <hr />
@@ -1013,7 +1014,7 @@ The <code>sys.ffi</code> permission gate is necessary but not sufficient — the
 <strong>Target version:</strong> 0.6.0</p>
 <hr />
 <h2 id="task-91-module-namespace-isolation-critical">Task 9.1 — Module Namespace Isolation (CRITICAL)</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> CRITICAL — without this, any multi-file project risks silent name collisions
 <strong>Estimated size:</strong> Large</p>
 <h3 id="problem_5">Problem</h3>
@@ -1064,7 +1065,7 @@ There is no module-level namespace. <code>exported_symbols</code> set exists but
 </ul>
 <hr />
 <h2 id="task-92-transitive-dependency-resolution">Task 9.2 — Transitive Dependency Resolution</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> HIGH — <code>package install</code> silently skips transitive deps
 <strong>Estimated size:</strong> Medium</p>
 <h3 id="problem_6">Problem</h3>
@@ -1097,7 +1098,7 @@ will fail at import time if the user only installed the top-level package.</p>
 </ul>
 <hr />
 <h2 id="task-93-lockfile-enforcement">Task 9.3 — Lockfile Enforcement</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> HIGH — without lockfile verification, builds are not reproducible
 <strong>Estimated size:</strong> Small-Medium</p>
 <h3 id="problem_7">Problem</h3>
@@ -1139,7 +1140,7 @@ packages match the lock. Every install resolves fresh from the registry regardle
 </ul>
 <hr />
 <h2 id="task-94-deterministic-map-iteration">Task 9.4 — Deterministic Map Iteration</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — breaks "deterministic execution" claim; hard to debug
 <strong>Estimated size:</strong> Small</p>
 <h3 id="problem_8">Problem</h3>
@@ -1167,7 +1168,7 @@ and makes scripts that process maps non-reproducible.</p>
 </ul>
 <hr />
 <h2 id="task-95-update-deterministic-documentation">Task 9.5 — Update "Deterministic" Documentation</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> LOW — documentation fix
 <strong>Estimated size:</strong> Tiny</p>
 <h3 id="what-to-do_9">What to Do</h3>
@@ -1185,13 +1186,13 @@ and makes scripts that process maps non-reproducible.</p>
 </ul>
 <hr />
 <h2 id="group-9-checkpoint">Group 9 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[ ] Module imports execute in isolated scope; unexported names invisible to importer
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>[ ] Circular imports detected and reported with clear error
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>[ ] Transitive deps resolved and installed automatically
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>[ ] Txtcode.lock written and verified on install; package update regenerates it
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>[ ] Map iteration order is insertion-order (IndexMap)
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>[ ] &quot;Deterministic&quot; documentation corrected in README and spec
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>[ ] cargo test passes
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[x] Module imports execute in isolated scope; unexported names invisible to importer
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>[x] Circular imports detected and reported with clear error
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>[x] Transitive deps resolved and installed automatically
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>[x] Txtcode.lock written and verified on install; package update regenerates it
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>[x] Map iteration order is insertion-order (IndexMap)
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>[x] &quot;Deterministic&quot; documentation corrected in README and spec
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>[x] cargo test passes
 </code></pre></div>
 <hr />
 <hr />
@@ -1202,7 +1203,7 @@ and makes scripts that process maps non-reproducible.</p>
 <strong>Target version:</strong> 0.6.5</p>
 <hr />
 <h2 id="task-101-make-type-warnings-the-default">Task 10.1 — Make Type Warnings the Default</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> HIGH — changing default behavior; needs clean migration path
 <strong>Estimated size:</strong> Medium</p>
 <h3 id="problem_9">Problem</h3>
@@ -1237,7 +1238,7 @@ and makes scripts that process maps non-reproducible.</p>
 </ul>
 <hr />
 <h2 id="task-102-enforce-generics-for-built-in-collection-types">Task 10.2 — Enforce Generics for Built-in Collection Types</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — partial implementation; full generics deferred to v0.8
 <strong>Estimated size:</strong> Medium-Large</p>
 <h3 id="problem_10">Problem</h3>
@@ -1266,7 +1267,7 @@ without a full generics implementation.</p>
 </ul>
 <hr />
 <h2 id="task-103-type-checker-coverage-expansion">Task 10.3 — Type Checker Coverage Expansion</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> LOW — additive; improves existing checker without breaking changes
 <strong>Estimated size:</strong> Medium</p>
 <h3 id="problem_11">Problem</h3>
@@ -1297,14 +1298,14 @@ without a full generics implementation.</p>
 </ul>
 <hr />
 <h2 id="group-10-checkpoint">Group 10 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>[ ] Default txtcode run shows type warnings without aborting
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>[ ] --strict-types aborts on type violations
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>[ ] --no-type-check silences type output
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>[ ] Array&lt;T&gt; / Map&lt;K,V&gt; annotations produce errors/warnings when violated
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>[ ] Return type checking implemented in type checker
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>[ ] Arity checking implemented in type checker
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>[ ] Null arithmetic warnings implemented
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>[ ] cargo test passes
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>[x] Default txtcode run shows type warnings without aborting
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>[x] --strict-types aborts on type violations
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>[x] --no-type-check silences type output
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>[x] Array&lt;T&gt; / Map&lt;K,V&gt; annotations produce errors/warnings when violated
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>[x] Return type checking implemented in type checker
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>[x] Arity checking implemented in type checker
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>[x] Null arithmetic warnings implemented
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>[x] cargo test passes (311 tests)
 </code></pre></div>
 <hr />
 <hr />
@@ -1315,7 +1316,7 @@ without a full generics implementation.</p>
 <strong>Target version:</strong> 0.7.0</p>
 <hr />
 <h2 id="task-111-pre-built-binaries-and-release-pipeline-critical">Task 11.1 — Pre-Built Binaries and Release Pipeline (CRITICAL)</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> CRITICAL — without binaries, <code>install.sh</code> requires Rust toolchain; blocks all non-Rust users
 <strong>Estimated size:</strong> Small (CI configuration)</p>
 <h3 id="problem_12">Problem</h3>
@@ -1355,7 +1356,7 @@ No pre-built binaries exist on GitHub Releases.</p>
 </ul>
 <hr />
 <h2 id="task-112-interactive-debugger-cli">Task 11.2 — Interactive Debugger CLI</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — infrastructure exists; needs interactive loop and source-line mapping
 <strong>Estimated size:</strong> Medium</p>
 <h3 id="problem_13">Problem</h3>
@@ -1400,7 +1401,7 @@ is no interactive loop exposed to the user. Breakpoints are by bytecode address 
 </ul>
 <hr />
 <h2 id="task-113-real-doc-generation-txtcode-doc">Task 11.3 — Real Doc Generation (<code>txtcode doc</code>)</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — <code>txtcode doc</code> listed in CLI but produces no output
 <strong>Estimated size:</strong> Medium</p>
 <h3 id="problem_14">Problem</h3>
@@ -1437,7 +1438,7 @@ documentation generation for Txtcode packages or scripts.</p>
 </ul>
 <hr />
 <h2 id="task-114-lsp-go-to-definition-hover-rename">Task 11.4 — LSP: Go-to-Definition, Hover, Rename</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — LSP server exists; needs symbol resolution
 <strong>Estimated size:</strong> Medium-Large</p>
 <h3 id="problem_15">Problem</h3>
@@ -1482,7 +1483,7 @@ documentation generation for Txtcode packages or scripts.</p>
 </ul>
 <hr />
 <h2 id="task-115-repl-multiline-input-and-history">Task 11.5 — REPL Multiline Input and History</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> LOW — quality of life
 <strong>Estimated size:</strong> Small-Medium</p>
 <h3 id="problem_16">Problem</h3>
@@ -1514,16 +1515,16 @@ History works per-line but multi-line blocks cannot be re-used from history.</p>
 </ul>
 <hr />
 <h2 id="group-11-checkpoint">Group 11 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[ ] Pre-built binaries on GitHub Releases for Linux x86_64, macOS arm64, Windows x64
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>[ ] install.sh installs from binary without requiring Rust toolchain
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>[ ] txtcode debug &lt;file&gt; enters interactive loop with break/step/print/continue/quit
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>[ ] Source line shown at each debugger break
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>[ ] txtcode doc generates markdown API docs from ## comments
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>[ ] LSP: go-to-definition works for same-file symbols
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>[ ] LSP: hover shows function signature
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>[ ] REPL: multiline input with continuation prompt
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>[ ] REPL: history persists across sessions
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>[ ] cargo test passes
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[x] Pre-built binaries on GitHub Releases for Linux x86_64, macOS arm64, Windows x64
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>[x] install.sh installs from binary without requiring Rust toolchain
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>[x] txtcode debug &lt;file&gt; enters interactive loop with break/step/print/continue/quit
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>[x] Source line shown at each debugger break
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>[x] txtcode doc generates markdown API docs from ## comments
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>[x] LSP: go-to-definition works for same-file symbols
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>[x] LSP: hover shows function signature
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>[x] REPL: multiline input with continuation prompt
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>[x] REPL: history persists across sessions
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>[x] cargo test passes (322 tests)
 </code></pre></div>
 <hr />
 <hr />
