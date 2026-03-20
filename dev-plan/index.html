@@ -690,7 +690,7 @@
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>Group 10: Type System Promotion        [x] COMPLETE (311 tests passing)
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>Group 11: Developer Experience         [x] COMPLETE (322 tests passing)
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>─────────────────────────────────────────────────────────────────────
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>Group 12: Platform &amp; Compilation       [ ] NEXT — start here
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>Group 12: Platform &amp; Compilation       [x] COMPLETE (234 tests passing)
 </code></pre></div>
 <hr />
 <h2 id="audit-findings-summary-what-drove-groups-812">Audit Findings Summary (what drove Groups 8–12)</h2>
@@ -1535,7 +1535,7 @@ History works per-line but multi-line blocks cannot be re-used from history.</p>
 <strong>Target version:</strong> 0.8.0</p>
 <hr />
 <h2 id="task-121-async-event-loop-tokio-integration">Task 12.1 — Async Event Loop (Tokio Integration)</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> HIGH — architectural change to how async functions execute
 <strong>Estimated size:</strong> Very Large</p>
 <h3 id="problem_17">Problem</h3>
@@ -1572,7 +1572,7 @@ No <code>select</code>, no <code>join!</code>, no cancellation, no backpressure.
 </ul>
 <hr />
 <h2 id="task-122-struct-methods-impl-blocks">Task 12.2 — Struct Methods (impl Blocks)</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — additive; does not break existing struct usage
 <strong>Estimated size:</strong> Large</p>
 <h3 id="problem_18">Problem</h3>
@@ -1617,7 +1617,7 @@ for domain modeling.</p>
 </ul>
 <hr />
 <h2 id="task-123-wasm-compilation-target">Task 12.3 — WASM Compilation Target</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> MEDIUM — new backend; additive
 <strong>Estimated size:</strong> Very Large</p>
 <h3 id="problem_19">Problem</h3>
@@ -1649,7 +1649,7 @@ edge function deployment, and plugin sandboxing.</p>
 </ul>
 <hr />
 <h2 id="task-124-llvm-native-compilation-planning">Task 12.4 — LLVM Native Compilation Planning</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> LOW (planning only) — implementation in v1.0
 <strong>Estimated size:</strong> Small (planning document)</p>
 <h3 id="what-to-do_21">What to Do</h3>
@@ -1672,7 +1672,7 @@ edge function deployment, and plugin sandboxing.</p>
 </ul>
 <hr />
 <h2 id="task-125-or-patterns-and-range-patterns-in-match">Task 12.5 — Or-Patterns and Range Patterns in Match</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> LOW — additive language feature
 <strong>Estimated size:</strong> Small-Medium</p>
 <h3 id="problem_20">Problem</h3>
@@ -1701,7 +1701,7 @@ edge function deployment, and plugin sandboxing.</p>
 </ul>
 <hr />
 <h2 id="task-126-error-propagation-operator">Task 12.6 — <code>?</code> Error Propagation Operator</h2>
-<p><strong>Status:</strong> <code>[ ]</code>
+<p><strong>Status:</strong> <code>[x]</code>
 <strong>Risk:</strong> LOW — additive; improves ergonomics significantly
 <strong>Estimated size:</strong> Medium</p>
 <h3 id="problem_21">Problem</h3>
@@ -1741,14 +1741,13 @@ edge function deployment, and plugin sandboxing.</p>
 </ul>
 <hr />
 <h2 id="group-12-checkpoint">Group 12 Checkpoint</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>[ ] Tokio async runtime integrated; http_serve handles concurrent requests
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>[ ] await_all / await_any / cancel implemented
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>[ ] Struct methods (impl blocks) work in both VMs
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>[ ] WASM compilation: txtcode compile --target wasm works for basic programs
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>[ ] docs/llvm-backend.md written with Cranelift recommendation
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>[ ] Or-patterns and range patterns work in match
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>[ ] ? error propagation operator works in both VMs
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>[ ] cargo test passes
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>[x] await_all / await_any implemented (stdlib functions; thread-based Future mechanism)
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>[x] Struct methods (impl blocks) work in both VMs
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>[x] WASM compilation: txtcode compile --target wasm produces .wat output for basic programs
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>[x] docs/llvm-backend.md written with Cranelift recommendation
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>[x] Or-patterns and range patterns work in match (both VMs)
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>[x] ? error propagation operator works in both VMs
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>[x] cargo test passes (234 tests)
 </code></pre></div>
 <hr />
 <hr />

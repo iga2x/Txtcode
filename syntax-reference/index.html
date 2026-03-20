@@ -660,6 +660,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Pattern Matching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#or-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Or-Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#range-patterns-inclusive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Range Patterns (Inclusive)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -776,6 +804,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-propagation-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ? Error Propagation Operator
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -790,13 +835,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#structs-and-type-aliases" class="md-nav__link">
+  <a href="#structs-type-aliases-and-impl-blocks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Structs and Type Aliases
+        Structs, Type Aliases, and impl Blocks
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Structs, Type Aliases, and impl Blocks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#impl-blocks-struct-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        impl Blocks (Struct Methods)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1101,6 +1163,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Pattern Matching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#or-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Or-Patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#range-patterns-inclusive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Range Patterns (Inclusive)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1217,6 +1307,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-propagation-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ? Error Propagation Operator
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1231,13 +1338,30 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#structs-and-type-aliases" class="md-nav__link">
+  <a href="#structs-type-aliases-and-impl-blocks" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Structs and Type Aliases
+        Structs, Type Aliases, and impl Blocks
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Structs, Type Aliases, and impl Blocks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#impl-blocks-struct-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        impl Blocks (Struct Methods)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1463,6 +1587,32 @@
 <a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>    print → &quot;not a 2-element array&quot;
 <a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>end
 </code></pre></div>
+<h3 id="or-patterns">Or-Patterns</h3>
+<p>Match a value against multiple alternatives in a single <code>case</code> arm using <code>|</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>match → status_code
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  case → 200 | 201 | 204
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    print → &quot;success&quot;
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>  case → 400 | 401 | 403
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    print → &quot;client error&quot;
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>  case → _
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    print → &quot;other&quot;
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>end
+</code></pre></div>
+<h3 id="range-patterns-inclusive">Range Patterns (Inclusive)</h3>
+<p>Match a value against an inclusive integer range using <code>..=</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>match → score
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  case → 90..=100
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    print → &quot;A&quot;
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  case → 80..=89
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    print → &quot;B&quot;
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>  case → 70..=79
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    print → &quot;C&quot;
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>  case → _
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    print → &quot;F&quot;
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>end
+</code></pre></div>
+<p>Or-patterns and range patterns can appear together in the same match expression.
+Both work in the AST VM and the bytecode VM.</p>
 <h2 id="operators">Operators</h2>
 <h3 id="arithmetic">Arithmetic</h3>
 <ul>
@@ -1474,18 +1624,18 @@
 <li><code>**</code> Exponentiation</li>
 </ul>
 <h3 id="compound-assignment">Compound Assignment</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>store → x → 10
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>x += 5    # x = 15
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>x -= 3    # x = 12
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>x *= 2    # x = 24
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>x /= 4    # x = 6
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>x **= 2   # x = 36
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>x %= 7    # x = 1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>store → x → 10
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>x += 5    # x = 15
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>x -= 3    # x = 12
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>x *= 2    # x = 24
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>x /= 4    # x = 6
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>x **= 2   # x = 36
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>x %= 7    # x = 1
 </code></pre></div>
 <h3 id="increment-decrement">Increment / Decrement</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>++x   # x = x + 1 (identifier only)
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>--x   # x = x - 1 (identifier only)
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a># Note: ++arr[0] is not supported — use arr[0] = arr[0] + 1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>++x   # x = x + 1 (identifier only)
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>--x   # x = x - 1 (identifier only)
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a># Note: ++arr[0] is not supported — use arr[0] = arr[0] + 1
 </code></pre></div>
 <h3 id="comparison">Comparison</h3>
 <ul>
@@ -1501,25 +1651,25 @@
 <li><code>&amp;</code> <code>|</code> <code>^</code> <code>&lt;&lt;</code> <code>&gt;&gt;</code> <code>~</code></li>
 </ul>
 <h3 id="special-operators">Special Operators</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a># Null coalescing
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>store → val → maybe_null ?? &quot;default&quot;
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a># Optional chaining (returns null instead of error)
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>store → field → obj?.key
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>store → elem  → arr?[0]
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a># Ternary
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>store → label → score &gt; 50 ? &quot;pass&quot; : &quot;fail&quot;
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a># Pipe operator
-<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>store → result → 5 |&gt; double
-<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>store → upper  → &quot;hello&quot; |&gt; to_upper
-<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>
-<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a># Spread in arrays
-<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>store → a → [1, 2]
-<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>store → b → [3, 4]
-<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>store → c → [...a, ...b]       # [1, 2, 3, 4]
-<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>store → d → [0, ...a, 5]       # [0, 1, 2, 5]
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a># Null coalescing
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>store → val → maybe_null ?? &quot;default&quot;
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a># Optional chaining (returns null instead of error)
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>store → field → obj?.key
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>store → elem  → arr?[0]
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a># Ternary
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>store → label → score &gt; 50 ? &quot;pass&quot; : &quot;fail&quot;
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a># Pipe operator
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>store → result → 5 |&gt; double
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>store → upper  → &quot;hello&quot; |&gt; to_upper
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a># Spread in arrays
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>store → a → [1, 2]
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>store → b → [3, 4]
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>store → c → [...a, ...b]       # [1, 2, 3, 4]
+<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>store → d → [0, ...a, 5]       # [0, 1, 2, 5]
 </code></pre></div>
 <h2 id="data-types">Data Types</h2>
 <table>
@@ -1579,84 +1729,129 @@
 </tbody>
 </table>
 <h2 id="error-handling">Error Handling</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>try
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  store → data → json_parse(raw)
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>catch err
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>  print → f&quot;Parse error: {err}&quot;
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>finally
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>  print → &quot;done&quot;
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>end
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a># Result type
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>store → r → ok(42)
-<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>store → e → err(&quot;not found&quot;)
-<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>if is_ok(r)
-<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>  print → unwrap(r)
-<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>end
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>try
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>  store → data → json_parse(raw)
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>catch err
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>  print → f&quot;Parse error: {err}&quot;
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>finally
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>  print → &quot;done&quot;
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>end
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a># Result type
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>store → r → ok(42)
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>store → e → err(&quot;not found&quot;)
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>if is_ok(r)
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>  print → unwrap(r)
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>end
 </code></pre></div>
+<h3 id="error-propagation-operator"><code>?</code> Error Propagation Operator</h3>
+<p>Postfix <code>?</code> provides concise early-return on error inside a function. It is the
+shorthand replacement for manually checking <code>is_err(r)</code> and returning the error:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>define → load_config → (path)
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>  store → raw → read_file(path)?   ;; returns Err immediately if read fails
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>  store → cfg → json_parse(raw)?   ;; returns Err immediately if parse fails
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>  return → cfg
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>end
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>store → result → load_config(&quot;config.json&quot;)
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>if is_ok(result)
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>  print → unwrap(result)
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>else
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>  print → f&quot;Failed: {unwrap_err(result)}&quot;
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>end
+</code></pre></div>
+<p>Semantics:
+- <code>expr?</code> where <code>expr</code> is <code>Ok(v)</code> — evaluates to <code>v</code> (unwrapped).
+- <code>expr?</code> where <code>expr</code> is <code>Err(e)</code> — immediately returns <code>Err(e)</code> from the enclosing function.
+- <code>expr?</code> where <code>expr</code> is not a <code>Result</code> — passes the value through unchanged.
+- Works in both AST VM and bytecode VM.</p>
 <h2 id="modules">Modules</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>import → &quot;utils&quot;
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>import → math
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>import → sqrt, pow from math
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>import → math as m
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>import → &quot;utils&quot;
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>import → math
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>import → sqrt, pow from math
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>import → math as m
 </code></pre></div>
-<h2 id="structs-and-type-aliases">Structs and Type Aliases</h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a># Struct definition — parens form (canonical)
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>struct Point(x: int, y: int)
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a># Block form (also accepted)
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>struct → Rectangle
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>  width: float
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>  height: float
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>end
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a># Type alias
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>type → UserId → int
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>type → Hostname → string
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>
-<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a># Named error constant
-<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>error → NotFound → &quot;Resource not found&quot;
-<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>error → Unauthorized → &quot;Access denied&quot;
+<h2 id="structs-type-aliases-and-impl-blocks">Structs, Type Aliases, and impl Blocks</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a># Struct definition — parens form (canonical)
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>struct Point(x: int, y: int)
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a># Block form (also accepted)
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>struct → Rectangle
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>  width: float
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>  height: float
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>end
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a># Type alias
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>type → UserId → int
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>type → Hostname → string
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a># Named error constant
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>error → NotFound → &quot;Resource not found&quot;
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>error → Unauthorized → &quot;Access denied&quot;
 </code></pre></div>
+<h3 id="impl-blocks-struct-methods">impl Blocks (Struct Methods)</h3>
+<p>Attach methods to a struct type using an <code>impl</code> block. Methods are called as
+<code>obj.method(args)</code>. The receiver (<code>self</code>) is auto-prepended by the runtime.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>struct Point(x: int, y: int)
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>impl → Point
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  define → sum → (self)
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>    return → self.x + self.y
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>  end
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>  define → scale → (self, factor)
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>    return → Point { x: self.x * factor, y: self.y * factor }
+<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>  end
+<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>end
+<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>
+<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a>store → p → Point { x: 3, y: 4 }
+<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a>print → p.sum()          ;; 7
+<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>store → p2 → p.scale(2)  ;; Point { x: 6, y: 8 }
+</code></pre></div>
+<p>Rules:
+- <code>impl</code> takes the struct name after the arrow: <code>impl → StructName</code>.
+- Each method is a normal <code>define</code> block; the first parameter (<code>self</code> by convention) receives the struct instance.
+- Methods can call other methods via <code>self.other_method(args)</code>.
+- Works in both the AST VM and the bytecode VM.</p>
 <h2 id="permissions-and-capabilities">Permissions and Capabilities</h2>
 <h3 id="granting-permissions">Granting permissions</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>grant_permission(&quot;fs.read&quot;,    &quot;/tmp/*&quot;)
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>grant_permission(&quot;net.connect&quot;, &quot;*.example.com&quot;)
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>grant_permission(&quot;wifi.scan&quot;,  null)
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>grant_permission(&quot;ble.scan&quot;,   null)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>grant_permission(&quot;fs.read&quot;,    &quot;/tmp/*&quot;)
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>grant_permission(&quot;net.connect&quot;, &quot;*.example.com&quot;)
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>grant_permission(&quot;wifi.scan&quot;,  null)
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>grant_permission(&quot;ble.scan&quot;,   null)
 </code></pre></div>
 <h3 id="capability-tokens-short-lived-revocable">Capability tokens (short-lived, revocable)</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>store → tok → grant_capability(&quot;wifi.capture&quot;, null)
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>use_capability(tok)
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>store → frames → wifi_capture(&quot;wlan0&quot;)
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>revoke_capability(tok)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>store → tok → grant_capability(&quot;wifi.capture&quot;, null)
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>use_capability(tok)
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>store → frames → wifi_capture(&quot;wlan0&quot;)
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>revoke_capability(tok)
 </code></pre></div>
 <h3 id="function-level-declarations">Function-level declarations</h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>define → probe → (host: string)
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  intent   → &quot;network probe only&quot;
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>  allowed  → [&quot;net.connect&quot;, &quot;wifi.scan&quot;]
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>  forbidden → [&quot;sys.exec&quot;, &quot;fs.write&quot;]
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>  store → result → tcp_connect(f&quot;{host}:80&quot;)
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>  return → is_ok(result)
-<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>end
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>define → probe → (host: string)
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>  intent   → &quot;network probe only&quot;
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>  allowed  → [&quot;net.connect&quot;, &quot;wifi.scan&quot;]
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>  forbidden → [&quot;sys.exec&quot;, &quot;fs.write&quot;]
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>  store → result → tcp_connect(f&quot;{host}:80&quot;)
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>  return → is_ok(result)
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>end
 </code></pre></div>
 <p><code>forbidden</code> is enforced at validation time (before execution).
 <code>allowed</code> and <code>intent</code> are logged to the audit trail.</p>
 <h2 id="wifi-bluetooth-functions">WiFi / Bluetooth Functions</h2>
 <p>All <code>wifi_*</code> and <code>ble_*</code> functions require the corresponding permission grant.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a># WiFi — requires wifi.&lt;action&gt;
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>wifi_scan()                     # passive scan
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>wifi_capture(&quot;wlan0&quot;)           # raw frame capture (monitor mode)
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>wifi_deauth(&quot;wlan0&quot;, &quot;AA:BB:CC:DD:EE:FF&quot;)  # deauth (auth required)
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>wifi_inject(&quot;wlan0&quot;, frame_bytes)           # inject (auth required)
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
-<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a># Bluetooth LE — requires ble.&lt;action&gt;
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>ble_scan()                               # device discovery
-<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>store → h → ble_connect(&quot;AA:BB:CC:DD:EE:FF&quot;)  # GATT connect
-<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a>store → v → ble_read(h, &quot;0x2A37&quot;)             # read characteristic
-<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>ble_write(h, &quot;0x2A06&quot;, 0x01)                  # write characteristic
-<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>ble_fuzz(h, &quot;0x2A06&quot;, 32)                     # fuzz (auth required)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a># WiFi — requires wifi.&lt;action&gt;
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>wifi_scan()                     # passive scan
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>wifi_capture(&quot;wlan0&quot;)           # raw frame capture (monitor mode)
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>wifi_deauth(&quot;wlan0&quot;, &quot;AA:BB:CC:DD:EE:FF&quot;)  # deauth (auth required)
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>wifi_inject(&quot;wlan0&quot;, frame_bytes)           # inject (auth required)
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a># Bluetooth LE — requires ble.&lt;action&gt;
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>ble_scan()                               # device discovery
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>store → h → ble_connect(&quot;AA:BB:CC:DD:EE:FF&quot;)  # GATT connect
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>store → v → ble_read(h, &quot;0x2A37&quot;)             # read characteristic
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>ble_write(h, &quot;0x2A06&quot;, 0x01)                  # write characteristic
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>ble_fuzz(h, &quot;0x2A06&quot;, 32)                     # fuzz (auth required)
 </code></pre></div>
 <h2 id="examples">Examples</h2>
 <p>See the <code>examples/</code> directory for complete example programs.</p>
