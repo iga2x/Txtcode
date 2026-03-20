@@ -30,9 +30,9 @@ Group 7: Performance Baseline          [x] COMPLETE (194 tests passing)
 Group 8: Security Correctness          [x] COMPLETE (202 tests passing)
 Group 9: Module System Overhaul        [x] COMPLETE (209 tests passing)
 Group 10: Type System Promotion        [x] COMPLETE (311 tests passing)
+Group 11: Developer Experience         [x] COMPLETE (322 tests passing)
 ─────────────────────────────────────────────────────────────────────
-Group 11: Developer Experience         [ ] NEXT — start here
-Group 12: Platform & Compilation       [ ] blocked by Groups 9+10
+Group 12: Platform & Compilation       [ ] NEXT — start here
 ```
 
 ---
@@ -695,7 +695,7 @@ The type checker (`src/typecheck/checker.rs`) has basic coverage but misses:
 
 ## Task 11.1 — Pre-Built Binaries and Release Pipeline (CRITICAL)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** CRITICAL — without binaries, `install.sh` requires Rust toolchain; blocks all non-Rust users
 **Estimated size:** Small (CI configuration)
 
@@ -743,7 +743,7 @@ No pre-built binaries exist on GitHub Releases.
 
 ## Task 11.2 — Interactive Debugger CLI
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — infrastructure exists; needs interactive loop and source-line mapping
 **Estimated size:** Medium
 
@@ -798,7 +798,7 @@ is no interactive loop exposed to the user. Breakpoints are by bytecode address 
 
 ## Task 11.3 — Real Doc Generation (`txtcode doc`)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — `txtcode doc` listed in CLI but produces no output
 **Estimated size:** Medium
 
@@ -845,7 +845,7 @@ documentation generation for Txtcode packages or scripts.
 
 ## Task 11.4 — LSP: Go-to-Definition, Hover, Rename
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — LSP server exists; needs symbol resolution
 **Estimated size:** Medium-Large
 
@@ -901,7 +901,7 @@ Without these, the LSP is not useful beyond syntax highlighting and basic comple
 
 ## Task 11.5 — REPL Multiline Input and History
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** LOW — quality of life
 **Estimated size:** Small-Medium
 
@@ -942,16 +942,16 @@ History works per-line but multi-line blocks cannot be re-used from history.
 ## Group 11 Checkpoint
 
 ```
-[ ] Pre-built binaries on GitHub Releases for Linux x86_64, macOS arm64, Windows x64
-[ ] install.sh installs from binary without requiring Rust toolchain
-[ ] txtcode debug <file> enters interactive loop with break/step/print/continue/quit
-[ ] Source line shown at each debugger break
-[ ] txtcode doc generates markdown API docs from ## comments
-[ ] LSP: go-to-definition works for same-file symbols
-[ ] LSP: hover shows function signature
-[ ] REPL: multiline input with continuation prompt
-[ ] REPL: history persists across sessions
-[ ] cargo test passes
+[x] Pre-built binaries on GitHub Releases for Linux x86_64, macOS arm64, Windows x64
+[x] install.sh installs from binary without requiring Rust toolchain
+[x] txtcode debug <file> enters interactive loop with break/step/print/continue/quit
+[x] Source line shown at each debugger break
+[x] txtcode doc generates markdown API docs from ## comments
+[x] LSP: go-to-definition works for same-file symbols
+[x] LSP: hover shows function signature
+[x] REPL: multiline input with continuation prompt
+[x] REPL: history persists across sessions
+[x] cargo test passes (322 tests)
 ```
 
 ---

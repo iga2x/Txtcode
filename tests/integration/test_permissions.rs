@@ -196,6 +196,7 @@ fn test_bytecode_vm_null_coalesce_returns_default_for_null() {
             Instruction::NullCoalesce,
         ],
         constants: vec![Constant::Null, Constant::Integer(42)],
+        debug_info: vec![],
     };
 
     let mut vm = BytecodeVM::new();
@@ -227,6 +228,7 @@ fn test_bytecode_vm_null_coalesce_returns_value_when_not_null() {
             Constant::String("hello".to_string()),
             Constant::String("default".to_string()),
         ],
+        debug_info: vec![],
     };
 
     let mut vm = BytecodeVM::new();
@@ -250,6 +252,7 @@ fn test_bytecode_vm_optional_member_null_safe() {
             Instruction::OptionalGetField("name".to_string()),
         ],
         constants: vec![Constant::Null],
+        debug_info: vec![],
     };
 
     let mut vm = BytecodeVM::new();

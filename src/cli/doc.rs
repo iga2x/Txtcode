@@ -12,10 +12,11 @@ pub fn generate_docs(
 
     let fmt = match format {
         "html" => OutputFormat::Html,
+        "json" => OutputFormat::Json,
         _ => OutputFormat::Markdown,
     };
     let gen = DocGenerator::with_format(fmt);
-    let ext = if format == "html" { "html" } else { "md" };
+    let ext = match format { "html" => "html", "json" => "json", _ => "md" };
 
     let default_out = PathBuf::from("docs/api");
     let out_dir = output.unwrap_or(&default_out);

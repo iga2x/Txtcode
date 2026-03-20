@@ -22,6 +22,20 @@ use std::fs;
 #[cfg(feature = "bytecode")]
 use std::path::PathBuf;
 
+/// Print up to 3 lines of source context centred on `target_line`, with a `→` marker.
+#[cfg(feature = "bytecode")]
+fn print_source_context(source_lines: &[&str], target_line: usize) {
+    let start = target_line.saturating_sub(1);
+    let end = (target_line + 1).min(source_lines.len());
+    for ln in start..=end {
+        if ln == 0 || ln > source_lines.len() {
+            continue;
+        }
+        let marker = if ln == target_line { "→" } else { " " };
+        println!("  {} {:4} │ {}", marker, ln, source_lines[ln - 1]);
+    }
+}
+
 #[cfg(feature = "bytecode")]
 pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     use rustyline::DefaultEditor;
@@ -31,8 +45,9 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
     }
 
     let source = fs::read_to_string(file)?;
+    let source_lines: Vec<&str> = source.lines().collect();
 
-    let mut lexer = Lexer::new(source);
+    let mut lexer = Lexer::new(source.clone());
     let tokens = lexer.tokenize().map_err(|e| format!("Lex error: {}", e))?;
     let mut parser = Parser::new(tokens);
     let program = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
@@ -41,6 +56,7 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
     let bytecode = compiler.compile(&program);
 
     let total = bytecode.instructions.len();
+    let has_debug_info = !bytecode.debug_info.is_empty();
     let mut debugger = Debugger::new();
     debugger.load(bytecode);
 
@@ -49,67 +65,111 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
         file.display(),
         total
     );
+    if !has_debug_info {
+        println!("(no debug symbols — source line mapping unavailable)");
+    }
     println!(
-        "Commands: step/s, continue/c, break/b <n>, inspect/i <var>, stack, vars, quit/q, help"
+        "Commands: step/s, continue/c, break/b <line>, print/p <var>, stack, vars, run, quit/q, help"
     );
-    println!("ip=0 ready");
+    println!("Type 'run' to run to end, or 'break <line>' then 'run' to stop at a line.");
 
     let mut rl = DefaultEditor::new()?;
 
     loop {
-        let readline = rl.readline("(debug) ");
-        let line = match readline {
+        let readline = rl.readline("(txtcode-dbg) ");
+        let input = match readline {
             Ok(l) => l,
             Err(_) => break,
         };
-        let trimmed = line.trim();
+        let trimmed = input.trim();
         if trimmed.is_empty() {
             continue;
         }
         let _ = rl.add_history_entry(trimmed);
         let parts: Vec<&str> = trimmed.splitn(2, ' ').collect();
+
         match parts[0] {
+            // ── step ──────────────────────────────────────────────────────
             "step" | "s" => match debugger.step() {
                 Ok(state) => {
                     if state.done {
                         println!("Program finished.");
                     } else {
-                        println!("ip={} | {}", state.ip, state.instruction);
+                        let src_line = debugger.source_line_for_ip(state.ip);
+                        if let Some(ln) = src_line {
+                            println!("ip={} line={} | {}", state.ip, ln, state.instruction);
+                            print_source_context(&source_lines, ln);
+                        } else {
+                            println!("ip={} | {}", state.ip, state.instruction);
+                        }
                     }
                 }
                 Err(e) => eprintln!("Step error: {}", e),
             },
-            "continue" | "c" => match debugger.continue_execution() {
+
+            // ── continue / run ────────────────────────────────────────────
+            "continue" | "c" | "run" => match debugger.continue_execution() {
                 Ok(_) => println!("Execution complete."),
-                Err(e) => println!("{}", e),
-            },
-            "break" | "b" => {
-                if let Some(addr_str) = parts.get(1) {
-                    if let Ok(addr) = addr_str.trim().parse::<usize>() {
-                        debugger.add_breakpoint(addr);
-                        println!("Breakpoint set at ip={}", addr);
+                Err(e) => {
+                    // A breakpoint hit returns an Err with info
+                    let ip = debugger.current_ip();
+                    let src_line = debugger.source_line_for_ip(ip);
+                    if let Some(ln) = src_line {
+                        println!("Stopped at line {} (ip={}): {}", ln, ip, e);
+                        print_source_context(&source_lines, ln);
                     } else {
-                        eprintln!("Usage: break <instruction_index>");
+                        println!("{}", e);
+                    }
+                }
+            },
+
+            // ── break ─────────────────────────────────────────────────────
+            "break" | "b" => {
+                if let Some(arg) = parts.get(1) {
+                    let arg = arg.trim();
+                    if let Ok(line_num) = arg.parse::<usize>() {
+                        // Try source line first; fall back to raw ip if no debug info
+                        match debugger.add_breakpoint_at_line(line_num) {
+                            Some(ip) => println!("Breakpoint set at line {} (ip={})", line_num, ip),
+                            None => {
+                                // No debug info: treat as instruction index
+                                debugger.add_breakpoint(line_num);
+                                println!("Breakpoint set at ip={} (no line mapping)", line_num);
+                            }
+                        }
+                    } else {
+                        eprintln!("Usage: break <line_number>");
                     }
                 } else {
+                    // List breakpoints
                     let bps = debugger.list_breakpoints();
                     if bps.is_empty() {
                         println!("No breakpoints set.");
                     } else {
-                        println!("Breakpoints: {:?}", bps);
+                        for &ip in bps {
+                            if let Some(ln) = debugger.source_line_for_ip(ip) {
+                                println!("  ip={} (line {})", ip, ln);
+                            } else {
+                                println!("  ip={}", ip);
+                            }
+                        }
                     }
                 }
             }
-            "inspect" | "i" => {
+
+            // ── print / inspect ───────────────────────────────────────────
+            "print" | "p" | "inspect" | "i" => {
                 if let Some(name) = parts.get(1) {
                     match debugger.inspect_variable(name.trim()) {
                         Some(val) => println!("{} = {:?}", name.trim(), val),
-                        None => println!("Variable '{}' not found", name.trim()),
+                        None => println!("Variable '{}' not found in scope.", name.trim()),
                     }
                 } else {
-                    eprintln!("Usage: inspect <variable>");
+                    eprintln!("Usage: print <variable>");
                 }
             }
+
+            // ── stack ─────────────────────────────────────────────────────
             "stack" => {
                 let stack = debugger.get_stack();
                 if stack.is_empty() {
@@ -121,17 +181,23 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
                     }
                 }
             }
+
+            // ── vars ──────────────────────────────────────────────────────
             "vars" => {
                 let vars = debugger.get_all_variables();
                 if vars.is_empty() {
                     println!("No variables defined.");
                 } else {
                     println!("Variables ({}):", vars.len());
-                    for (k, v) in &vars {
+                    let mut sorted: Vec<_> = vars.iter().collect();
+                    sorted.sort_by_key(|(k, _)| k.as_str());
+                    for (k, v) in sorted {
                         println!("  {} = {:?}", k, v);
                     }
                 }
             }
+
+            // ── callstack ─────────────────────────────────────────────────
             "callstack" => {
                 let frames = debugger.get_call_stack();
                 if frames.is_empty() {
@@ -142,19 +208,35 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
                     }
                 }
             }
+
+            // ── where ─────────────────────────────────────────────────────
+            "where" | "w" => {
+                let ip = debugger.current_ip();
+                if let Some(ln) = debugger.source_line_for_ip(ip) {
+                    println!("Paused at line {} (ip={})", ln, ip);
+                    print_source_context(&source_lines, ln);
+                } else {
+                    println!("Paused at ip={} (no source mapping)", ip);
+                }
+            }
+
+            // ── help ──────────────────────────────────────────────────────
             "help" | "?" => {
                 println!("Commands:");
                 println!("  step / s               — execute one instruction");
-                println!("  continue / c           — run until breakpoint or end");
-                println!("  break / b <n>          — set breakpoint at instruction n");
+                println!("  continue / c / run     — run until breakpoint or end");
+                println!("  break / b <line>       — set breakpoint at source line");
                 println!("  break / b              — list breakpoints");
-                println!("  inspect / i <var>      — inspect variable value");
+                println!("  print / p <var>        — print variable value");
+                println!("  vars                   — show all variables in scope");
                 println!("  stack                  — show operand stack");
-                println!("  vars                   — show all variables");
                 println!("  callstack              — show call stack frames");
+                println!("  where / w              — show current source position");
                 println!("  quit / q               — exit debugger");
             }
+
             "quit" | "q" => break,
+
             _ => eprintln!("Unknown command '{}'. Type 'help' for commands.", parts[0]),
         }
     }

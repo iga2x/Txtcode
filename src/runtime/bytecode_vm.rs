@@ -872,8 +872,13 @@ impl BytecodeVM {
                     }
                 }
 
-                // Check if a variable holds a lambda name (string -> registered function)
-                if let Some(Value::String(func_name)) = self.variables.get(name.as_str()).cloned() {
+                // Check if a variable holds a lambda (FunctionRef or String → registered function)
+                let lambda_var = self.variables.get(name.as_str()).cloned().and_then(|v| match v {
+                    Value::FunctionRef(s) => Some(s),
+                    Value::String(s) if self.functions.contains_key(s.as_str()) => Some(s),
+                    _ => None,
+                });
+                if let Some(func_name) = lambda_var {
                     if let Some((params, start_ip)) =
                         self.functions.get(func_name.as_str()).cloned()
                     {

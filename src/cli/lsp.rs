@@ -7,6 +7,9 @@
 //! - `initialize` / `initialized`
 //! - `textDocument/didOpen`, `textDocument/didChange` → `publishDiagnostics`
 //! - `textDocument/completion` → stdlib + keyword completions
+//! - `textDocument/definition` → go-to-definition (same-file symbols)
+//! - `textDocument/hover` → function signature and doc comment
+//! - `textDocument/rename` → rename symbol across file
 //! - `shutdown` / `exit`
 //!
 //! Start with: `txtcode lsp`
@@ -224,6 +227,9 @@ pub fn run() -> Result<(), String> {
                             "completionProvider": {
                                 "triggerCharacters": ["_", "("]
                             },
+                            "definitionProvider": true,
+                            "hoverProvider": true,
+                            "renameProvider": true,
                             "diagnosticProvider": {
                                 "interFileDependencies": false,
                                 "workspaceDiagnostics": false
@@ -303,6 +309,80 @@ pub fn run() -> Result<(), String> {
                     .map_err(|e| format!("LSP write error: {}", e))?;
             }
 
+            "textDocument/definition" => {
+                let uri = msg["params"]["textDocument"]["uri"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+                let line = msg["params"]["position"]["line"].as_u64().unwrap_or(0) as usize;
+                let character = msg["params"]["position"]["character"].as_u64().unwrap_or(0) as usize;
+                let result = if let Some(text) = documents.get(&uri) {
+                    let sym = symbol_at(text, line, character);
+                    sym.and_then(|name| find_definition(text, &name))
+                        .map(|(def_line, def_char)| json!({
+                            "uri": uri,
+                            "range": lsp_range(def_line, def_char, def_line, def_char)
+                        }))
+                        .unwrap_or(Value::Null)
+                } else {
+                    Value::Null
+                };
+                let response = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+                write_message(&mut stdout, &response)
+                    .map_err(|e| format!("LSP write error: {}", e))?;
+            }
+
+            "textDocument/hover" => {
+                let uri = msg["params"]["textDocument"]["uri"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+                let line = msg["params"]["position"]["line"].as_u64().unwrap_or(0) as usize;
+                let character = msg["params"]["position"]["character"].as_u64().unwrap_or(0) as usize;
+                let result = if let Some(text) = documents.get(&uri) {
+                    let sym = symbol_at(text, line, character);
+                    sym.and_then(|name| hover_info(text, &name))
+                        .map(|content| json!({
+                            "contents": { "kind": "markdown", "value": content }
+                        }))
+                        .unwrap_or(Value::Null)
+                } else {
+                    Value::Null
+                };
+                let response = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+                write_message(&mut stdout, &response)
+                    .map_err(|e| format!("LSP write error: {}", e))?;
+            }
+
+            "textDocument/rename" => {
+                let uri = msg["params"]["textDocument"]["uri"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+                let line = msg["params"]["position"]["line"].as_u64().unwrap_or(0) as usize;
+                let character = msg["params"]["position"]["character"].as_u64().unwrap_or(0) as usize;
+                let new_name = msg["params"]["newName"].as_str().unwrap_or("").to_string();
+                let result = if let Some(text) = documents.get(&uri) {
+                    let sym = symbol_at(text, line, character);
+                    sym.map(|name| {
+                        let edits: Vec<Value> = find_all_occurrences(text, &name)
+                            .into_iter()
+                            .map(|(ol, oc, el, ec)| json!({
+                                "range": lsp_range(ol, oc, el, ec),
+                                "newText": new_name
+                            }))
+                            .collect();
+                        json!({ "changes": { &uri: edits } })
+                    })
+                    .unwrap_or(Value::Null)
+                } else {
+                    Value::Null
+                };
+                let response = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+                write_message(&mut stdout, &response)
+                    .map_err(|e| format!("LSP write error: {}", e))?;
+            }
+
             "shutdown" => {
                 let response = json!({
                     "jsonrpc": "2.0",
@@ -356,4 +436,143 @@ fn publish_diagnostics(
         }
     });
     write_message(stdout, &notification).map_err(|e| format!("LSP write error: {}", e))
+}
+
+// ── Symbol table helpers ──────────────────────────────────────────────────────
+
+/// Build an LSP Range object (all values 0-based).
+fn lsp_range(start_line: usize, start_char: usize, end_line: usize, end_char: usize) -> Value {
+    json!({
+        "start": { "line": start_line, "character": start_char },
+        "end":   { "line": end_line,   "character": end_char   }
+    })
+}
+
+/// Return the identifier word at (line, character) in the source text, or None.
+fn symbol_at(text: &str, line: usize, character: usize) -> Option<String> {
+    let src_line = text.lines().nth(line)?;
+    let chars: Vec<char> = src_line.chars().collect();
+    if character >= chars.len() {
+        return None;
+    }
+    // Extend left and right while alphanumeric or '_'
+    let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+    if !is_ident(chars[character]) {
+        return None;
+    }
+    let start = (0..=character).rev().take_while(|&i| is_ident(chars[i])).last().unwrap_or(character);
+    let end = (character..chars.len()).take_while(|&i| is_ident(chars[i])).last().unwrap_or(character);
+    let word: String = chars[start..=end].iter().collect();
+    if word.is_empty() { None } else { Some(word) }
+}
+
+/// Find the definition location of `name` in the source (1st `define → name` or `store → name`).
+/// Returns (0-based line, 0-based char offset of the name start).
+fn find_definition(text: &str, name: &str) -> Option<(usize, usize)> {
+    for (ln, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        // `define → name` or `store → name` or `struct name`
+        let prefix = if trimmed.starts_with("define →") {
+            Some("define →")
+        } else if trimmed.starts_with("define ") {
+            Some("define")
+        } else if trimmed.starts_with("struct ") {
+            Some("struct")
+        } else {
+            None
+        };
+
+        if let Some(pfx) = prefix {
+            let after = trimmed[pfx.len()..].trim().trim_start_matches('→').trim();
+            let def_name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if def_name == name {
+                // Find the character position of `name` in the original line
+                if let Some(pos) = line.find(name) {
+                    return Some((ln, pos));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Return a hover markdown string for a symbol (function signature + doc comment if available).
+fn hover_info(text: &str, name: &str) -> Option<String> {
+    let mut doc_lines: Vec<&str> = Vec::new();
+    let mut found_sig: Option<String> = None;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(stripped) = trimmed.strip_prefix("## ") {
+            doc_lines.push(stripped);
+            continue;
+        }
+        // Detect define line
+        let is_define = trimmed.starts_with("define →") || trimmed.starts_with("define ");
+        if is_define {
+            let after = trimmed
+                .trim_start_matches("define")
+                .trim()
+                .trim_start_matches('→')
+                .trim();
+            let def_name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if def_name == name {
+                // Extract params section: after `→ name → (`
+                let sig = if let Some(paren) = after.find('(') {
+                    let params_end = after.rfind(')').unwrap_or(after.len());
+                    let params = &after[paren..=params_end.min(after.len() - 1)];
+                    format!("fn {}{})", name, &params[..params.len().saturating_sub(1)])
+                } else {
+                    format!("fn {}", name)
+                };
+                found_sig = Some(sig);
+                break;
+            }
+        }
+
+        // Clear doc lines on non-doc, non-define, non-blank lines
+        if !trimmed.is_empty() && !trimmed.starts_with("##") && !is_define {
+            doc_lines.clear();
+        }
+    }
+
+    found_sig.map(|sig| {
+        let mut md = format!("```\n{}\n```", sig);
+        if !doc_lines.is_empty() {
+            md.push_str("\n\n");
+            md.push_str(&doc_lines.join(" "));
+        }
+        md
+    })
+}
+
+/// Find all occurrences of `name` as a whole identifier in the source.
+/// Returns (start_line, start_char, end_line, end_char) tuples (0-based).
+fn find_all_occurrences(text: &str, name: &str) -> Vec<(usize, usize, usize, usize)> {
+    let mut results = Vec::new();
+    for (ln, line) in text.lines().enumerate() {
+        let bytes = line.as_bytes();
+        let name_bytes = name.as_bytes();
+        let mut start = 0;
+        while start + name_bytes.len() <= bytes.len() {
+            if let Some(pos) = line[start..].find(name) {
+                let abs_pos = start + pos;
+                // Check word boundaries
+                let before_ok = abs_pos == 0
+                    || !bytes[abs_pos - 1].is_ascii_alphanumeric()
+                       && bytes[abs_pos - 1] != b'_';
+                let after_pos = abs_pos + name_bytes.len();
+                let after_ok = after_pos >= bytes.len()
+                    || !bytes[after_pos].is_ascii_alphanumeric()
+                       && bytes[after_pos] != b'_';
+                if before_ok && after_ok {
+                    results.push((ln, abs_pos, ln, abs_pos + name.len()));
+                }
+                start = abs_pos + 1;
+            } else {
+                break;
+            }
+        }
+    }
+    results
 }

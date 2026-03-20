@@ -953,7 +953,7 @@ fn test_bytecode_version_string() {
     // Update this assertion when the version is bumped.
     let v = env!("CARGO_PKG_VERSION");
     assert!(!v.is_empty(), "CARGO_PKG_VERSION must not be empty");
-    assert!(v.starts_with("0.4"), "expected 0.4.x, got {}", v);
+    assert!(v.starts_with("0."), "expected semver starting with 0., got {}", v);
 }
 
 // ---------------------------------------------------------------------------

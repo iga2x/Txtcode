@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 pub struct Bytecode {
     pub instructions: Vec<Instruction>,
     pub constants: Vec<Constant>,
+    /// Maps instruction index → source line number (1-based).
+    /// Not every instruction has an entry; use a linear scan to find the nearest.
+    pub debug_info: Vec<(usize, usize)>,
 }
 
 /// Constant pool for bytecode
@@ -243,6 +246,7 @@ pub struct BytecodeCompiler {
     constants: Vec<Constant>,
     constant_map: std::collections::HashMap<Constant, usize>,
     loop_context: Vec<LoopContext>,
+    debug_info: Vec<(usize, usize)>,
 }
 
 impl BytecodeCompiler {
@@ -251,6 +255,7 @@ impl BytecodeCompiler {
             constants: Vec::new(),
             constant_map: std::collections::HashMap::new(),
             loop_context: Vec::new(),
+            debug_info: Vec::new(),
         }
     }
 
@@ -265,10 +270,26 @@ impl BytecodeCompiler {
         Bytecode {
             instructions,
             constants: self.constants.clone(),
+            debug_info: self.debug_info.clone(),
+        }
+    }
+
+    /// Record the source line for the next instruction to be emitted.
+    fn record_line(&mut self, instructions: &[Instruction], line: usize) {
+        if line > 0 {
+            let ip = instructions.len();
+            // Only push if this is a new ip or a different line than the last entry
+            if self.debug_info.last().map_or(true, |&(i, l)| i != ip || l != line) {
+                self.debug_info.push((ip, line));
+            }
         }
     }
 
     fn compile_statement(&mut self, stmt: &Statement, instructions: &mut Vec<Instruction>) {
+        // Record source line before compiling each statement
+        if let Some((line, _)) = stmt.source_location() {
+            self.record_line(instructions, line);
+        }
         match stmt {
             Statement::Assignment { pattern, value, .. } => {
                 self.compile_expression(value, instructions);

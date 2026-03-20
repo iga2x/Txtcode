@@ -20,6 +20,13 @@ pub fn start_repl(
 
     let mut rl = DefaultEditor::new()?;
 
+    // Load persistent history from ~/.txtcode/repl_history
+    let history_path: Option<std::path::PathBuf> = dirs_home()
+        .map(|home| home.join(".txtcode").join("repl_history"));
+    if let Some(ref p) = history_path {
+        let _ = rl.load_history(p); // silently ignore if missing
+    }
+
     if !quiet {
         println!(
             "Txt-code v{}  |  type 'help' for commands, 'exit' to quit",
@@ -165,7 +172,7 @@ pub fn start_repl(
                                     }
                                 }
                             }
-                            "clear" => {
+                            "clear" | "reset" => {
                                 vm = VirtualMachine::with_all_options(
                                     effective_safe_mode,
                                     debug,
@@ -262,7 +269,22 @@ pub fn start_repl(
         }
     }
 
+    // Save persistent history on exit (up to 1000 entries)
+    if let Some(ref p) = history_path {
+        if let Some(parent) = p.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = rl.save_history(p);
+    }
+
     Ok(())
+}
+
+/// Return the user's home directory path, or None.
+fn dirs_home() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from))
 }
 
 fn repl_help(topic: &str) {

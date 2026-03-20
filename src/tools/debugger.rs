@@ -38,6 +38,31 @@ impl Debugger {
         }
     }
 
+    /// Set a breakpoint at a source line number.
+    /// Finds the first instruction whose debug_info entry is at or after the given line.
+    /// Returns the instruction index that was registered, or None if not found.
+    pub fn add_breakpoint_at_line(&mut self, line: usize) -> Option<usize> {
+        let debug_info = self.bytecode.as_ref().map(|b| &b.debug_info)?;
+        // Find the instruction with the smallest ip whose line >= requested line
+        let ip = debug_info
+            .iter()
+            .filter(|&&(_, l)| l >= line)
+            .min_by_key(|&&(ip, _)| ip)
+            .map(|&(ip, _)| ip)?;
+        self.add_breakpoint(ip);
+        Some(ip)
+    }
+
+    /// Return the source line number for a given instruction index (nearest preceding entry).
+    pub fn source_line_for_ip(&self, ip: usize) -> Option<usize> {
+        let debug_info = self.bytecode.as_ref().map(|b| &b.debug_info)?;
+        debug_info
+            .iter()
+            .filter(|&&(i, _)| i <= ip)
+            .max_by_key(|&&(i, _)| i)
+            .map(|&(_, line)| line)
+    }
+
     pub fn remove_breakpoint(&mut self, address: usize) {
         self.breakpoints.retain(|&a| a != address);
     }

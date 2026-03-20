@@ -1,16 +1,44 @@
+use crate::lexer::Lexer;
 use crate::parser::ast::*;
+use crate::parser::Parser;
 use std::fs;
 use std::path::PathBuf;
+
+/// A single documented item (function or struct).
+#[derive(Debug, Clone)]
+pub struct DocItem {
+    pub kind: DocKind,
+    pub name: String,
+    pub params: Vec<(String, Option<String>)>, // (param_name, type_str)
+    pub return_type: Option<String>,
+    pub doc_comment: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DocKind {
+    Function,
+    Struct,
+}
+
+impl DocKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            DocKind::Function => "function",
+            DocKind::Struct => "struct",
+        }
+    }
+}
 
 /// Documentation generator
 pub struct DocGenerator {
     output_format: OutputFormat,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OutputFormat {
     Markdown,
     Html,
+    Json,
 }
 
 impl DocGenerator {
@@ -21,44 +49,29 @@ impl DocGenerator {
     }
 
     pub fn with_format(format: OutputFormat) -> Self {
-        Self {
-            output_format: format,
-        }
+        Self { output_format: format }
     }
 
     pub fn generate_docs(&self, program: &Program) -> String {
-        match self.output_format {
-            OutputFormat::Markdown => self.generate_markdown(program),
-            OutputFormat::Html => self.generate_html(program),
-        }
+        let items = extract_doc_items_from_ast(program, "");
+        self.render_items(&items)
     }
 
-    /// Generate docs from raw source text, extracting `##` doc comments that
-    /// precede `define` statements. Returns Markdown or HTML depending on format.
+    /// Generate docs from raw source text. Returns the selected format.
     pub fn generate_docs_from_source(&self, source: &str) -> String {
-        let doc_map = extract_doc_comments(source);
-        let mut md = String::new();
-        md.push_str("# Txt-code Documentation\n\n");
+        let items = parse_and_extract_items(source);
+        self.render_items(&items)
+    }
 
-        let mut names: Vec<&String> = doc_map.keys().collect();
-        names.sort();
-        for name in names {
-            let comment = &doc_map[name];
-            md.push_str(&format!("## Function: `{}`\n\n", name));
-            if !comment.is_empty() {
-                md.push_str(comment);
-                md.push_str("\n\n");
-            }
-        }
-
+    fn render_items(&self, items: &[DocItem]) -> String {
         match self.output_format {
-            OutputFormat::Html => markdown_to_html(&md),
-            OutputFormat::Markdown => md,
+            OutputFormat::Markdown => render_markdown(items),
+            OutputFormat::Html => markdown_to_html(&render_markdown(items)),
+            OutputFormat::Json => render_json(items),
         }
     }
 
     /// Generate API reference docs for all `.tc` files under a stdlib directory.
-    /// Outputs to `docs/api/` relative to the current directory.
     pub fn generate_stdlib_docs(
         &self,
         stdlib_dir: &PathBuf,
@@ -72,82 +85,293 @@ impl DocGenerator {
                 if path.extension().and_then(|e| e.to_str()) == Some("tc") {
                     let source = fs::read_to_string(&path)?;
                     let doc_content = self.generate_docs_from_source(&source);
-
-                    let stem = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("module");
-                    let out_path = api_dir.join(format!("{}.md", stem));
+                    let ext = match self.output_format {
+                        OutputFormat::Html => "html",
+                        OutputFormat::Json => "json",
+                        _ => "md",
+                    };
+                    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("module");
+                    let out_path = api_dir.join(format!("{}.{}", stem, ext));
                     fs::write(&out_path, doc_content)?;
                     println!("Generated: {}", out_path.display());
                 }
             }
         }
-
         Ok(())
     }
 
-    fn generate_markdown(&self, program: &Program) -> String {
-        let mut docs = String::new();
-        docs.push_str("# Txt-code Documentation\n\n");
-
-        let iter = program.statements.iter().peekable();
-        for statement in iter {
-            if let Statement::FunctionDef {
-                name,
-                params,
-                return_type,
-                intent,
-                ai_hint,
-                ..
-            } = statement
-            {
-                docs.push_str(&format!("## Function: `{}`\n\n", name));
-
-                // doc → "description" (shown as the function description)
-                if let Some(doc_text) = intent {
-                    docs.push_str(&format!("{}\n\n", doc_text));
-                }
-                // hint → "usage hint" (shown as a hint box for humans and tools)
-                if let Some(hint_text) = ai_hint {
-                    docs.push_str(&format!("**Hint:** {}\n\n", hint_text));
-                }
-
-                if !params.is_empty() {
-                    docs.push_str("### Parameters\n\n");
-                    for param in params {
-                        docs.push_str(&format!("- `{}`", param.name));
-                        if let Some(ty) = &param.type_annotation {
-                            docs.push_str(&format!(": {:?}", ty));
-                        }
-                        docs.push('\n');
-                    }
-                    docs.push('\n');
-                }
-
-                if let Some(ty) = return_type {
-                    docs.push_str(&format!("### Returns\n\n`{:?}`\n\n", ty));
-                }
-            }
-        }
-
-        docs
-    }
-
-    fn generate_html(&self, program: &Program) -> String {
-        let markdown = self.generate_markdown(program);
-        markdown_to_html(&markdown)
-    }
-
-    /// Generate HTML directly from source (used by generate_docs_from_source for html format).
     pub fn generate_html_from_source(&self, source: &str) -> String {
-        let markdown = self.generate_docs_from_source(source);
-        markdown_to_html(&markdown)
+        markdown_to_html(&self.generate_docs_from_source(source))
     }
 }
 
-/// Extract `##`-style doc comments that appear immediately before `define` lines.
-/// Returns a map of function_name → doc_comment_text.
+// ── Item extraction ───────────────────────────────────────────────────────────
+
+fn parse_and_extract_items(source: &str) -> Vec<DocItem> {
+    let doc_map = extract_doc_comments(source);
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = match lexer.tokenize() {
+        Ok(t) => t,
+        Err(_) => return extract_items_from_text(source, &doc_map),
+    };
+    let mut parser = Parser::new(tokens);
+    let program = match parser.parse() {
+        Ok(p) => p,
+        Err(_) => return extract_items_from_text(source, &doc_map),
+    };
+    extract_doc_items_from_ast(&program, source)
+}
+
+fn extract_doc_items_from_ast(program: &Program, source: &str) -> Vec<DocItem> {
+    let doc_map = extract_doc_comments(source);
+    let mut items = Vec::new();
+
+    for stmt in &program.statements {
+        match stmt {
+            Statement::FunctionDef { name, params, return_type, intent, .. } => {
+                let doc_from_intent = intent.clone().unwrap_or_default();
+                let doc_from_comments = doc_map.get(name).cloned().unwrap_or_default();
+                let doc_comment = if !doc_from_comments.is_empty() {
+                    doc_from_comments
+                } else {
+                    doc_from_intent
+                };
+
+                let param_list: Vec<(String, Option<String>)> = params
+                    .iter()
+                    .map(|p| {
+                        let ty_str = p.type_annotation.as_ref().map(|t| format!("{:?}", t));
+                        (p.name.clone(), ty_str)
+                    })
+                    .collect();
+
+                let ret_str = return_type.as_ref().map(|t| format!("{:?}", t));
+
+                items.push(DocItem {
+                    kind: DocKind::Function,
+                    name: name.clone(),
+                    params: param_list,
+                    return_type: ret_str,
+                    doc_comment,
+                });
+            }
+            Statement::Struct { name, fields, .. } => {
+                let doc_comment = doc_map.get(name).cloned().unwrap_or_default();
+                let param_list: Vec<(String, Option<String>)> = fields
+                    .iter()
+                    .map(|(fname, ty)| (fname.clone(), Some(format!("{:?}", ty))))
+                    .collect();
+
+                items.push(DocItem {
+                    kind: DocKind::Struct,
+                    name: name.clone(),
+                    params: param_list,
+                    return_type: None,
+                    doc_comment,
+                });
+            }
+            _ => {}
+        }
+    }
+    items
+}
+
+fn extract_items_from_text(
+    source: &str,
+    doc_map: &std::collections::HashMap<String, String>,
+) -> Vec<DocItem> {
+    let mut items = Vec::new();
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("define →") || trimmed.starts_with("define ") {
+            let after = trimmed
+                .trim_start_matches("define")
+                .trim()
+                .trim_start_matches('→')
+                .trim();
+            let name: String = after
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                items.push(DocItem {
+                    kind: DocKind::Function,
+                    name: name.clone(),
+                    params: vec![],
+                    return_type: None,
+                    doc_comment: doc_map.get(&name).cloned().unwrap_or_default(),
+                });
+            }
+        }
+    }
+    items
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+
+fn render_markdown(items: &[DocItem]) -> String {
+    let mut md = String::new();
+    md.push_str("# Txt-code Documentation\n\n");
+
+    for item in items {
+        let param_sig = item
+            .params
+            .iter()
+            .map(|(n, t)| match t {
+                Some(ty) => format!("{}: {}", n, ty),
+                None => n.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let kind_prefix = match item.kind {
+            DocKind::Function => "",
+            DocKind::Struct => "struct ",
+        };
+        md.push_str(&format!("## {}{}({})\n\n", kind_prefix, item.name, param_sig));
+
+        if !item.doc_comment.is_empty() {
+            md.push_str(&item.doc_comment);
+            md.push_str("\n\n");
+        }
+
+        if !item.params.is_empty() {
+            let p: Vec<String> = item
+                .params
+                .iter()
+                .map(|(n, t)| match t {
+                    Some(ty) => format!("{}: {}", n, ty),
+                    None => n.clone(),
+                })
+                .collect();
+            md.push_str(&format!("**Parameters:** {}\n\n", p.join(", ")));
+        }
+
+        if let Some(ret) = &item.return_type {
+            md.push_str(&format!("**Returns:** {}\n\n", ret));
+        }
+
+        md.push_str("---\n\n");
+    }
+
+    md
+}
+
+fn render_json(items: &[DocItem]) -> String {
+    let mut json = String::from("[\n");
+    for (i, item) in items.iter().enumerate() {
+        json.push_str("  {\n");
+        json.push_str(&format!("    \"kind\": \"{}\",\n", item.kind.as_str()));
+        json.push_str(&format!("    \"name\": \"{}\",\n", json_escape(&item.name)));
+        json.push_str("    \"params\": [");
+        let params_json: Vec<String> = item
+            .params
+            .iter()
+            .map(|(n, t)| match t {
+                Some(ty) => format!(
+                    "{{\"name\":\"{}\",\"type\":\"{}\"}}",
+                    json_escape(n),
+                    json_escape(ty)
+                ),
+                None => format!("{{\"name\":\"{}\",\"type\":null}}", json_escape(n)),
+            })
+            .collect();
+        json.push_str(&params_json.join(","));
+        json.push_str("],\n");
+        match &item.return_type {
+            Some(r) => json.push_str(&format!("    \"return_type\": \"{}\",\n", json_escape(r))),
+            None => json.push_str("    \"return_type\": null,\n"),
+        }
+        json.push_str(&format!(
+            "    \"doc\": \"{}\"\n",
+            json_escape(&item.doc_comment)
+        ));
+        json.push_str("  }");
+        if i < items.len() - 1 { json.push(','); }
+        json.push('\n');
+    }
+    json.push_str("]\n");
+    json
+}
+
+fn json_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+// ── Package index ─────────────────────────────────────────────────────────────
+
+/// Generate `docs/api/index.md` listing all packages with their exported symbols.
+pub fn generate_package_index(
+    packages_dir: &PathBuf,
+    out_dir: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(out_dir)?;
+
+    let mut index = String::from("# Txt-code Package Index\n\n");
+
+    if !packages_dir.is_dir() {
+        index.push_str("No packages directory found.\n");
+        fs::write(out_dir.join("index.md"), &index)?;
+        return Ok(());
+    }
+
+    let mut packages: Vec<_> = fs::read_dir(packages_dir)?
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .collect();
+    packages.sort_by_key(|e| e.file_name());
+
+    for pkg_entry in &packages {
+        let pkg_path = pkg_entry.path();
+        let pkg_name = pkg_entry.file_name().to_string_lossy().into_owned();
+        index.push_str(&format!("## {}\n\n", pkg_name));
+
+        let main_tc = pkg_path.join("main.tc");
+        let index_tc = pkg_path.join("index.tc");
+        let src_file = if main_tc.exists() {
+            Some(main_tc)
+        } else if index_tc.exists() {
+            Some(index_tc)
+        } else {
+            None
+        };
+
+        if let Some(src) = src_file {
+            if let Ok(source) = fs::read_to_string(&src) {
+                let items = parse_and_extract_items(&source);
+                if items.is_empty() {
+                    index.push_str("_No documented exports._\n\n");
+                } else {
+                    for item in &items {
+                        let kind = match item.kind { DocKind::Function => "fn", DocKind::Struct => "struct" };
+                        index.push_str(&format!("- `{}` {} ", kind, item.name));
+                        if let Some(summary) = item.doc_comment.lines().next() {
+                            if !summary.is_empty() {
+                                index.push_str(&format!("— {}", summary));
+                            }
+                        }
+                        index.push('\n');
+                    }
+                    index.push('\n');
+                }
+            }
+        } else {
+            index.push_str("_No source file found._\n\n");
+        }
+    }
+
+    let out_path = out_dir.join("index.md");
+    fs::write(&out_path, &index)?;
+    println!("Package index written to {}", out_path.display());
+    Ok(())
+}
+
+// ── Doc comment extraction ────────────────────────────────────────────────────
+
 fn extract_doc_comments(source: &str) -> std::collections::HashMap<String, String> {
     let mut map = std::collections::HashMap::new();
     let lines: Vec<&str> = source.lines().collect();
@@ -158,73 +382,62 @@ fn extract_doc_comments(source: &str) -> std::collections::HashMap<String, Strin
         let trimmed = line.trim();
 
         if trimmed == "##" {
-            // Toggle multi-line doc comment block
             in_block = !in_block;
             continue;
         }
-
         if in_block {
             pending_doc.push(trimmed);
             continue;
         }
-
         if let Some(stripped) = trimmed.strip_prefix("## ") {
-            // Single-line doc comment (not a block toggle)
             pending_doc.push(stripped);
             continue;
         }
 
-        // Check for `define →` or `define ` lines to attach doc comment
-        if trimmed.starts_with("define →") || trimmed.starts_with("define ") {
-            let after = trimmed
-                .trim_start_matches("define")
-                .trim_start_matches(" →")
-                .trim_start_matches(" ")
-                .trim_start_matches("→")
-                .trim();
-            // Extract function name (first token before space or `(`)
-            let func_name: String = after
+        let is_define = trimmed.starts_with("define →") || trimmed.starts_with("define ");
+        let is_struct = trimmed.starts_with("struct ");
+
+        if is_define || is_struct {
+            let after = if is_define {
+                trimmed.trim_start_matches("define").trim().trim_start_matches('→').trim()
+            } else {
+                trimmed.trim_start_matches("struct").trim()
+            };
+            let name: String = after
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')
                 .collect();
-
-            if !func_name.is_empty() && !pending_doc.is_empty() {
-                map.insert(func_name, pending_doc.join("\n"));
+            if !name.is_empty() && !pending_doc.is_empty() {
+                map.insert(name, pending_doc.join("\n"));
             }
             pending_doc.clear();
             in_block = false;
             continue;
         }
 
-        // Blank lines clear the pending doc comment (doc comments must immediately
-        // precede the `define` they document, with no intervening blank line).
         if trimmed.is_empty() {
-            if !in_block {
-                pending_doc.clear();
-            }
+            if !in_block { pending_doc.clear(); }
         } else {
-            // Any other non-doc, non-define line resets state
             pending_doc.clear();
             in_block = false;
         }
     }
-
     map
 }
 
-/// Convert a simple subset of Markdown to HTML.
-/// Handles: # headings, ## headings, ### headings, - bullet lists,
-/// ``` code blocks, blank paragraphs, and inline `code`.
+// ── HTML renderer ─────────────────────────────────────────────────────────────
+
 fn markdown_to_html(markdown: &str) -> String {
-    let mut html = String::new();
-    html.push_str("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n");
-    html.push_str("<style>\nbody{font-family:sans-serif;max-width:860px;margin:2rem auto;padding:0 1rem;line-height:1.6;}\n");
-    html.push_str("h1{border-bottom:2px solid #333;padding-bottom:.3em;}\n");
-    html.push_str("h2{border-bottom:1px solid #ccc;padding-bottom:.2em;margin-top:2em;}\n");
-    html.push_str("code{background:#f4f4f4;padding:.1em .4em;border-radius:3px;font-size:.9em;}\n");
-    html.push_str("pre{background:#f4f4f4;padding:1em;border-radius:4px;overflow-x:auto;}\n");
-    html.push_str("pre code{background:none;padding:0;}\n");
-    html.push_str("</style>\n</head>\n<body>\n");
+    let mut html = String::from(
+        "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n\
+         <style>\nbody{font-family:sans-serif;max-width:860px;margin:2rem auto;padding:0 1rem;line-height:1.6;}\n\
+         h1{border-bottom:2px solid #333;padding-bottom:.3em;}\n\
+         h2{border-bottom:1px solid #ccc;padding-bottom:.2em;margin-top:2em;}\n\
+         code{background:#f4f4f4;padding:.1em .4em;border-radius:3px;font-size:.9em;}\n\
+         pre{background:#f4f4f4;padding:1em;border-radius:4px;overflow-x:auto;}\n\
+         pre code{background:none;padding:0;}\n\
+         </style>\n</head>\n<body>\n",
+    );
 
     let mut in_list = false;
     let mut in_code_block = false;
@@ -242,110 +455,63 @@ fn markdown_to_html(markdown: &str) -> String {
 
     for line in markdown.lines() {
         if line.trim_start().starts_with("```") {
-            if in_list {
-                html.push_str("</ul>\n");
-                in_list = false;
-            }
+            if in_list { html.push_str("</ul>\n"); in_list = false; }
             flush_para(&mut para_lines, &mut html);
-            if in_code_block {
-                html.push_str("</code></pre>\n");
-                in_code_block = false;
-            } else {
-                html.push_str("<pre><code>");
-                in_code_block = true;
-            }
+            if in_code_block { html.push_str("</code></pre>\n"); in_code_block = false; }
+            else { html.push_str("<pre><code>"); in_code_block = true; }
             continue;
         }
+        if in_code_block { html.push_str(&html_escape_text(line)); html.push('\n'); continue; }
 
-        if in_code_block {
-            html.push_str(&html_escape_text(line));
-            html.push('\n');
-            continue;
-        }
-
-        if let Some(stripped) = line.strip_prefix("### ") {
-            if in_list {
-                html.push_str("</ul>\n");
-                in_list = false;
-            }
+        if let Some(s) = line.strip_prefix("### ") {
+            if in_list { html.push_str("</ul>\n"); in_list = false; }
             flush_para(&mut para_lines, &mut html);
-            html.push_str(&format!("<h3>{}</h3>\n", inline_md(stripped)));
-        } else if let Some(stripped) = line.strip_prefix("## ") {
-            if in_list {
-                html.push_str("</ul>\n");
-                in_list = false;
-            }
+            html.push_str(&format!("<h3>{}</h3>\n", inline_md(s)));
+        } else if let Some(s) = line.strip_prefix("## ") {
+            if in_list { html.push_str("</ul>\n"); in_list = false; }
             flush_para(&mut para_lines, &mut html);
-            html.push_str(&format!("<h2>{}</h2>\n", inline_md(stripped)));
-        } else if let Some(stripped) = line.strip_prefix("# ") {
-            if in_list {
-                html.push_str("</ul>\n");
-                in_list = false;
-            }
+            html.push_str(&format!("<h2>{}</h2>\n", inline_md(s)));
+        } else if let Some(s) = line.strip_prefix("# ") {
+            if in_list { html.push_str("</ul>\n"); in_list = false; }
             flush_para(&mut para_lines, &mut html);
-            html.push_str(&format!("<h1>{}</h1>\n", inline_md(stripped)));
+            html.push_str(&format!("<h1>{}</h1>\n", inline_md(s)));
         } else if line.starts_with("- ") || line.starts_with("* ") {
             flush_para(&mut para_lines, &mut html);
-            if !in_list {
-                html.push_str("<ul>\n");
-                in_list = true;
-            }
+            if !in_list { html.push_str("<ul>\n"); in_list = true; }
             html.push_str(&format!("<li>{}</li>\n", inline_md(&line[2..])));
         } else if line.trim().is_empty() {
-            if in_list {
-                html.push_str("</ul>\n");
-                in_list = false;
-            }
+            if in_list { html.push_str("</ul>\n"); in_list = false; }
             flush_para(&mut para_lines, &mut html);
         } else {
-            if in_list {
-                html.push_str("</ul>\n");
-                in_list = false;
-            }
+            if in_list { html.push_str("</ul>\n"); in_list = false; }
             para_lines.push(line);
         }
     }
 
-    if in_list {
-        html.push_str("</ul>\n");
-    }
-    if in_code_block {
-        html.push_str("</code></pre>\n");
-    }
+    if in_list { html.push_str("</ul>\n"); }
+    if in_code_block { html.push_str("</code></pre>\n"); }
     flush_para(&mut para_lines, &mut html);
-
     html.push_str("</body>\n</html>\n");
     html
 }
 
 fn html_escape_text(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
-/// Process inline markdown: `code`, **bold** → proper HTML.
 fn inline_md(s: &str) -> String {
     let escaped = html_escape_text(s);
-    // Backtick code spans
     let mut out = String::new();
     let mut in_code = false;
-    let chars = escaped.chars().peekable();
-    for c in chars {
+    for c in escaped.chars() {
         if c == '`' {
-            if in_code {
-                out.push_str("</code>");
-            } else {
-                out.push_str("<code>");
-            }
+            if in_code { out.push_str("</code>"); } else { out.push_str("<code>"); }
             in_code = !in_code;
         } else {
             out.push(c);
         }
     }
-    if in_code {
-        out.push_str("</code>");
-    }
+    if in_code { out.push_str("</code>"); }
     out
 }
 
