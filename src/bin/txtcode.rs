@@ -98,10 +98,14 @@ pub enum Commands {
         /// Allow loading a specific FFI shared library path (e.g. --allow-ffi=/usr/lib/libfoo.so).
         #[arg(long, value_name = "PATH")]
         allow_ffi: Vec<String>,
-        /// Run the static type checker before execution (advisory — warnings only by default).
+        /// Skip the static type checker entirely (type checking is on by default).
         #[arg(long)]
+        no_type_check: bool,
+        /// Run the static type checker before execution (now a no-op — type checking is always on;
+        /// kept for backward compatibility).
+        #[arg(long, hide = true)]
         type_check: bool,
-        /// Treat type-check errors as hard errors (requires --type-check).
+        /// Treat type-check violations as hard errors (aborts execution on any type warning).
         #[arg(long)]
         strict_types: bool,
         /// Print all permissions the script would request and exit without running.
@@ -506,7 +510,8 @@ pub fn main() {
                     allow_fs,
                     allow_net,
                     allow_ffi,
-                    type_check,
+                    no_type_check,
+                    type_check: _,
                     strict_types,
                     permissions_report,
                     require_sig,
@@ -577,9 +582,9 @@ pub fn main() {
                         }
                     }
 
-                    // Optional static type check before execution.
-                    // Only runs on .tc source files (bytecode files skip this step).
-                    if *type_check && file.extension().and_then(|e| e.to_str()) == Some("tc") {
+                    // Static type check — runs by default on .tc source files.
+                    // Suppressed with --no-type-check.  Aborts on violations with --strict-types.
+                    if !*no_type_check && file.extension().and_then(|e| e.to_str()) == Some("tc") {
                         match std::fs::read_to_string(file) {
                             Ok(source) => {
                                 let mut lexer = Lexer::new(source);
@@ -592,9 +597,9 @@ pub fn main() {
                                                 if let Err(type_errors) = checker.check(&program) {
                                                     for err in &type_errors {
                                                         if *strict_types {
-                                                            eprintln!("type error: {}", err);
+                                                            eprintln!("[ERROR] type: {}", err);
                                                         } else {
-                                                            eprintln!("type warning: {}", err);
+                                                            eprintln!("[WARNING] type: {}", err);
                                                         }
                                                     }
                                                     if *strict_types && !type_errors.is_empty() {

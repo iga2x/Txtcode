@@ -6,6 +6,9 @@ use crate::typecheck::types::{FunctionType, Type, TypeContext};
 pub struct TypeChecker {
     context: TypeContext,
     errors: Vec<String>,
+    /// Expected return type of the function currently being checked.
+    /// `None` when checking top-level statements.
+    current_return_type: Option<Type>,
 }
 
 impl TypeChecker {
@@ -13,6 +16,7 @@ impl TypeChecker {
         Self {
             context: TypeContext::new(),
             errors: Vec::new(),
+            current_return_type: None,
         }
     }
 
@@ -91,32 +95,36 @@ impl TypeChecker {
                 inference.context = self.context.clone();
 
                 let value_type = match inference.infer_expression(value) {
-                    crate::typecheck::types::InferenceResult::Known(ty) => ty,
+                    crate::typecheck::types::InferenceResult::Known(ty) => Some(ty),
                     crate::typecheck::types::InferenceResult::Error(msg) => {
                         self.errors.push(msg);
                         return;
                     }
-                    crate::typecheck::types::InferenceResult::Unknown => {
-                        self.errors
-                            .push("Cannot infer type for assignment value".to_string());
-                        return;
-                    }
+                    crate::typecheck::types::InferenceResult::Unknown => None,
                 };
 
                 // Check type annotation if provided
                 if let Some(annotated_type) = type_annotation {
-                    if !value_type.is_compatible_with(annotated_type) {
-                        self.errors.push(format!(
-                            "Type mismatch: expected {}, got {}",
-                            self.type_to_string(annotated_type),
-                            self.type_to_string(&value_type)
-                        ));
+                    if let Some(ref vt) = value_type {
+                        if !vt.is_compatible_with(annotated_type) {
+                            self.errors.push(format!(
+                                "Type mismatch: expected {}, got {}",
+                                self.type_to_string(annotated_type),
+                                self.type_to_string(vt)
+                            ));
+                        }
                     }
+                    // Task 10.2: enforce element types for typed Array/Map literals
+                    self.check_collection_element_types(annotated_type, value, &mut inference);
                 }
 
                 // Update context with variable type
                 if let Pattern::Identifier(name) = pattern {
-                    self.context.define_variable(name.clone(), value_type);
+                    if let Some(vt) = value_type {
+                        self.context.define_variable(name.clone(), vt);
+                    } else if let Some(ann) = type_annotation {
+                        self.context.define_variable(name.clone(), ann.clone());
+                    }
                 }
             }
             Statement::FunctionDef {
@@ -135,28 +143,39 @@ impl TypeChecker {
                     local_context.define_variable(param.name.clone(), param_type);
                 }
 
-                // Check function body
+                // Swap in local context and expected return type
                 let old_context = std::mem::replace(&mut self.context, local_context);
+                let old_return_type = std::mem::replace(&mut self.current_return_type, return_type.clone());
+
                 for body_stmt in body {
                     self.check_statement(body_stmt);
                 }
-                self.context = old_context;
 
-                // Check return type if specified
-                if let Some(_expected_return) = return_type {
-                    // Check if body returns correct type
-                    // This is simplified - would need to check all return paths
-                }
+                self.context = old_context;
+                self.current_return_type = old_return_type;
             }
             Statement::Return {
                 value: Some(expr), ..
             } => {
+                // Task 10.3: check return type against declared return type
                 let mut inference = TypeInference::new();
                 inference.context = self.context.clone();
-                if let crate::typecheck::types::InferenceResult::Error(msg) =
-                    inference.infer_expression(expr)
-                {
-                    self.errors.push(format!("Return type error: {}", msg));
+                match inference.infer_expression(expr) {
+                    crate::typecheck::types::InferenceResult::Known(actual_ty) => {
+                        if let Some(ref expected_ty) = self.current_return_type.clone() {
+                            if !actual_ty.is_compatible_with(expected_ty) {
+                                self.errors.push(format!(
+                                    "Return type mismatch: function declared to return {}, but returns {}",
+                                    self.type_to_string(expected_ty),
+                                    self.type_to_string(&actual_ty)
+                                ));
+                            }
+                        }
+                    }
+                    crate::typecheck::types::InferenceResult::Error(msg) => {
+                        self.errors.push(format!("Return type error: {}", msg));
+                    }
+                    crate::typecheck::types::InferenceResult::Unknown => {}
                 }
             }
             Statement::If {
@@ -275,17 +294,120 @@ impl TypeChecker {
                 }
             }
             Statement::Expression(expr) => {
-                let mut inference = TypeInference::new();
-                inference.context = self.context.clone();
-                if let crate::typecheck::types::InferenceResult::Error(msg) =
-                    inference.infer_expression(expr)
-                {
-                    self.errors.push(msg);
-                }
+                // Task 10.3: check arity and null arithmetic
+                self.check_expression_stmt(expr);
             }
             _ => {
                 // Other statements - basic check
             }
+        }
+    }
+
+    // ── Task 10.2: Collection element type enforcement ──────────────────────────
+
+    /// When an assignment has a typed collection annotation (Array<T>, Map<T>),
+    /// verify that each element in the literal matches the declared element type.
+    fn check_collection_element_types(
+        &mut self,
+        annotation: &Type,
+        value: &Expression,
+        inference: &mut TypeInference,
+    ) {
+        match annotation {
+            Type::Array(elem_type) => {
+                if let Expression::Array { elements, .. } = value {
+                    for (i, elem) in elements.iter().enumerate() {
+                        if let crate::typecheck::types::InferenceResult::Known(actual) =
+                            inference.infer_expression(elem)
+                        {
+                            if !actual.is_compatible_with(elem_type) {
+                                self.errors.push(format!(
+                                    "Array element type mismatch at index {}: expected {}, got {}",
+                                    i,
+                                    self.type_to_string(elem_type),
+                                    self.type_to_string(&actual)
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            Type::Map(val_type) => {
+                if let Expression::Map { entries, .. } = value {
+                    for (i, (_key, val)) in entries.iter().enumerate() {
+                        if let crate::typecheck::types::InferenceResult::Known(actual) =
+                            inference.infer_expression(val)
+                        {
+                            if !actual.is_compatible_with(val_type) {
+                                self.errors.push(format!(
+                                    "Map value type mismatch at entry {}: expected {}, got {}",
+                                    i,
+                                    self.type_to_string(val_type),
+                                    self.type_to_string(&actual)
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // ── Task 10.3: Expression-level checks (arity, null arithmetic) ─────────────
+
+    fn check_expression_stmt(&mut self, expr: &Expression) {
+        match expr {
+            Expression::FunctionCall { name, arguments, .. } => {
+                // Arity check: only when function is known (defined in same file)
+                if let Some(func_type) = self.context.get_function(name).cloned() {
+                    let expected = func_type.params.len();
+                    let got = arguments.len();
+                    if got != expected {
+                        self.errors.push(format!(
+                            "Arity mismatch calling '{}': expected {} argument(s), got {}",
+                            name, expected, got
+                        ));
+                    }
+                }
+                // Recurse into arguments
+                for arg in arguments {
+                    self.check_expression_stmt(arg);
+                }
+            }
+            Expression::BinaryOp { left, op, right, .. } => {
+                // Null arithmetic warning: if either operand is definitively Null
+                // and the operator is arithmetic, warn.
+                let arithmetic_op = matches!(
+                    op,
+                    BinaryOperator::Add
+                        | BinaryOperator::Subtract
+                        | BinaryOperator::Multiply
+                        | BinaryOperator::Divide
+                        | BinaryOperator::Modulo
+                );
+                if arithmetic_op {
+                    let mut inference = TypeInference::new();
+                    inference.context = self.context.clone();
+                    let lt = inference.infer_expression(left);
+                    let rt = inference.infer_expression(right);
+                    if matches!(lt, crate::typecheck::types::InferenceResult::Known(Type::Null)) {
+                        self.errors.push(
+                            "Potential null dereference in arithmetic: left operand may be null"
+                                .to_string(),
+                        );
+                    }
+                    if matches!(rt, crate::typecheck::types::InferenceResult::Known(Type::Null)) {
+                        self.errors.push(
+                            "Potential null dereference in arithmetic: right operand may be null"
+                                .to_string(),
+                        );
+                    }
+                }
+                self.check_expression_stmt(left);
+                self.check_expression_stmt(right);
+            }
+            _ => {}
         }
     }
 

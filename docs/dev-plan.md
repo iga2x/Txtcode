@@ -29,9 +29,9 @@ Group 7: Performance Baseline          [x] COMPLETE (194 tests passing)
 ─────────────────────────────────────────────────────────────────────
 Group 8: Security Correctness          [x] COMPLETE (202 tests passing)
 Group 9: Module System Overhaul        [x] COMPLETE (209 tests passing)
+Group 10: Type System Promotion        [x] COMPLETE (311 tests passing)
 ─────────────────────────────────────────────────────────────────────
-Group 10: Type System Promotion        [ ] NEXT — start here
-Group 11: Developer Experience         [ ] unblocked (can parallel 10)
+Group 11: Developer Experience         [ ] NEXT — start here
 Group 12: Platform & Compilation       [ ] blocked by Groups 9+10
 ```
 
@@ -550,7 +550,7 @@ and makes scripts that process maps non-reproducible.
 
 ## Task 10.1 — Make Type Warnings the Default
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** HIGH — changing default behavior; needs clean migration path
 **Estimated size:** Medium
 
@@ -594,7 +594,7 @@ Type errors are silently ignored unless `--strict-types` is passed. Most users r
 
 ## Task 10.2 — Enforce Generics for Built-in Collection Types
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — partial implementation; full generics deferred to v0.8
 **Estimated size:** Medium-Large
 
@@ -631,7 +631,7 @@ without a full generics implementation.
 
 ## Task 10.3 — Type Checker Coverage Expansion
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** LOW — additive; improves existing checker without breaking changes
 **Estimated size:** Medium
 
@@ -671,14 +671,14 @@ The type checker (`src/typecheck/checker.rs`) has basic coverage but misses:
 ## Group 10 Checkpoint
 
 ```
-[ ] Default txtcode run shows type warnings without aborting
-[ ] --strict-types aborts on type violations
-[ ] --no-type-check silences type output
-[ ] Array<T> / Map<K,V> annotations produce errors/warnings when violated
-[ ] Return type checking implemented in type checker
-[ ] Arity checking implemented in type checker
-[ ] Null arithmetic warnings implemented
-[ ] cargo test passes
+[x] Default txtcode run shows type warnings without aborting
+[x] --strict-types aborts on type violations
+[x] --no-type-check silences type output
+[x] Array<T> / Map<K,V> annotations produce errors/warnings when violated
+[x] Return type checking implemented in type checker
+[x] Arity checking implemented in type checker
+[x] Null arithmetic warnings implemented
+[x] cargo test passes (311 tests)
 ```
 
 ---

@@ -229,7 +229,9 @@ impl TypeInference {
                             // For now, assume they return Future<String>
                             InferenceResult::Known(Type::Future(Box::new(Type::String)))
                         }
-                        _ => InferenceResult::Error(format!("Unknown function: {}", name)),
+                        // All other unrecognised names (stdlib, external) are Unknown,
+                        // NOT Error — we cannot type-check what we don't know about.
+                        _ => InferenceResult::Unknown,
                     }
                 }
             }
