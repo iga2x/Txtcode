@@ -149,6 +149,41 @@ match → coords
 end
 ```
 
+### Or-Patterns
+
+Match a value against multiple alternatives in a single `case` arm using `|`:
+
+```txtcode
+match → status_code
+  case → 200 | 201 | 204
+    print → "success"
+  case → 400 | 401 | 403
+    print → "client error"
+  case → _
+    print → "other"
+end
+```
+
+### Range Patterns (Inclusive)
+
+Match a value against an inclusive integer range using `..=`:
+
+```txtcode
+match → score
+  case → 90..=100
+    print → "A"
+  case → 80..=89
+    print → "B"
+  case → 70..=79
+    print → "C"
+  case → _
+    print → "F"
+end
+```
+
+Or-patterns and range patterns can appear together in the same match expression.
+Both work in the AST VM and the bytecode VM.
+
 ## Operators
 
 ### Arithmetic
@@ -242,6 +277,32 @@ if is_ok(r)
 end
 ```
 
+### `?` Error Propagation Operator
+
+Postfix `?` provides concise early-return on error inside a function. It is the
+shorthand replacement for manually checking `is_err(r)` and returning the error:
+
+```txtcode
+define → load_config → (path)
+  store → raw → read_file(path)?   ;; returns Err immediately if read fails
+  store → cfg → json_parse(raw)?   ;; returns Err immediately if parse fails
+  return → cfg
+end
+
+store → result → load_config("config.json")
+if is_ok(result)
+  print → unwrap(result)
+else
+  print → f"Failed: {unwrap_err(result)}"
+end
+```
+
+Semantics:
+- `expr?` where `expr` is `Ok(v)` — evaluates to `v` (unwrapped).
+- `expr?` where `expr` is `Err(e)` — immediately returns `Err(e)` from the enclosing function.
+- `expr?` where `expr` is not a `Result` — passes the value through unchanged.
+- Works in both AST VM and bytecode VM.
+
 ## Modules
 ```txtcode
 import → "utils"
@@ -250,7 +311,7 @@ import → sqrt, pow from math
 import → math as m
 ```
 
-## Structs and Type Aliases
+## Structs, Type Aliases, and impl Blocks
 
 ```txtcode
 # Struct definition — parens form (canonical)
@@ -270,6 +331,35 @@ type → Hostname → string
 error → NotFound → "Resource not found"
 error → Unauthorized → "Access denied"
 ```
+
+### impl Blocks (Struct Methods)
+
+Attach methods to a struct type using an `impl` block. Methods are called as
+`obj.method(args)`. The receiver (`self`) is auto-prepended by the runtime.
+
+```txtcode
+struct Point(x: int, y: int)
+
+impl → Point
+  define → sum → (self)
+    return → self.x + self.y
+  end
+
+  define → scale → (self, factor)
+    return → Point { x: self.x * factor, y: self.y * factor }
+  end
+end
+
+store → p → Point { x: 3, y: 4 }
+print → p.sum()          ;; 7
+store → p2 → p.scale(2)  ;; Point { x: 6, y: 8 }
+```
+
+Rules:
+- `impl` takes the struct name after the arrow: `impl → StructName`.
+- Each method is a normal `define` block; the first parameter (`self` by convention) receives the struct instance.
+- Methods can call other methods via `self.other_method(args)`.
+- Works in both the AST VM and the bytecode VM.
 
 ## Permissions and Capabilities
 

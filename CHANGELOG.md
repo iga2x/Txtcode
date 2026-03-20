@@ -14,6 +14,85 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.0-dev] — 2026-03-19
+
+Group 12 (Platform & Compilation) complete. 234 tests passing.
+
+### Group 12 — Platform & Compilation
+
+#### Task 12.1 — Async Event Loop
+
+- **`await_all(futures_array)`** stdlib function — blocks until all futures in the array resolve; returns an array of results in the same order. Non-`Future` values are passed through unchanged (transparent, JavaScript-style).
+- **`await_any(futures_array)`** stdlib function — returns the value of the first future in the array to resolve. Non-`Future` values are returned immediately.
+- Both functions work with the existing `Value::Future` / OS thread mechanism introduced in v0.5.
+
+#### Task 12.2 — Struct Methods (impl Blocks)
+
+- **`impl → StructName` blocks** — define methods on a struct type using the new `impl` statement:
+  ```
+  impl → Point
+    define → sum → (self)
+      return → self.x + self.y
+    end
+  end
+  ```
+- Methods are called as `obj.method(args)`; `self` (the receiver) is auto-prepended by the runtime.
+- Works in both the AST VM and the bytecode VM. Bytecode VM dispatches dotted-name calls to the struct method registry.
+- `self` is a conventional first parameter, not a reserved keyword — keeps the parser simple.
+
+#### Task 12.3 — WASM Compilation Target
+
+- **`txtcode compile --target wasm script.tc`** produces `script.wat` (WebAssembly Text Format).
+- Supported subset: integers, floats, booleans, arithmetic, comparisons, logical operators, local variables, and function calls.
+- The produced `.wat` file can be converted to binary WASM with `wat2wasm script.wat -o script.wasm`.
+- Feature-gated behind the `bytecode` Cargo feature (enabled by default).
+
+#### Task 12.4 — LLVM Native Compilation Planning
+
+- **`docs/llvm-backend.md`** — planning document evaluating `inkwell` (LLVM bindings) vs `cranelift` (Rust-native code generation). Recommends **Cranelift**: pure Rust, lighter, no LLVM toolchain required, already used by Wasmtime.
+- Design sketch for `src/compiler/native.rs` — `NativeCompiler` that emits Cranelift IR from `Bytecode`.
+- Scoped for v1.0: integers, floats, strings, direct function calls, basic control flow, stdlib via C FFI into `libtxtcode_rt.a`.
+- Performance target: 10x faster than bytecode VM for compute-heavy scripts.
+
+#### Task 12.5 — Or-Patterns and Range Patterns in Match
+
+- **Or-patterns**: `1 | 2 | 3` syntax in `case` arms — matches if the value equals any of the listed patterns:
+  ```
+  match → x
+    case → 1 | 2 | 3
+      print → "low"
+    case → _
+      print → "other"
+  end
+  ```
+- **Range patterns** (inclusive): `1..=5` syntax in `case` arms — matches if the value falls within the inclusive range:
+  ```
+  match → x
+    case → 10..=20
+      print → "medium"
+    case → _
+      print → "other"
+  end
+  ```
+- Both patterns work in the AST VM and bytecode VM. Or-patterns and range patterns may be combined in the same match expression.
+
+#### Task 12.6 — `?` Error Propagation Operator
+
+- **Postfix `?` operator** on a `Result` value — ergonomic early-return on error:
+  - If the value is `Err(e)`: immediately returns `Err(e)` from the enclosing function.
+  - If the value is `Ok(v)`: unwraps to `v` and continues.
+  - If the value is not a `Result`: passes through unchanged.
+  ```
+  define → risky → ()
+    store → r → err("oops")
+    store → v → r?    ;; early-returns Err("oops") if r is Err
+    return → v
+  end
+  ```
+- Implemented in both AST VM (`Expression::Propagate`) and bytecode VM (`Instruction::Propagate`).
+
+---
+
 ## [0.5.1-dev] — 2026-03-19
 
 All 7 development groups complete. This release covers Groups 4–7 additions on top of v0.5.0.

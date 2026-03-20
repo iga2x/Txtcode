@@ -1,9 +1,16 @@
-# Txt-code Language Specification — v0.5.0
+# Txt-code Language Specification — v0.8.0-dev
 
-> **Status:** v0.5.0 — API and language-spec freeze.
-> The public API, permission model, stdlib function names, and core language syntax are **stable**
-> for the v0.5 series. Breaking changes will not be introduced before v0.6.0.
+> **Status:** v0.8.0-dev — Group 12 (Platform & Compilation) complete.
+> The public API, permission model, stdlib function names, and core language syntax are **stable**.
+> Breaking changes require a major version bump.
 > All changes are documented in the [CHANGELOG](https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md).
+>
+> **New in v0.8 (over v0.7 / Group 12):**
+> - **Struct methods** (`impl → StructName` blocks) — define and call methods on struct instances via `obj.method(args)` in both VMs; see §1.16 and §2.2
+> - **`?` error propagation operator** — postfix `?` on a `Result` unwraps `Ok` or early-returns `Err` from the enclosing function; see §1.17 and §7.8
+> - **Or-patterns and range patterns** — `1 | 2 | 3` and `1..=5` in `match` case arms; both VMs; see §1.7 (Pattern Matching) and updated §1.15 grammar
+> - **`await_all` / `await_any`** stdlib functions — parallel resolution of `Future` arrays using existing OS-thread mechanism; see §4.6
+> - **WASM compilation target** — `txtcode compile --target wasm script.tc` produces `.wat` output; see `docs/llvm-backend.md` for the Cranelift / LLVM roadmap
 >
 > **New in v0.5 (over v0.4):**
 > - **Real async/await** — `async define → fn → (args)` spawns an OS thread; `await` blocks until result; `Value::Future` type; `Instruction::Await` in bytecode VM
@@ -33,7 +40,8 @@
 > - `++arr[0]` / `--arr[0]` on non-identifier targets — use `store → arr[0] → arr[0] + 1` instead
 > - WebSocket support — planned for v0.6
 > - macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only
-> - LLVM / WASM compilation backends — planned for v0.6/v0.8; bytecode (`.txtc`) is the only non-AST output today
+> - LLVM / native compilation backend — planned for v1.0; see `docs/llvm-backend.md` for Cranelift design
+- WASM compilation: basic `.wat` output available (`txtcode compile --target wasm`); full WASM stdlib, binary output, and `wasmtime` execution are planned for v1.0
 
 ---
 
@@ -224,6 +232,30 @@ match → expression
     default_body
 end
 ```
+
+**Or-patterns** — match any of several alternatives in a single arm:
+```txtcode
+match → x
+  case → 1 | 2 | 3
+    print → "low"
+  case → _
+    print → "other"
+end
+```
+
+**Range patterns** (inclusive) — match a value inside an integer range:
+```txtcode
+match → score
+  case → 90..=100
+    print → "A"
+  case → 80..=89
+    print → "B"
+  case → _
+    print → "other"
+end
+```
+
+Both or-patterns and range patterns work in the AST VM and the bytecode VM.
 
 #### Try / Catch / Finally
 ```txtcode
@@ -467,7 +499,62 @@ pattern           := identifier | "[" pattern_list "]"
                    | "{" (identifier ":" pattern)* ("..." identifier)? "}"
                    | identifier "(" pattern_list ")"
                    | "_"
+                   | or_pattern
+                   | range_pattern
+
+or_pattern        := pattern ("|" pattern)+
+range_pattern     := integer "..=" integer
 ```
+
+### 1.16 impl Blocks (Struct Methods)
+
+The `impl` statement attaches methods to a previously declared struct type.
+
+```txtcode
+struct → StructName
+  # fields ...
+end
+
+impl → StructName
+  define → method_name → (self, param1, param2)
+    # body; self is the struct instance
+    return → self.field + param1
+  end
+
+  define → other_method → (self)
+    return → self.method_name(0, 0)  ;; call another method via self
+  end
+end
+```
+
+**Method call syntax:** `obj.method_name(arg1, arg2)` — the runtime automatically prepends `obj` as the first argument (`self`).
+
+**Semantics:**
+- The `impl` block registers all enclosed method definitions in a per-struct method registry (`struct_methods: HashMap<struct_name, HashMap<method_name, function_value>>`).
+- When `obj.method(args)` is evaluated: the runtime looks up `type_of(obj)` in the method registry, retrieves the function, and calls it with `[obj, args...]`.
+- `self` is a conventional parameter name — it is not a reserved keyword.
+- Methods can call other methods on the same struct via `self.other()`.
+- Works in both the AST VM and the bytecode VM.
+
+### 1.17 `?` Error Propagation Operator
+
+Postfix `?` provides concise early-return on error inside a function body:
+
+```txtcode
+define → load → (path: string)
+  store → raw → read_file(path)?    ;; returns Err if read_file fails
+  store → data → json_parse(raw)?   ;; returns Err if json_parse fails
+  return → data                     ;; only reached if both steps succeeded
+end
+```
+
+**Semantics:**
+- `expr?` evaluates `expr`.
+  - If the result is `Value::Result(true, val)` (Ok): evaluates to `val` (the unwrapped inner value).
+  - If the result is `Value::Result(false, err)` (Err): immediately returns `Value::Result(false, err)` from the current function (early return).
+  - If the result is any other value: passes through unchanged.
+- `?` is a postfix operator with higher precedence than any binary operator; it binds tightly to the expression immediately to its left.
+- Works in both the AST VM (`Expression::Propagate`) and the bytecode VM (`Instruction::Propagate`).
 
 ---
 
@@ -491,7 +578,7 @@ pattern           := identifier | "[" pattern_list "]"
 | `array[T]` | `[1, 2, 3]` | Ordered, zero-indexed, dynamically sized |
 | `map[T]` | `{"key": value}` | String keys only, values of type T; iteration order is insertion-order (as of v0.6) |
 | `set[T]` | `{| 1, 2, 3 |}` | Unordered, unique values |
-| `struct Name` | `Name { field: value }` | Named fields, declared with `struct` |
+| `struct Name` | `Name { field: value }` | Named fields, declared with `struct`; methods attached via `impl → Name` |
 | `enum Name` | `Name.Variant` | Discriminated union, declared with `enum` |
 | `function` | `(x) → x + 1` | First-class, captures enclosing environment |
 
@@ -794,7 +881,19 @@ store → result → fetch("https://example.com")
 - `await expr` — if `expr` is a `Future`, blocks until the thread finishes; otherwise identity.
 - `await → expr` evaluates `expr` and returns the result directly.
 - No `Future<T>` type at runtime — the value is returned as-is.
-- `await_all` is not built-in; model parallel execution with sequential calls for now.
+- **`await_all(futures_array)`** — stdlib function that blocks until all futures in the array resolve; returns an array of results in the same order. Non-`Future` values are passed through unchanged.
+- **`await_any(futures_array)`** — stdlib function that returns the value of the first future in the array to resolve. Non-`Future` values are returned immediately.
+
+```txtcode
+async → define → fetch → (url: string) → string
+  return → http_get(url)
+end
+
+store → f1 → fetch("https://example.com/a")
+store → f2 → fetch("https://example.com/b")
+store → results → await_all([f1, f2])   ;; blocks for both; results[0] and results[1]
+store → fastest → await_any([f1, f2])   ;; returns whichever resolves first
+```
 
 ### 4.7 Capability Declarations
 
@@ -1103,25 +1202,51 @@ Assert is always evaluated — there is no release-mode stripping in v0.4.
 
 ### 7.7 Result Pattern (Idiomatic)
 
-While there is no language-level `Result<T, E>` syntax type in v0.4, the convention is:
+Txt-code has a built-in `Result` value type (`Value::Result(bool, value)`). Use `ok(v)` and `err(e)` to construct results, and `is_ok(r)` / `is_err(r)` / `unwrap(r)` / `unwrap_err(r)` to inspect them.
 
 ```txtcode
 define → safe_divide → (a: int, b: int)
   if → b == 0
-    return → {"ok": false, "error": "Division by zero"}
+    return → err("Division by zero")
   end
-  return → {"ok": true, "value": a / b}
+  return → ok(a / b)
 end
 
 store → r → safe_divide(10, 2)
-if → r["ok"]
-  print → r["value"]
+if → is_ok(r)
+  print → unwrap(r)
 else
-  print → "Error: " + r["error"]
+  print → "Error: " + unwrap_err(r)
 end
 ```
 
-A native `Result<T, E>` type is planned for a future release.
+### 7.8 `?` Error Propagation
+
+The `?` postfix operator provides ergonomic early-return on error (see §1.17 for the full specification):
+
+```txtcode
+define → load_and_parse → (path: string)
+  store → raw → read_file(path)?    ;; early-return Err if read_file fails
+  store → data → json_parse(raw)?   ;; early-return Err if parse fails
+  return → ok(data)
+end
+
+store → result → load_and_parse("config.json")
+if → is_ok(result)
+  print → unwrap(result)
+else
+  print → f"Error: {unwrap_err(result)}"
+end
+```
+
+`?` is equivalent to:
+```txtcode
+store → __tmp → expr
+if → is_err(__tmp)
+  return → __tmp
+end
+store → value → unwrap(__tmp)
+```
 
 ---
 

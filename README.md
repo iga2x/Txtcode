@@ -1,4 +1,4 @@
-# Txt-code Programming Language v0.5.0
+# Txt-code Programming Language v0.8.0
 
 **Txt-code** © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.
 
@@ -17,7 +17,11 @@ Txtcode is a **permission-transparent cyber orchestration DSL** — a policy-enf
 - **AI-Safe Design** — Structured error output and permission-transparent execution for AI agents
 - **Developer Tooling** — REPL, formatter, linter, debugger, LSP server, TextMate grammar
 - **Package Manager** — 20 core packages, `registry/index.json`, lockfile (`Txtcode.lock`)
-- **Async/Await** — `async define` + `await` with thread-based `Value::Future`
+- **Async/Await** — `async define` + `await` with thread-based `Value::Future`; `await_all` / `await_any` for parallel resolution
+- **Struct Methods** — `impl → StructName` blocks define methods callable as `obj.method(args)` in both VMs
+- **`?` Error Propagation** — Postfix `?` on a `Result` value unwraps `Ok` or early-returns `Err` from the enclosing function
+- **Or-Patterns & Range Patterns** — `1 | 2 | 3` and `1..=5` in `match` case arms (both VMs)
+- **WASM Compilation** — `txtcode compile --target wasm script.tc` emits WebAssembly Text Format (`.wat`)
 - **Full Stdlib** — HTTP server/client, datetime, CSV, streaming file I/O, process piping
 - **Performance Baseline** — Documented benchmarks; see `docs/performance.md`
 

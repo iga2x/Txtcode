@@ -21,7 +21,7 @@ additive         → multiplicative (("+" | "-") multiplicative)*
 multiplicative   → unary (("*" | "/" | "%") unary)*
 unary            → ("not" | "-" | "~" | "++" | "--") unary | power
 power            → call ("**" unary)*
-call             → primary ("(" arguments? ")" | "[" expression "]" | "." identifier | "?." identifier | "?(" arguments? ")" | "?[" expression "]")*
+call             → primary ("(" arguments? ")" | "[" expression "]" | "." identifier | "?." identifier | "?(" arguments? ")" | "?[" expression "]" | "?")*
 primary          → literal
                  | identifier
                  | "(" expression ")"
@@ -59,6 +59,7 @@ statement        → expression_statement
                  | const
                  | enum
                  | struct
+                 | impl_block
 
 expression_statement → expression
 
@@ -87,6 +88,8 @@ try_statement    → "try" statement* ("catch" ("→")? identifier statement*)? 
 import           → "import" "→" identifier ("," identifier)* ("from" "→" (identifier | string))? ("as" "→" identifier)?
 
 export           → "export" "→" identifier ("," identifier)*
+
+impl_block       → "impl" "→" identifier function_def* "end"
 ```
 
 ## Type Grammar
@@ -131,7 +134,25 @@ char             → any character except escape sequences and quote
 pattern          → literal
                  | identifier
                  | "_"
+                 | or_pattern
+                 | range_pattern
+                 | array_pattern
+                 | map_pattern
+
+or_pattern       → pattern ("|" pattern)+
+
+range_pattern    → integer "..=" integer
+
+array_pattern    → "[" (pattern ("," pattern)*)? "]"
+
+map_pattern      → "{" (identifier (":" pattern)?)* "}"
 ```
+
+**Or-pattern** — matches if the value matches any of the listed sub-patterns.
+Example: `1 | 2 | 3`
+
+**Range pattern** — matches if the value is within the inclusive integer range `[start, end]`.
+Example: `1..=10`
 
 ## Operator Precedence (from highest to lowest)
 
@@ -152,6 +173,7 @@ pattern          → literal
 13. `or` - Logical OR
 14. `++`, `--` - Increment/Decrement (prefix)
 15. `?.`, `?()`, `?[]` - Optional chaining
+16. `?` (postfix) - Error propagation (unwraps `Ok`, early-returns `Err`)
 
 ## Arrow Operator (`→`) Usage
 
@@ -178,8 +200,11 @@ The arrow operator (`→`) is used for:
 - Multi-line comments are enclosed in `## ... ##`
 - Identifiers must start with a letter or underscore, followed by letters, digits, or underscores
 - String literals support escape sequences: `\n`, `\t`, `\r`, `\\`, `\"`, `\'`
-- Interpolated strings use `{expression}` syntax: `"Hello {name}"`
+- Only `f"..."` strings support `{expression}` interpolation; plain `"..."` strings treat `{` literally
 - Variadic function parameters use `...args` syntax
 - Generic type parameters use `<T, U>` syntax
 - Destructuring patterns are supported in assignments: `store → [a, b] → [1, 2]`
+- `impl_block` attaches methods to a struct; the struct must be declared before the `impl` block
+- Or-patterns (`1 | 2 | 3`) and range patterns (`1..=5`) are only valid inside `match` case arms
+- Postfix `?` (error propagation) may only appear inside a function body; using it at the top level is a `RuntimeError`
 
