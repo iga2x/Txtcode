@@ -1394,7 +1394,7 @@ impl CoreLib {
                                 toml::Value::Table(t) => Value::Map(
                                     t.into_iter()
                                         .map(|(k, v)| (k, from_toml_value(v)))
-                                        .collect(),
+                                        .collect::<indexmap::IndexMap<_, _>>(),
                                 ),
                                 toml::Value::Datetime(dt) => Value::String(dt.to_string()),
                             }
@@ -1530,7 +1530,7 @@ impl CoreLib {
                         use quick_xml::Reader;
                         let mut reader = Reader::from_str(s);
                         reader.trim_text(true);
-                        let mut stack: Vec<(String, std::collections::HashMap<String, Value>)> =
+                        let mut stack: Vec<(String, indexmap::IndexMap<String, Value>)> =
                             Vec::new();
                         let mut root: Option<Value> = None;
                         let mut buf = Vec::new();
@@ -1540,8 +1540,8 @@ impl CoreLib {
                                     let tag = std::str::from_utf8(e.name().as_ref())
                                         .unwrap_or("unknown")
                                         .to_string();
-                                    let mut node: std::collections::HashMap<String, Value> =
-                                        std::collections::HashMap::new();
+                                    let mut node: indexmap::IndexMap<String, Value> =
+                                        indexmap::IndexMap::new();
                                     node.insert("_tag".to_string(), Value::String(tag.clone()));
                                     for attr in e.attributes().flatten() {
                                         let key = std::str::from_utf8(attr.key.as_ref())
@@ -1687,7 +1687,7 @@ impl CoreLib {
                                         Value::Array(seq.into_iter().map(yaml_to_value).collect())
                                     }
                                     serde_yaml::Value::Mapping(map) => {
-                                        let mut m = std::collections::HashMap::new();
+                                        let mut m = indexmap::IndexMap::new();
                                         for (k, v) in map {
                                             let key = match k {
                                                 serde_yaml::Value::String(s) => s,

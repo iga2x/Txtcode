@@ -27,10 +27,11 @@ Group 5: Stdlib Gaps                   [x] COMPLETE (194 tests passing)
 Group 6: Ecosystem                     [x] COMPLETE (194 tests passing)
 Group 7: Performance Baseline          [x] COMPLETE (194 tests passing)
 ─────────────────────────────────────────────────────────────────────
-Group 8: Security Correctness          [ ] NEXT — start here
-Group 9: Module System Overhaul        [ ] blocked by Group 8
-Group 10: Type System Promotion        [ ] blocked by Group 9
-Group 11: Developer Experience         [ ] blocked by Group 8 (can parallel 9/10)
+Group 8: Security Correctness          [x] COMPLETE (202 tests passing)
+Group 9: Module System Overhaul        [x] COMPLETE (209 tests passing)
+─────────────────────────────────────────────────────────────────────
+Group 10: Type System Promotion        [ ] NEXT — start here
+Group 11: Developer Experience         [ ] unblocked (can parallel 10)
 Group 12: Platform & Compilation       [ ] blocked by Groups 9+10
 ```
 
@@ -85,7 +86,7 @@ The v0.5.0 senior audit (2026-03-19) found these blocking issues:
 
 ## Task 8.1 — Fix `exec_allowed: true` Default (CRITICAL)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** CRITICAL — directly contradicts the "security-first, default-deny" positioning
 **Estimated size:** Small (1–3 files)
 
@@ -135,7 +136,7 @@ The 6-layer security pipeline is bypassed for process execution by default.
 
 ## Task 8.2 — Enforce `const` at Runtime
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — silent mutation of "constants" is a correctness hazard
 **Estimated size:** Small-Medium
 
@@ -177,7 +178,7 @@ silently. `const` is currently pure syntactic sugar with no enforcement in eithe
 
 ## Task 8.3 — Expose Script Signing as CLI Flag
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — signing infrastructure exists but is unreachable without Rust API
 **Estimated size:** Small
 
@@ -224,7 +225,7 @@ Users cannot sign or verify scripts from the command line. The security feature 
 
 ## Task 8.4 — FFI Path Allowlisting
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** HIGH — `ffi_load` with attacker-controlled path = arbitrary code execution
 **Estimated size:** Small
 
@@ -261,7 +262,7 @@ The `sys.ffi` permission gate is necessary but not sufficient — there is no pa
 
 ## Task 8.5 — Audit Log Persistence
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — in-memory audit trail is lost on exit; security use-cases need durable logs
 **Estimated size:** Small-Medium
 
@@ -295,12 +296,12 @@ The `sys.ffi` permission gate is necessary but not sufficient — there is no pa
 ## Group 8 Checkpoint
 
 ```
-[ ] exec_allowed defaults to false; exec requires explicit grant or --allow-exec
-[ ] const reassignment raises E0030 in both VMs
-[ ] txtcode sign / verify / keygen / run --require-sig all work end-to-end
-[ ] ffi_load requires path-scoped sys.ffi permission grant
-[ ] --audit-log flag writes persistent JSON audit trail
-[ ] cargo test passes (all existing tests updated where needed)
+[x] exec_allowed defaults to false; exec requires explicit grant or --allow-exec
+[x] const reassignment raises E0030 in both VMs
+[x] txtcode sign / verify / keygen / run --require-sig all work end-to-end
+[x] ffi_load requires path-scoped sys.ffi permission grant
+[x] --audit-log flag writes persistent JSON audit trail
+[x] cargo test passes (all existing tests updated where needed)
 ```
 
 ---
@@ -317,7 +318,7 @@ The `sys.ffi` permission gate is necessary but not sufficient — there is no pa
 
 ## Task 9.1 — Module Namespace Isolation (CRITICAL)
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** CRITICAL — without this, any multi-file project risks silent name collisions
 **Estimated size:** Large
 
@@ -378,7 +379,7 @@ There is no module-level namespace. `exported_symbols` set exists but is not enf
 
 ## Task 9.2 — Transitive Dependency Resolution
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** HIGH — `package install` silently skips transitive deps
 **Estimated size:** Medium
 
@@ -419,7 +420,7 @@ will fail at import time if the user only installed the top-level package.
 
 ## Task 9.3 — Lockfile Enforcement
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** HIGH — without lockfile verification, builds are not reproducible
 **Estimated size:** Small-Medium
 
@@ -470,7 +471,7 @@ source = "local:packages/npl-collections"
 
 ## Task 9.4 — Deterministic Map Iteration
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — breaks "deterministic execution" claim; hard to debug
 **Estimated size:** Small
 
@@ -506,7 +507,7 @@ and makes scripts that process maps non-reproducible.
 
 ## Task 9.5 — Update "Deterministic" Documentation
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** LOW — documentation fix
 **Estimated size:** Tiny
 
@@ -526,13 +527,13 @@ and makes scripts that process maps non-reproducible.
 ## Group 9 Checkpoint
 
 ```
-[ ] Module imports execute in isolated scope; unexported names invisible to importer
-[ ] Circular imports detected and reported with clear error
-[ ] Transitive deps resolved and installed automatically
-[ ] Txtcode.lock written and verified on install; package update regenerates it
-[ ] Map iteration order is insertion-order (IndexMap)
-[ ] "Deterministic" documentation corrected in README and spec
-[ ] cargo test passes
+[x] Module imports execute in isolated scope; unexported names invisible to importer
+[x] Circular imports detected and reported with clear error
+[x] Transitive deps resolved and installed automatically
+[x] Txtcode.lock written and verified on install; package update regenerates it
+[x] Map iteration order is insertion-order (IndexMap)
+[x] "Deterministic" documentation corrected in README and spec
+[x] cargo test passes
 ```
 
 ---

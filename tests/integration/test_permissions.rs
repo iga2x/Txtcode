@@ -1616,3 +1616,52 @@ fn test_signal_send_blocked_in_safe_mode() {
         msg
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 8.1 — exec_allowed defaults to false
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_exec_blocked_by_default_in_new_vm() {
+    // VirtualMachine::new() must default exec_allowed=false.
+    // exec() without grant_permission should fail.
+    let source = r#"exec("echo", ["hello"])"#;
+    let result = parse_and_run(source);
+    assert!(
+        result.is_err(),
+        "exec() must fail with default VirtualMachine::new() (exec_allowed defaults to false)"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("Permission") || msg.contains("permission") || msg.contains("safe"),
+        "Error should mention permission, got: {}",
+        msg
+    );
+}
+
+#[test]
+fn test_exec_allowed_after_grant_permission() {
+    // After grant_permission("sys.exec", null), exec() must succeed (or at least not
+    // fail with a permission error — it may still fail if the binary is unavailable).
+    let mut vm = VirtualMachine::new();
+    vm.grant_permission(PermissionResource::System("exec".to_string()), None);
+
+    let mut lexer = txtcode::lexer::Lexer::new(r#"exec("echo", ["hello"])"#.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = txtcode::parser::Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let result = vm.interpret(&program);
+
+    match result {
+        Ok(_) => {} // success — exec ran
+        Err(e) => {
+            // Accept only non-permission errors (e.g., binary not found in CI)
+            let msg = e.to_string();
+            assert!(
+                !msg.contains("Permission not granted"),
+                "Should not be a permission error after grant, got: {}",
+                msg
+            );
+        }
+    }
+}

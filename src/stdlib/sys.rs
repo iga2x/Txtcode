@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
@@ -136,7 +137,7 @@ impl SysLib {
                     let output = child.wait_with_output()
                         .map_err(|e| RuntimeError::new(format!("exec() failed: {}", e)))?;
                     if capture_stderr {
-                        let mut result = std::collections::HashMap::new();
+                        let mut result = IndexMap::new();
                         result.insert("stdout".to_string(), Value::String(String::from_utf8_lossy(&output.stdout).to_string()));
                         result.insert("stderr".to_string(), Value::String(String::from_utf8_lossy(&output.stderr).to_string()));
                         result.insert("status".to_string(), Value::Integer(output.status.code().unwrap_or(0) as i64));
@@ -480,7 +481,7 @@ impl SysLib {
                     match child.wait() {
                         Ok(status) => {
                             let exit_code = status.code().unwrap_or(-1);
-                            let mut result = HashMap::new();
+                            let mut result = IndexMap::new();
                             result.insert("pid".to_string(), Value::Integer(pid));
                             result
                                 .insert("exit_code".to_string(), Value::Integer(exit_code as i64));
@@ -518,7 +519,7 @@ impl SysLib {
                         None,
                     )?;
                 }
-                let vars: HashMap<String, Value> = std::env::vars()
+                let vars: IndexMap<String, Value> = std::env::vars()
                     .map(|(k, v)| (k, Value::String(v)))
                     .collect();
                 Ok(Value::Map(vars))
@@ -653,7 +654,7 @@ impl SysLib {
                 let output = child
                     .wait_with_output()
                     .map_err(|e| RuntimeError::new(format!("pipe_exec failed: {}", e)))?;
-                let mut result = HashMap::new();
+                let mut result = IndexMap::new();
                 result.insert(
                     "stdout".to_string(),
                     Value::String(String::from_utf8_lossy(&output.stdout).to_string()),
@@ -782,7 +783,7 @@ impl SysLib {
                     }
                     let total = (stat.f_blocks as i64).saturating_mul(stat.f_frsize as i64);
                     let available = (stat.f_bavail as i64).saturating_mul(stat.f_frsize as i64);
-                    let mut map = HashMap::new();
+                    let mut map = IndexMap::new();
                     map.insert("total".to_string(), Value::Integer(total));
                     map.insert("available".to_string(), Value::Integer(available));
                     map.insert(

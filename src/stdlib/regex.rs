@@ -1,6 +1,6 @@
 use crate::runtime::{RuntimeError, Value};
+use indexmap::IndexMap;
 use regex::Regex;
-use std::collections::HashMap;
 
 /// Regular expression library
 pub struct RegexLib;
@@ -120,7 +120,7 @@ impl RegexLib {
 
         if let Some(captures) = re.captures(text) {
             if let Some(matched) = captures.get(0) {
-                let mut result = HashMap::new();
+                let mut result = IndexMap::new();
                 result.insert(
                     "match".to_string(),
                     Value::String(matched.as_str().to_string()),
@@ -155,7 +155,7 @@ impl RegexLib {
         let matches: Vec<Value> = re
             .find_iter(text)
             .map(|m| {
-                let mut result = HashMap::new();
+                let mut result = IndexMap::new();
                 result.insert("match".to_string(), Value::String(m.as_str().to_string()));
                 result.insert("start".to_string(), Value::Integer(m.start() as i64));
                 result.insert("end".to_string(), Value::Integer(m.end() as i64));

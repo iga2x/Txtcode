@@ -4,7 +4,7 @@ use super::ExpressionVM;
 use crate::parser::ast::Expression;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 pub fn evaluate_array<VM: ExpressionVM>(
     vm: &mut VM,
@@ -40,7 +40,7 @@ pub fn evaluate_map<VM: ExpressionVM>(
     vm: &mut VM,
     entries: &[(Expression, Expression)],
 ) -> Result<Value, RuntimeError> {
-    let mut map = HashMap::new();
+    let mut map = IndexMap::new();
     for (key_expr, value_expr) in entries {
         let key_val = super::ExpressionEvaluator::evaluate(vm, key_expr)?;
         let value_val = super::ExpressionEvaluator::evaluate(vm, value_expr)?;

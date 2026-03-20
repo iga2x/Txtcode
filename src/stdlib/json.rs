@@ -1,5 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 /// JSON library for parsing and encoding JSON
 pub struct JsonLib;
@@ -94,7 +94,7 @@ impl JsonLib {
             }
             Value::Struct(name, fields) => {
                 // Structs are encoded as objects
-                let mut map = HashMap::new();
+                let mut map = IndexMap::new();
                 map.insert("_type".to_string(), Value::String(name.clone()));
                 for (k, v) in fields {
                     map.insert(k.clone(), v.clone());
@@ -107,7 +107,7 @@ impl JsonLib {
             }
             Value::Enum(name, variant, payload) => {
                 // Enums are encoded as objects
-                let mut map = HashMap::new();
+                let mut map = IndexMap::new();
                 map.insert("_type".to_string(), Value::String(name.clone()));
                 map.insert("_variant".to_string(), Value::String(variant.clone()));
                 if let Some(inner) = payload {
@@ -262,7 +262,7 @@ impl JsonLib {
     }
 
     fn parse_json_object(content: &str) -> Result<Value, RuntimeError> {
-        let mut map = HashMap::new();
+        let mut map = IndexMap::new();
         let mut current_key: Option<String> = None;
         let mut current_value = String::new();
         let mut depth = 0;

@@ -544,7 +544,7 @@ fn call_array_method(
 }
 
 fn call_map_method(
-    map: &std::collections::HashMap<String, Value>,
+    map: &indexmap::IndexMap<String, Value>,
     method: &str,
     args: &[Value],
     _obj_name: &str,

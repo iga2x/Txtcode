@@ -10,6 +10,7 @@ use crate::runtime::permissions::{Permission, PermissionManager, PermissionResou
 use crate::runtime::security::RuntimeSecurity;
 use crate::runtime::security_pipeline::{self, PipelineAuditResult, SecurityPipelineContext};
 use crate::stdlib::{FunctionExecutor, PermissionChecker, StdLib};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 
 /// A catch handler frame on the catch_stack
@@ -1235,7 +1236,7 @@ impl BytecodeVM {
                 self.stack.push(Value::Array(arr));
             }
             Instruction::BuildMap(count) => {
-                let mut map = HashMap::new();
+                let mut map = IndexMap::new();
                 for _ in 0..*count {
                     let value = self.pop_value()?;
                     let key_val = self.pop_value()?;

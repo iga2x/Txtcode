@@ -990,7 +990,7 @@ impl IOLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
-                        let mut map = std::collections::HashMap::new();
+                        let mut map = indexmap::IndexMap::new();
                         map.insert("path".to_string(), Value::String(path.clone()));
                         match Self::validate_path(path) {
                             Ok(validated_path) => {

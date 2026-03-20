@@ -201,6 +201,73 @@ impl LockFile {
         let lock: LockFile = toml::from_str(&content)?;
         Ok(lock)
     }
+
+    /// Verify that the installed package directory's content matches the
+    /// recorded checksum.
+    ///
+    /// Returns `Ok(())` if the hash matches or if no checksum was recorded
+    /// (e.g. legacy entries).  Returns `Err` with a descriptive message if
+    /// the hash does not match.
+    pub fn verify_installed(&self, name: &str, dir: &Path) -> Result<(), String> {
+        let locked = match self.packages.get(name) {
+            Some(p) => p,
+            None => return Err(format!("'{}' not found in lockfile", name)),
+        };
+        if locked.checksum.is_empty() {
+            // No checksum recorded — skip (backward-compatible).
+            return Ok(());
+        }
+        let actual = compute_dir_hash(dir);
+        if !actual.eq_ignore_ascii_case(&locked.checksum) {
+            Err(format!(
+                "lockfile hash mismatch for '{}': expected {}, got {}\n\
+                 Run 'txtcode package update' to regenerate the lockfile.",
+                name, locked.checksum, actual
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Installed-package hash helpers
+// ---------------------------------------------------------------------------
+
+/// Compute a deterministic SHA-256 hash of all **files** inside `dir`.
+///
+/// Files are processed in lexicographic (sorted) name order so the result is
+/// stable across platforms.  Each file contributes `name:content\n` to the
+/// digest so renames are detected.  Sub-directories are ignored; packages
+/// are expected to be flat.
+///
+/// Returns the hash as a lowercase hex string, or an all-zero string if
+/// the directory is empty or cannot be read.
+pub fn compute_dir_hash(dir: &Path) -> String {
+    let mut hasher = Sha256::new();
+    let mut files: Vec<PathBuf> = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                files.push(entry.path());
+            }
+        }
+    }
+
+    files.sort();
+
+    for file in &files {
+        if let Ok(content) = fs::read(file) {
+            let name = file.file_name().unwrap_or_default().to_string_lossy();
+            hasher.update(name.as_bytes());
+            hasher.update(b":");
+            hasher.update(&content);
+            hasher.update(b"\n");
+        }
+    }
+
+    hex::encode(hasher.finalize())
 }
 
 // ---------------------------------------------------------------------------
@@ -962,22 +1029,49 @@ pub fn install_dependencies() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut lock = LockFile::default();
 
+    // Load existing lockfile now (before installing) so we can verify hashes
+    // against it after each package is placed on disk.
+    let existing_lock = if lock_path.exists() {
+        Some(LockFile::load(&lock_path)?)
+    } else {
+        None
+    };
+
     for (name, version) in &resolved {
         println!("  Installing {}@{}", name, version);
         match registry.download_package(name, version) {
             Ok(_) => {
-                // For local/already-installed packages, record with empty checksum.
-                // Real checksums are set by download_from_url when registry is live.
+                let installed_dir = packages_dir.join(name).join(version);
+                // Compute directory hash so the lockfile we write is verifiable.
+                let checksum = if installed_dir.exists() {
+                    compute_dir_hash(&installed_dir)
+                } else {
+                    String::new()
+                };
                 lock.packages.entry(name.clone()).or_insert(LockedPackage {
                     version: version.clone(),
-                    checksum: String::new(),
+                    checksum,
                     dependencies: Vec::new(),
                 });
+
+                // When a lockfile already existed, verify the installed package
+                // matches the recorded hash.  Abort on mismatch.
+                if let Some(ref lf) = existing_lock {
+                    if installed_dir.exists() {
+                        lf.verify_installed(name, &installed_dir).map_err(|e| {
+                            format!("Lockfile verification failed for '{}': {}", name, e)
+                        })?;
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("  Warning: {}", e);
             }
         }
+    }
+
+    if existing_lock.is_some() {
+        println!("Lockfile verified.");
     }
 
     // Generate and save lockfile if it doesn't already exist.
@@ -1652,6 +1746,116 @@ mod tests {
             warnings[0].contains("conflict"),
             "Warning should contain 'conflict'"
         );
+    }
+
+    // --- LockFile / compute_dir_hash ---
+
+    #[test]
+    fn lockfile_verify_installed_passes_when_hashes_match() {
+        let tmp = TempDir::new().unwrap();
+        let pkg_dir = tmp.path().join("mypkg");
+        fs::create_dir_all(&pkg_dir).unwrap();
+        fs::write(pkg_dir.join("lib.tc"), "print → 42").unwrap();
+
+        let hash = compute_dir_hash(&pkg_dir);
+        let mut lock = LockFile::default();
+        lock.packages.insert(
+            "mypkg".to_string(),
+            LockedPackage {
+                version: "1.0.0".to_string(),
+                checksum: hash,
+                dependencies: vec![],
+            },
+        );
+
+        assert!(
+            lock.verify_installed("mypkg", &pkg_dir).is_ok(),
+            "Hash should match immediately after computing it"
+        );
+    }
+
+    #[test]
+    fn lockfile_verify_installed_fails_on_hash_mismatch() {
+        let tmp = TempDir::new().unwrap();
+        let pkg_dir = tmp.path().join("mypkg");
+        fs::create_dir_all(&pkg_dir).unwrap();
+        fs::write(pkg_dir.join("lib.tc"), "print → 42").unwrap();
+
+        let mut lock = LockFile::default();
+        lock.packages.insert(
+            "mypkg".to_string(),
+            LockedPackage {
+                version: "1.0.0".to_string(),
+                checksum: "deadbeef0000000000000000000000000000000000000000000000000000dead"
+                    .to_string(),
+                dependencies: vec![],
+            },
+        );
+
+        let result = lock.verify_installed("mypkg", &pkg_dir);
+        assert!(result.is_err(), "Mismatched hash must cause an error");
+        assert!(
+            result.unwrap_err().contains("lockfile hash mismatch"),
+            "Error should mention hash mismatch"
+        );
+    }
+
+    #[test]
+    fn lockfile_verify_skipped_when_checksum_empty() {
+        let tmp = TempDir::new().unwrap();
+        let pkg_dir = tmp.path().join("mypkg");
+        fs::create_dir_all(&pkg_dir).unwrap();
+        fs::write(pkg_dir.join("lib.tc"), "print → 42").unwrap();
+
+        let mut lock = LockFile::default();
+        lock.packages.insert(
+            "mypkg".to_string(),
+            LockedPackage {
+                version: "1.0.0".to_string(),
+                checksum: String::new(), // empty = skip verification (legacy)
+                dependencies: vec![],
+            },
+        );
+
+        assert!(
+            lock.verify_installed("mypkg", &pkg_dir).is_ok(),
+            "Empty checksum should be treated as skip (backward-compat)"
+        );
+    }
+
+    #[test]
+    fn lockfile_verify_fails_for_unknown_package() {
+        let tmp = TempDir::new().unwrap();
+        let pkg_dir = tmp.path().join("mypkg");
+        fs::create_dir_all(&pkg_dir).unwrap();
+
+        let lock = LockFile::default();
+        let result = lock.verify_installed("unknown", &pkg_dir);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found in lockfile"));
+    }
+
+    #[test]
+    fn compute_dir_hash_is_deterministic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("a.tc"), "x = 1").unwrap();
+        fs::write(tmp.path().join("b.tc"), "y = 2").unwrap();
+
+        let h1 = compute_dir_hash(tmp.path());
+        let h2 = compute_dir_hash(tmp.path());
+        assert_eq!(h1, h2, "Hash must be identical across two calls");
+        assert!(!h1.is_empty(), "Hash must be non-empty");
+    }
+
+    #[test]
+    fn compute_dir_hash_changes_when_file_modified() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("lib.tc"), "x = 1").unwrap();
+        let h1 = compute_dir_hash(tmp.path());
+
+        fs::write(tmp.path().join("lib.tc"), "x = 999").unwrap();
+        let h2 = compute_dir_hash(tmp.path());
+        assert_ne!(h1, h2, "Hash must change when a file's content changes");
     }
 
     #[test]

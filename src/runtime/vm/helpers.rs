@@ -1,6 +1,7 @@
 use crate::parser::ast::{Expression, Pattern};
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
 use super::VirtualMachine;
@@ -194,7 +195,7 @@ impl VirtualMachine {
 
                         // Handle rest pattern
                         if let Some(rest_name) = rest {
-                            let mut rest_fields = HashMap::new();
+                            let mut rest_fields = IndexMap::new();
                             for (field_name, field_value) in struct_fields {
                                 // Only include fields not already destructured
                                 if !fields.iter().any(|(name, _)| name == field_name) {
@@ -219,7 +220,7 @@ impl VirtualMachine {
 
                         // Handle rest pattern
                         if let Some(rest_name) = rest {
-                            let mut rest_fields = HashMap::new();
+                            let mut rest_fields = IndexMap::new();
                             for (field_name, field_value) in map {
                                 // Only include fields not already destructured
                                 if !fields.iter().any(|(name, _)| name == field_name) {

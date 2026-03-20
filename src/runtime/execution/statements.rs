@@ -75,7 +75,7 @@ impl StatementExecutor {
                     }
                     (Value::Null, Value::String(key)) => {
                         // Auto-create map if variable is null
-                        let mut map = std::collections::HashMap::new();
+                        let mut map = indexmap::IndexMap::new();
                         map.insert(key, val);
                         Value::Map(map)
                     }

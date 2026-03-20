@@ -4,6 +4,7 @@ use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::permissions::PermissionResource;
 use crate::tools::logger::log_debug;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 
 /// Module import/export management methods for VirtualMachine
@@ -86,7 +87,7 @@ impl VirtualMachine {
             .collect();
 
         // Build module namespace from scope + delta globals, respecting export declarations
-        let mut module_namespace = HashMap::new();
+        let mut module_namespace = IndexMap::new();
         let has_explicit_exports = !self.exported_symbols.is_empty();
         if has_explicit_exports {
             let exported = self.exported_symbols.clone();

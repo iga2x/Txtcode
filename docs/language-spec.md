@@ -489,7 +489,7 @@ pattern           := identifier | "[" pattern_list "]"
 | Type | Syntax | Notes |
 |------|--------|-------|
 | `array[T]` | `[1, 2, 3]` | Ordered, zero-indexed, dynamically sized |
-| `map[T]` | `{"key": value}` | String keys only, values of type T |
+| `map[T]` | `{"key": value}` | String keys only, values of type T; iteration order is insertion-order (as of v0.6) |
 | `set[T]` | `{| 1, 2, 3 |}` | Unordered, unique values |
 | `struct Name` | `Name { field: value }` | Named fields, declared with `struct` |
 | `enum Name` | `Name.Variant` | Discriminated union, declared with `enum` |

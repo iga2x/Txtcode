@@ -1369,3 +1369,36 @@ fn test_circular_import_detected() {
         "Error should mention circular import, got: {msg}"
     );
 }
+
+#[test]
+fn test_map_iteration_is_insertion_ordered() {
+    // Map keys must iterate in the exact order they were inserted.
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::vm::VirtualMachine;
+    use txtcode::runtime::Value;
+
+    let source = r#"
+store → m → {a: 1, b: 2, c: 3}
+store → keys → []
+for → k in m
+  store → keys → array_push(keys, k)
+end
+keys
+"#;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    let result = vm.interpret_repl(&program).unwrap();
+    assert_eq!(
+        result,
+        Value::Array(vec![
+            Value::String("a".to_string()),
+            Value::String("b".to_string()),
+            Value::String("c".to_string()),
+        ]),
+        "Map keys must iterate in insertion order (a, b, c)"
+    );
+}

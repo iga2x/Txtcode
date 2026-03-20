@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -212,9 +213,9 @@ impl NetLib {
                         _ => return Err(RuntimeError::new("http_response: headers must be a map".to_string())),
                     }
                 } else {
-                    HashMap::new()
+                    IndexMap::new()
                 };
-                let mut result = HashMap::new();
+                let mut result = IndexMap::new();
                 result.insert("status".to_string(), Value::Integer(status));
                 result.insert("body".to_string(), Value::String(body));
                 result.insert("headers".to_string(), Value::Map(headers));
@@ -329,8 +330,8 @@ impl NetLib {
         Some(hostname.to_string())
     }
 
-    fn collect_headers(response_headers: &reqwest::header::HeaderMap) -> HashMap<String, Value> {
-        let mut map = HashMap::new();
+    fn collect_headers(response_headers: &reqwest::header::HeaderMap) -> IndexMap<String, Value> {
+        let mut map = IndexMap::new();
         for (name, value) in response_headers {
             if let Ok(val_str) = value.to_str() {
                 map.insert(
@@ -358,7 +359,7 @@ impl NetLib {
             .text()
             .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
         result.insert("body".to_string(), Value::String(body));
         result.insert("headers".to_string(), Value::Map(headers_map));
@@ -374,7 +375,7 @@ impl NetLib {
     pub async fn http_post_async(
         url: &str,
         body: &str,
-        headers: Option<&HashMap<String, Value>>,
+        headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -398,7 +399,7 @@ impl NetLib {
             .text()
             .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
         result.insert("body".to_string(), Value::String(response_body));
         result.insert("headers".to_string(), Value::Map(headers_map));
@@ -408,7 +409,7 @@ impl NetLib {
     fn http_post_sync(
         url: &str,
         body: &str,
-        headers: Option<&HashMap<String, Value>>,
+        headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
@@ -418,7 +419,7 @@ impl NetLib {
     async fn http_put_async(
         url: &str,
         body: &str,
-        headers: Option<&HashMap<String, Value>>,
+        headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -442,7 +443,7 @@ impl NetLib {
             .text()
             .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
         result.insert("body".to_string(), Value::String(response_body));
         result.insert("headers".to_string(), Value::Map(headers_map));
@@ -452,7 +453,7 @@ impl NetLib {
     fn http_put_sync(
         url: &str,
         body: &str,
-        headers: Option<&HashMap<String, Value>>,
+        headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
@@ -461,7 +462,7 @@ impl NetLib {
 
     async fn http_delete_async(
         url: &str,
-        headers: Option<&HashMap<String, Value>>,
+        headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -485,7 +486,7 @@ impl NetLib {
             .text()
             .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
         result.insert("body".to_string(), Value::String(response_body));
         result.insert("headers".to_string(), Value::Map(headers_map));
@@ -494,7 +495,7 @@ impl NetLib {
 
     fn http_delete_sync(
         url: &str,
-        headers: Option<&HashMap<String, Value>>,
+        headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
@@ -504,7 +505,7 @@ impl NetLib {
     async fn http_patch_async(
         url: &str,
         body: &str,
-        headers: Option<&HashMap<String, Value>>,
+        headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -528,7 +529,7 @@ impl NetLib {
             .text()
             .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
         result.insert("body".to_string(), Value::String(response_body));
         result.insert("headers".to_string(), Value::Map(headers_map));
@@ -538,7 +539,7 @@ impl NetLib {
     fn http_patch_sync(
         url: &str,
         body: &str,
-        headers: Option<&HashMap<String, Value>>,
+        headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
@@ -556,7 +557,7 @@ impl NetLib {
         Value::Future(handle)
     }
 
-    fn http_post_future(url: String, body: String, headers: Option<HashMap<String, Value>>) -> Value {
+    fn http_post_future(url: String, body: String, headers: Option<IndexMap<String, Value>>) -> Value {
         let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
         std::thread::spawn(move || {
             let result = Self::http_post_sync(&url, &body, headers.as_ref());
@@ -565,7 +566,7 @@ impl NetLib {
         Value::Future(handle)
     }
 
-    fn http_put_future(url: String, body: String, headers: Option<HashMap<String, Value>>) -> Value {
+    fn http_put_future(url: String, body: String, headers: Option<IndexMap<String, Value>>) -> Value {
         let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
         std::thread::spawn(move || {
             let result = Self::http_put_sync(&url, &body, headers.as_ref());
@@ -574,7 +575,7 @@ impl NetLib {
         Value::Future(handle)
     }
 
-    fn http_delete_future(url: String, headers: Option<HashMap<String, Value>>) -> Value {
+    fn http_delete_future(url: String, headers: Option<IndexMap<String, Value>>) -> Value {
         let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
         std::thread::spawn(move || {
             let result = Self::http_delete_sync(&url, headers.as_ref());
@@ -583,7 +584,7 @@ impl NetLib {
         Value::Future(handle)
     }
 
-    fn http_patch_future(url: String, body: String, headers: Option<HashMap<String, Value>>) -> Value {
+    fn http_patch_future(url: String, body: String, headers: Option<IndexMap<String, Value>>) -> Value {
         let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
         std::thread::spawn(move || {
             let result = Self::http_patch_sync(&url, &body, headers.as_ref());
@@ -682,7 +683,7 @@ impl NetLib {
             .text()
             .await
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
         result.insert("body".to_string(), Value::String(response_body));
         result.insert("headers".to_string(), Value::Map(headers_map));
@@ -706,7 +707,7 @@ impl NetLib {
         let _stream = TcpStream::connect(&address)
             .await
             .map_err(|e| RuntimeError::new(format!("TCP connection failed: {}", e)))?;
-        let mut result = HashMap::new();
+        let mut result = IndexMap::new();
         result.insert("host".to_string(), Value::String(host.to_string()));
         result.insert("port".to_string(), Value::Integer(port as i64));
         result.insert("connected".to_string(), Value::Boolean(true));
@@ -802,7 +803,7 @@ impl NetLib {
         Ok(Value::Null)
     }
 
-    fn parse_http_request(stream: &mut std::net::TcpStream) -> Result<HashMap<String, Value>, RuntimeError> {
+    fn parse_http_request(stream: &mut std::net::TcpStream) -> Result<IndexMap<String, Value>, RuntimeError> {
         use std::io::{BufRead, BufReader, Read};
         let mut reader = BufReader::new(stream.try_clone().map_err(|e| RuntimeError::new(e.to_string()))?);
 
@@ -814,7 +815,7 @@ impl NetLib {
         let path = parts.get(1).copied().unwrap_or("/").to_string();
 
         // Read headers
-        let mut headers: HashMap<String, Value> = HashMap::new();
+        let mut headers: IndexMap<String, Value> = IndexMap::new();
         let mut content_length: usize = 0;
         loop {
             let mut line = String::new();
@@ -840,7 +841,7 @@ impl NetLib {
             String::new()
         };
 
-        let mut req = HashMap::new();
+        let mut req = IndexMap::new();
         req.insert("method".to_string(), Value::String(method));
         req.insert("path".to_string(), Value::String(path));
         req.insert("body".to_string(), Value::String(body));

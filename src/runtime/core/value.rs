@@ -1,4 +1,5 @@
 use crate::parser::ast::{Parameter, Statement};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -94,7 +95,7 @@ pub enum Value {
     Boolean(bool),
     Null,
     Array(Vec<Value>),
-    Map(HashMap<String, Value>),
+    Map(IndexMap<String, Value>),
     Set(Vec<Value>), // Set maintains unique values
     Function(
         String,
@@ -131,9 +132,9 @@ impl std::fmt::Display for Value {
                 write!(f, "[{}]", items.join(", "))
             }
             Value::Map(map) => {
-                let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
-                pairs.sort_by_key(|(k, _)| k.as_str());
-                let items: Vec<String> = pairs.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                // IndexMap preserves insertion order — no sort needed.
+                let items: Vec<String> =
+                    map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
                 write!(f, "{{{}}}", items.join(", "))
             }
             Value::Set(set) => {

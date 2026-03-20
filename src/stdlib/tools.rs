@@ -158,8 +158,7 @@ impl ToolLib {
 
                 let executor = ToolExecutor::new();
                 if let Some(tool) = executor.registry().get(&tool_name) {
-                    use std::collections::HashMap;
-                    let mut info = HashMap::new();
+                    let mut info = indexmap::IndexMap::new();
                     info.insert("name".to_string(), Value::String(tool.name.clone()));
                     info.insert("command".to_string(), Value::String(tool.command.clone()));
                     info.insert(

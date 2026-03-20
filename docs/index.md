@@ -2,7 +2,7 @@
 
 **Txt-code** © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.
 
-Txtcode is a **deterministic cyber orchestration DSL** — a policy-enforced execution engine designed for security-sensitive automation and experimentation. It provides a safe bridge between AI planning and real-world actions, with built-in audit trails and permission systems.
+Txtcode is a **permission-transparent cyber orchestration DSL** — a policy-enforced execution engine designed for security-sensitive automation and experimentation. It provides a safe bridge between AI planning and real-world actions, with built-in audit trails and permission systems.
 
 ---
 
@@ -12,7 +12,7 @@ Txtcode is a **deterministic cyber orchestration DSL** — a policy-enforced exe
 - **Cyber Orchestration** — Safe, permission-controlled execution of external tools
 - **Execution Transparency** — Full trace logging and replayable execution graphs
 - **Policy Enforcement** — Intent declarations, capability scoping, and rate limiting
-- **AI-Safe Design** — Structured error output and deterministic execution for AI agents
+- **AI-Safe Design** — Structured error output and permission-transparent execution for AI agents
 - **Developer Tooling** — REPL, formatter, linter, debugger, LSP server (`txtcode lsp`), TextMate grammar
 - **Package Manager** — 20 core packages, `registry/index.json`, `Txtcode.lock` lockfile
 - **Async/Await** — thread-based `Value::Future`, `await` in both AST and Bytecode VMs
@@ -24,7 +24,8 @@ Txtcode is a **deterministic cyber orchestration DSL** — a policy-enforced exe
 ## Goals
 
 - Safe, auditable automation of security-sensitive tasks
-- Deterministic execution with predictable, reproducible results
+- **Permission-transparent execution** — every privileged side effect (network, filesystem, process) requires an explicit grant; no hidden escalation
+- Map iteration order is insertion-order (deterministic as of v0.6)
 - AI-compatible scripting with structured, machine-readable output
 - Transparent policy enforcement with zero silent privilege escalation
 - Bridging AI planning with real-world system actions safely
