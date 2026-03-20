@@ -249,6 +249,47 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
                     span,
                 };
             }
+        } else if parser.check(crate::lexer::token::TokenKind::QuestionMark) {
+            // Postfix `?` — error propagation operator.
+            // Disambiguate from ternary: ternary `?` is always followed by an expression starter.
+            // Propagate `?` is followed by newline, comma, closing bracket, or another operator.
+            let qm_pos = parser.position;
+            // Look ahead past the `?` to decide
+            let after_qm_pos = qm_pos + 1;
+            let is_propagate = {
+                let mut peek = after_qm_pos;
+                // skip whitespace
+                while peek < parser.tokens.len()
+                    && parser.tokens[peek].kind == crate::lexer::token::TokenKind::Whitespace
+                {
+                    peek += 1;
+                }
+                if peek >= parser.tokens.len() {
+                    true // EOF after ? → propagate
+                } else {
+                    matches!(
+                        parser.tokens[peek].kind,
+                        crate::lexer::token::TokenKind::Newline
+                            | crate::lexer::token::TokenKind::Comma
+                            | crate::lexer::token::TokenKind::RightParen
+                            | crate::lexer::token::TokenKind::RightBracket
+                            | crate::lexer::token::TokenKind::RightBrace
+                            | crate::lexer::token::TokenKind::Semicolon
+                            | crate::lexer::token::TokenKind::Eof
+                    )
+                }
+            };
+            if is_propagate {
+                let token = parser.peek().clone();
+                let span = token_span_to_ast_span(&token);
+                parser.advance(); // consume `?`
+                expr = Expression::Propagate {
+                    value: Box::new(expr),
+                    span,
+                };
+            } else {
+                break; // leave `?` for ternary handler at a higher level
+            }
         } else {
             break;
         }

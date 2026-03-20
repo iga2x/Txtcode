@@ -413,6 +413,7 @@ impl TypeInference {
             Expression::MethodCall { .. } => InferenceResult::Unknown,
             Expression::StructLiteral { .. } => InferenceResult::Unknown,
             Expression::Spread { .. } => InferenceResult::Unknown,
+            Expression::Propagate { .. } => InferenceResult::Unknown,
         }
     }
 
@@ -495,6 +496,14 @@ impl TypeInference {
             }
             Pattern::Ignore => {
                 // Ignore pattern - do nothing
+            }
+            Pattern::Or(pats) => {
+                for pat in pats {
+                    self.bind_pattern_type(pat, value_type, types)?;
+                }
+            }
+            Pattern::Range(..) => {
+                // Range pattern — no variable bindings to infer
             }
         }
 

@@ -1733,6 +1733,36 @@ impl BytecodeVM {
                 self.stack.push(Value::Result(false, Box::new(val)));
             }
 
+            // ── Error propagation ─────────────────────────────────────────────
+            Instruction::Propagate => {
+                let val = self.pop_value()?;
+                match val {
+                    Value::Result(false, err) => {
+                        // Early-return the error from the current function.
+                        // Mirrors ReturnValue: pop call frame and jump back to caller.
+                        let err_val = Value::Result(false, err);
+                        if let Some((return_ip, saved_vars, catch_depth)) = self.call_stack.pop() {
+                            self.catch_stack.truncate(catch_depth);
+                            self.variables = saved_vars;
+                            self.stack.push(err_val);
+                            self.ip = return_ip;
+                            self.function_name_stack.pop();
+                        } else {
+                            // Top-level propagate: push Err value and end execution
+                            self.stack.push(err_val);
+                            self.ip = usize::MAX;
+                        }
+                    }
+                    Value::Result(true, inner) => {
+                        self.stack.push(*inner);
+                    }
+                    other => {
+                        // Non-Result: pass through unchanged
+                        self.stack.push(other);
+                    }
+                }
+            }
+
             // ── Struct literal ────────────────────────────────────────────────
             Instruction::BuildStructLiteral(field_count) => {
                 // Stack layout: struct_name, key0, val0, key1, val1, ... (fields pushed after name)

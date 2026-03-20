@@ -346,6 +346,44 @@ impl VirtualMachine {
             Pattern::Ignore => {
                 // Ignore pattern - do nothing
             }
+            // Task 12.5: Or-pattern — succeed if any sub-pattern matches
+            Pattern::Or(pats) => {
+                let mut matched = false;
+                for pat in pats {
+                    if self.bind_pattern(pat, value).is_ok() {
+                        matched = true;
+                        break;
+                    }
+                }
+                if !matched {
+                    return Err(self.create_error(format!(
+                        "No branch of or-pattern matched {:?}",
+                        value
+                    )));
+                }
+            }
+            // Task 12.5: Range pattern — `start..=end`
+            Pattern::Range(start_expr, end_expr) => {
+                let start = self.evaluate_expression(start_expr)?;
+                let end = self.evaluate_expression(end_expr)?;
+                let in_range = match (value, &start, &end) {
+                    (Value::Integer(v), Value::Integer(s), Value::Integer(e)) => v >= s && v <= e,
+                    (Value::Float(v), Value::Float(s), Value::Float(e)) => v >= s && v <= e,
+                    (Value::Integer(v), Value::Float(s), Value::Float(e)) => {
+                        (*v as f64) >= *s && (*v as f64) <= *e
+                    }
+                    (Value::Float(v), Value::Integer(s), Value::Integer(e)) => {
+                        *v >= (*s as f64) && *v <= (*e as f64)
+                    }
+                    _ => false,
+                };
+                if !in_range {
+                    return Err(self.create_error(format!(
+                        "Value {:?} is not in range {:?}..={:?}",
+                        value, start, end
+                    )));
+                }
+            }
         }
 
         Ok(())
@@ -477,6 +515,9 @@ impl VirtualMachine {
                 }
             }
             Expression::Spread { value, .. } => {
+                free_vars.extend(Self::extract_free_variables(value, param_names));
+            }
+            Expression::Propagate { value, .. } => {
                 free_vars.extend(Self::extract_free_variables(value, param_names));
             }
         }

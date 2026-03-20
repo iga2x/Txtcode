@@ -518,6 +518,9 @@ impl AstPrinter {
             Expression::Spread { value, .. } => {
                 format!("...{}", self.print_expr(value))
             }
+            Expression::Propagate { value, .. } => {
+                format!("{}?", self.print_expr(value))
+            }
         }
     }
 
@@ -588,6 +591,8 @@ impl AstPrinter {
                     .join(", ");
                 format!("{}({})", type_name, a)
             }
+            Pattern::Or(pats) => pats.iter().map(|p| self.print_pattern(p)).collect::<Vec<_>>().join(" | "),
+            Pattern::Range(start, end) => format!("{:?}..={:?}", start, end),
         }
     }
 }

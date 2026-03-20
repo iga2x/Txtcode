@@ -319,6 +319,19 @@ impl ExpressionEvaluator {
                 // Spread outside an array literal context — evaluate inner value
                 Self::evaluate(vm, value)
             }
+            // Task 12.6: `?` error propagation — if Err, early-return; if Ok, unwrap; else pass-through
+            Expression::Propagate { value, .. } => {
+                let val = Self::evaluate(vm, value)?;
+                match val {
+                    Value::Result(false, err) => {
+                        // Propagate the error as an early return from the current function.
+                        // This reuses the same ControlFlowSignal mechanism as `return →`.
+                        Err(RuntimeError::return_value(Value::Result(false, err)))
+                    }
+                    Value::Result(true, inner) => Ok(*inner),
+                    other => Ok(other), // non-Result: pass through unchanged
+                }
+            }
         }
     }
 }

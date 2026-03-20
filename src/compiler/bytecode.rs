@@ -206,6 +206,8 @@ pub enum Instruction {
     BuildOk,
     /// Build Err(value): pop value from stack, push Result(false, value)
     BuildErr,
+    /// `?` error propagation: pop Result; if Err → early-return Err; if Ok → push unwrapped value
+    Propagate,
 
     // Struct literal construction
     /// Pop struct_name (string) + N * (key, value) pairs from stack, build Struct value.
@@ -744,6 +746,57 @@ impl BytecodeCompiler {
                                 }
                                 continue;
                             }
+                            // Task 12.5: Or-pattern — `1 | 2 | 3` matches any listed value
+                            crate::parser::ast::Pattern::Or(sub_pats) => {
+                                // Outer loop loaded LoadVar(match_var) — pop it; re-load per compare
+                                instructions.push(Instruction::Pop);
+                                let mut first_or = true;
+                                for sub_pat in sub_pats {
+                                    if let crate::parser::ast::Pattern::Identifier(name) = sub_pat {
+                                        instructions.push(Instruction::LoadVar(match_var.clone()));
+                                        if let Some(raw) = name.strip_prefix("__literal_") {
+                                            if let Ok(i) = raw.parse::<i64>() {
+                                                let idx = self.add_constant(&Literal::Integer(i));
+                                                instructions.push(Instruction::PushConstant(idx));
+                                            } else if let Ok(f) = raw.parse::<f64>() {
+                                                let idx = self.add_constant(&Literal::Float(f));
+                                                instructions.push(Instruction::PushConstant(idx));
+                                            } else {
+                                                let idx = self.add_constant(&Literal::String(raw.to_string()));
+                                                instructions.push(Instruction::PushConstant(idx));
+                                            }
+                                        } else {
+                                            instructions.push(Instruction::LoadVar(name.clone()));
+                                        }
+                                        instructions.push(Instruction::Equal);
+                                        if !first_or {
+                                            instructions.push(Instruction::Or);
+                                        }
+                                        first_or = false;
+                                    }
+                                }
+                                // Stack: [bool] — JumpIfFalse skips body if false
+                                case_fail_patch = Some(instructions.len());
+                                instructions.push(Instruction::Nop); // JumpIfFalse(next_case)
+                            }
+                            // Task 12.5: Range pattern — `1..=5` matches val in [start, end]
+                            crate::parser::ast::Pattern::Range(start_expr, end_expr) => {
+                                // Outer loop loaded LoadVar(match_var) — pop it; re-load per compare
+                                instructions.push(Instruction::Pop);
+                                // val >= start
+                                instructions.push(Instruction::LoadVar(match_var.clone()));
+                                self.compile_expression(start_expr, instructions);
+                                instructions.push(Instruction::GreaterEqual);
+                                // val <= end
+                                instructions.push(Instruction::LoadVar(match_var.clone()));
+                                self.compile_expression(end_expr, instructions);
+                                instructions.push(Instruction::LessEqual);
+                                // Both must be true
+                                instructions.push(Instruction::And);
+                                // Stack: [bool] — JumpIfFalse skips body if false
+                                case_fail_patch = Some(instructions.len());
+                                instructions.push(Instruction::Nop); // JumpIfFalse(next_case)
+                            }
                             _ => {
                                 // Unknown/unimplemented pattern — treat as wildcard (always matches)
                                 instructions.push(Instruction::Pop); // pop match value loaded above
@@ -769,9 +822,13 @@ impl BytecodeCompiler {
                                 continue;
                             }
                         }
-                        instructions.push(Instruction::Equal);
-                        case_fail_patch = Some(instructions.len());
-                        instructions.push(Instruction::Nop); // JumpIfFalse(next_case)
+                        // For Or/Range patterns, case_fail_patch is already set inside the branch
+                        // For regular Identifier patterns, we still need Equal + JumpIfFalse
+                        if !matches!(pattern, crate::parser::ast::Pattern::Or(_) | crate::parser::ast::Pattern::Range(..)) {
+                            instructions.push(Instruction::Equal);
+                            case_fail_patch = Some(instructions.len());
+                            instructions.push(Instruction::Nop); // JumpIfFalse(next_case)
+                        }
                     }
 
                     // Optional guard
@@ -1289,6 +1346,11 @@ impl BytecodeCompiler {
             Expression::Spread { value, .. } => {
                 // Spread outside an array literal — compile inner value (unusual but handle gracefully)
                 self.compile_expression(value, instructions);
+            }
+            Expression::Propagate { value, .. } => {
+                // Task 12.6: `?` operator — compile inner expr, then emit Propagate instruction
+                self.compile_expression(value, instructions);
+                instructions.push(Instruction::Propagate);
             }
         }
     }

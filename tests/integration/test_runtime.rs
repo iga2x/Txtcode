@@ -1402,3 +1402,64 @@ keys
         "Map keys must iterate in insertion order (a, b, c)"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 12.6: ? Error Propagation Operator
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_propagate_ok_unwraps_value() {
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::vm::VirtualMachine;
+    use txtcode::runtime::Value;
+
+    let source = r#"
+define → make_ok → ()
+  return → ok(42)
+end
+store → v → make_ok()?
+v
+"#;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    let result = vm.interpret_repl(&program).unwrap();
+    assert_eq!(result, Value::Integer(42), "? on Ok should unwrap the value");
+}
+
+#[test]
+fn test_propagate_err_early_returns() {
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::vm::VirtualMachine;
+    use txtcode::runtime::Value;
+
+    // The ? inside inner() should cause inner() to return the Err early.
+    // outer() captures that return value.
+    let source = r#"
+define → inner → ()
+  store → r → err("oops")
+  store → v → r?
+  return → v
+end
+define → outer → ()
+  store → result → inner()
+  return → result
+end
+outer()
+"#;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    let result = vm.interpret_repl(&program).unwrap();
+    assert_eq!(
+        result,
+        Value::Result(false, Box::new(Value::String("oops".to_string()))),
+        "? on Err should early-return the Err from the function"
+    );
+}

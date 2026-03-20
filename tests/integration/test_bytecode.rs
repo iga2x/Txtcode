@@ -1137,3 +1137,34 @@ fn test_bytecode_const_value_is_readable() {
     let result = run_ok("const → pi → 3\nreturn → pi");
     assert_eq!(result, Value::Integer(3));
 }
+
+// ---------------------------------------------------------------------------
+// Task 12.6: ? Error Propagation Operator (bytecode VM)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_bytecode_propagate_ok_unwraps() {
+    let result = run_ok(
+        "store → r → ok(99)\nstore → v → r?\nreturn → v",
+    );
+    assert_eq!(result, Value::Integer(99), "? on Ok should unwrap in bytecode VM");
+}
+
+#[test]
+fn test_bytecode_propagate_err_returns() {
+    // ? on Err should cause the current function execution to stop and return the Err.
+    // At top level this surfaces as a ReturnValue signal which run_ok would panic on.
+    // Use compile_and_run and verify the returned value is Err.
+    let result = compile_and_run(
+        "store → r → err(\"fail\")\nstore → v → r?\nreturn → v",
+    );
+    // The ? propagates the Err as a return signal; compile_and_run captures it.
+    match result {
+        Ok(v) => assert_eq!(
+            v,
+            Value::Result(false, Box::new(Value::String("fail".to_string()))),
+            "? on Err should return the Err value"
+        ),
+        Err(e) => panic!("unexpected error: {e}"),
+    }
+}

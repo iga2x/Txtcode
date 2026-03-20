@@ -218,6 +218,8 @@ fn collect_pattern_names(pattern: &Pattern) -> Vec<String> {
         }
         Pattern::Constructor { args, .. } => args.iter().flat_map(collect_pattern_names).collect(),
         Pattern::Ignore => vec![],
+        Pattern::Or(pats) => pats.iter().flat_map(collect_pattern_names).collect(),
+        Pattern::Range(..) => vec![],
     }
 }
 
@@ -478,6 +480,9 @@ fn collect_expr_idents(expr: &Expression, used: &mut HashSet<String>) {
         Expression::Spread { value, .. } => {
             collect_expr_idents(value, used);
         }
+        Expression::Propagate { value, .. } => {
+            collect_expr_idents(value, used);
+        }
         Expression::Literal(_) => {}
     }
 }
@@ -622,7 +627,8 @@ fn expr_span_line(expr: &Expression) -> usize {
         | Expression::OptionalIndex { span, .. }
         | Expression::MethodCall { span, .. }
         | Expression::StructLiteral { span, .. }
-        | Expression::Spread { span, .. } => span.line,
+        | Expression::Spread { span, .. }
+        | Expression::Propagate { span, .. } => span.line,
         Expression::Literal(_) | Expression::Identifier(_) => 1,
     }
 }

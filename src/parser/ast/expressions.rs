@@ -106,4 +106,9 @@ pub enum Expression {
         value: Box<Expression>,
         span: Span,
     },
+    /// Error propagation: expr? — if Err, early-return the error; if Ok, unwrap
+    Propagate {
+        value: Box<Expression>,
+        span: Span,
+    },
 }
