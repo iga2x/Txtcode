@@ -370,6 +370,37 @@ impl TypeChecker {
                         ));
                     }
                 }
+
+                // Task 10.2: validate element type for stdlib array mutation calls.
+                // push(arr, value) / array_push(arr, value) — 2nd arg must match arr's element type.
+                // insert(arr, index, value) / array_insert(arr, idx, value) — 3rd arg.
+                let (arr_arg_idx, val_arg_idx) = match name.as_str() {
+                    "push" | "array_push" if arguments.len() >= 2 => (0, 1),
+                    "insert" | "array_insert" if arguments.len() >= 3 => (0, 2),
+                    _ => (usize::MAX, usize::MAX),
+                };
+                if arr_arg_idx != usize::MAX {
+                    if let Expression::Identifier(arr_name) = &arguments[arr_arg_idx] {
+                        if let Some(arr_type) = self.context.get_variable(arr_name).cloned() {
+                            if let Type::Array(elem_type) = arr_type {
+                                let mut inference = TypeInference::new();
+                                inference.context = self.context.clone();
+                                if let crate::typecheck::types::InferenceResult::Known(actual) =
+                                    inference.infer_expression(&arguments[val_arg_idx])
+                                {
+                                    if !actual.is_compatible_with(&elem_type) {
+                                        self.errors.push(format!(
+                                            "Cannot push {} into array[{}]: type mismatch",
+                                            self.type_to_string(&actual),
+                                            self.type_to_string(&elem_type),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Recurse into arguments
                 for arg in arguments {
                     self.check_expression_stmt(arg);

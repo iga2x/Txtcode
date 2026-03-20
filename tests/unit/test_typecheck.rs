@@ -96,6 +96,44 @@ fn test_null_arithmetic_warning() {
     assert!(errors.iter().any(|e| e.contains("null")));
 }
 
+// Task 10.2 — push/insert type mutation validation
+#[test]
+fn test_push_type_mismatch_on_typed_array() {
+    // Define nums as array[int], then push a string — should be a type error
+    let src = "store → nums: array[int] → [1, 2, 3]\npush(nums, \"oops\")";
+    let result = check_source(src);
+    assert!(result.is_err(), "pushing string into array[int] should be a type error");
+    let errors = result.unwrap_err();
+    assert!(
+        errors.iter().any(|e| e.contains("push") || e.contains("array[int]") || e.contains("type mismatch")),
+        "error should mention push type mismatch: {:?}", errors
+    );
+}
+
+#[test]
+fn test_push_correct_type_on_typed_array() {
+    let src = "store → nums: array[int] → [1, 2]\npush(nums, 3)";
+    let result = check_source(src);
+    assert!(result.is_ok(), "pushing int into array[int] should pass: {:?}", result);
+}
+
+// Task 10.2 — Map value type mismatch
+#[test]
+fn test_map_value_type_mismatch() {
+    let src = "store → scores: map[int] → {\"a\": 1, \"b\": \"oops\"}";
+    let result = check_source(src);
+    assert!(result.is_err(), "string value in map[int] should be a type error");
+    let errors = result.unwrap_err();
+    assert!(errors.iter().any(|e| e.contains("Map value type mismatch")));
+}
+
+#[test]
+fn test_map_value_type_match() {
+    let src = "store → scores: map[int] → {\"a\": 1, \"b\": 2}";
+    let result = check_source(src);
+    assert!(result.is_ok(), "all int values in map[int] should pass: {:?}", result);
+}
+
 // Task 3.3 — Null safety mode
 #[test]
 fn test_null_assigned_to_non_nullable_is_error() {
@@ -116,4 +154,40 @@ fn test_int_assigned_to_nullable_is_ok() {
     // store → x: int? → 42 should be fine
     let result = check_source("store → x: int? → 42");
     assert!(result.is_ok(), "int assigned to int? should pass: {:?}", result);
+}
+
+// Task 10.1 — strict-types mode: errors returned, caller aborts
+#[test]
+fn test_strict_types_errors_are_returned() {
+    // Simulates --strict-types: the checker returns errors; the caller would exit(1).
+    // We verify that type errors ARE returned (the abort decision is CLI-level).
+    let result = check_source("store → x: int → \"bad\"");
+    assert!(result.is_err(), "type error should be returned for strict-types enforcement");
+    let errors = result.unwrap_err();
+    assert!(!errors.is_empty(), "at least one error expected");
+}
+
+// Task 10.1 — no-type-check mode: errors NOT reported when check is skipped
+#[test]
+fn test_no_type_check_silence() {
+    // Simulates --no-type-check: the type checker is simply not called.
+    // We verify the program is valid from a parse perspective even with type errors.
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    let src = "store → x: int → \"bad\"";
+    let mut lexer = Lexer::new(src.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse();
+    // Parse must succeed — type errors don't affect parse correctness.
+    assert!(program.is_ok(), "type-invalid program should still parse successfully: {:?}", program);
+    // And if we skip TypeChecker::check(), no errors are produced.
+    // (Skipping the check entirely is what --no-type-check does.)
+}
+
+// Task 10.1 — strict-types success: correct program produces no errors
+#[test]
+fn test_strict_types_clean_program_passes() {
+    let result = check_source("define → add → (a: int, b: int) → int\n  return → 42\nend\nadd(1, 2)");
+    assert!(result.is_ok(), "correct typed program should pass strict-types check: {:?}", result);
 }

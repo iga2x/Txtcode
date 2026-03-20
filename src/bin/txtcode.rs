@@ -19,7 +19,6 @@ use txtcode::cli::test_cmd;
 use txtcode::config::Config;
 use txtcode::lexer::Lexer;
 use txtcode::parser::Parser;
-use txtcode::typecheck::TypeChecker;
 use txtcode::validator::Validator;
 use txtcode::runtime::vm::VirtualMachine;
 use txtcode::runtime::Value;
@@ -582,41 +581,6 @@ pub fn main() {
                         }
                     }
 
-                    // Static type check — runs by default on .tc source files.
-                    // Suppressed with --no-type-check.  Aborts on violations with --strict-types.
-                    if !*no_type_check && file.extension().and_then(|e| e.to_str()) == Some("tc") {
-                        match std::fs::read_to_string(file) {
-                            Ok(source) => {
-                                let mut lexer = Lexer::new(source);
-                                match lexer.tokenize() {
-                                    Ok(tokens) => {
-                                        let mut parser = Parser::new(tokens);
-                                        match parser.parse() {
-                                            Ok(program) => {
-                                                let mut checker = TypeChecker::new();
-                                                if let Err(type_errors) = checker.check(&program) {
-                                                    for err in &type_errors {
-                                                        if *strict_types {
-                                                            eprintln!("[ERROR] type: {}", err);
-                                                        } else {
-                                                            eprintln!("[WARNING] type: {}", err);
-                                                        }
-                                                    }
-                                                    if *strict_types && !type_errors.is_empty() {
-                                                        std::process::exit(1);
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => eprintln!("type-check parse error: {}", e),
-                                        }
-                                    }
-                                    Err(e) => eprintln!("type-check lex error: {}", e),
-                                }
-                            }
-                            Err(e) => eprintln!("type-check read error: {}", e),
-                        }
-                    }
-
                     if *watch {
                         run_cli::run_file_watch(
                             file,
@@ -643,6 +607,7 @@ pub fn main() {
                             allow_ffi,
                             *strict_types,
                             audit_log.clone(),
+                            *no_type_check,
                         )
                     } else {
                         run_cli::run_file_with_allowlists(
@@ -656,6 +621,7 @@ pub fn main() {
                             allow_ffi,
                             *strict_types,
                             audit_log.as_deref(),
+                            *no_type_check,
                         )
                     };
                     if let Err(e) = result {

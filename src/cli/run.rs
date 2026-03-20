@@ -13,6 +13,7 @@ use crate::parser::Parser;
 use crate::runtime::permissions::PermissionResource;
 use crate::runtime::vm::VirtualMachine;
 use crate::tools::logger;
+use crate::typecheck::TypeChecker;
 use crate::validator::Validator;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -187,7 +188,7 @@ pub fn run_file(
     debug: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, false, None)
+    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, false, None, false)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -203,6 +204,7 @@ fn run_file_inner(
     cancel_flag: Option<Arc<AtomicBool>>,
     strict_types: bool,
     audit_log: Option<&std::path::Path>,
+    no_type_check: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     logger::log_info(&format!("Running file: {}", file.display()));
 
@@ -274,6 +276,24 @@ fn run_file_inner(
     let mut parser = Parser::new(tokens);
     let program = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
 
+    // Static type check — runs by default on .tc source files.
+    // Suppressed with no_type_check=true.  Aborts with exit(1) when strict_types=true.
+    if !no_type_check && file.extension().and_then(|e| e.to_str()) == Some("tc") {
+        let mut checker = TypeChecker::new();
+        if let Err(type_errors) = checker.check(&program) {
+            for err in &type_errors {
+                if strict_types {
+                    eprintln!("[ERROR] type: {}", err);
+                } else {
+                    eprintln!("[WARNING] type: {}", err);
+                }
+            }
+            if strict_types && !type_errors.is_empty() {
+                std::process::exit(1);
+            }
+        }
+    }
+
     // Apply obfuscation if requested by the user compiler config.
     let program = {
         let should_obfuscate = crate::config::Config::load_config()
@@ -343,12 +363,13 @@ pub fn run_file_with_allowlists(
     allow_ffi: &[String],
     strict_types: bool,
     audit_log: Option<&std::path::Path>,
+    no_type_check: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if allow_fs.is_empty() && allow_net.is_empty() && allow_ffi.is_empty() {
-        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, strict_types, audit_log);
+        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, strict_types, audit_log, no_type_check);
     }
     run_file_inner(
-        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, allow_ffi, None, strict_types, audit_log,
+        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, allow_ffi, None, strict_types, audit_log, no_type_check,
     )
 }
 
@@ -384,6 +405,7 @@ pub fn run_file_with_timeout(
     allow_ffi: &[String],
     strict_types: bool,
     audit_log: Option<std::path::PathBuf>,
+    no_type_check: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let duration = parse_duration(timeout_str).ok_or_else(|| {
         format!(
@@ -413,6 +435,7 @@ pub fn run_file_with_timeout(
             Some(cancel_flag_worker),
             strict_types,
             audit_log.as_deref(),
+            no_type_check,
         )
         .map_err(|e| e.to_string());
         let _ = tx.send(result);
@@ -456,7 +479,7 @@ pub fn run_file_watch(
 
     let mut prev_mtime = get_mtime(file);
     let _ = run_file_with_allowlists(
-        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false, None,
+        file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false, None, false,
     );
 
     loop {
@@ -470,7 +493,7 @@ pub fn run_file_watch(
         if changed {
             println!("\n── file changed, re-running ──\n");
             let _ = run_file_with_allowlists(
-                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false, None,
+                file, safe_mode, allow_exec, debug, verbose, &allow_fs, &allow_net, &allow_ffi, false, None, false,
             );
             prev_mtime = cur;
         }
