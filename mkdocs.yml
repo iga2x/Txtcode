@@ -49,6 +49,7 @@ nav:
     - CLI Reference: cli.md
     - Package Manager: packages.md
     - Benchmarking: performance.md
+  - Roadmap: roadmap.md
   - Changelog: CHANGELOG.md
   - Stability Policy: stability.md
   - Contributing: contributing.md
