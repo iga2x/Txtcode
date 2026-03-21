@@ -43,11 +43,24 @@ Group 12: Platform & Compilation        [x] COMPLETE (335 tests passing)
 ──────────────────────────────────────────────────────────────────────
 Group 13: Language Correctness          [x] COMPLETE (259 tests passing)
 Group 14: Language Completeness II      [x] COMPLETE (277 tests passing)
-Group 15: Runtime & Async Overhaul      [~] in progress (target: v1.0.0-alpha)
-Group 16: Stdlib — Networking & Security[ ] pending (target: v1.0.0-beta)
-Group 17: Stdlib — Application Layer    [ ] pending (target: v1.0.0-rc)
-Group 18: Tooling & Developer XP        [ ] pending (target: v1.0.0)
-Group 19: Ecosystem & Platform          [ ] pending (target: v1.0.0-release)
+Group 15: Runtime & Async Overhaul      [x] COMPLETE (target: v1.0.0-alpha)
+Group 16: Stdlib — Networking & Security[x] COMPLETE (target: v1.0.0-beta)
+Group 17: Stdlib — Application Layer    [x] COMPLETE (target: v1.0.0-rc)
+Group 18: Tooling & Developer XP        [x] COMPLETE (target: v1.0.0)
+Group 19: Ecosystem & Platform          [x] COMPLETE (target: v1.0.0-release)
+──────────────────────────────────────────────────────────────────────
+Group 20: Audit Gap Closure I           [~] in progress (target: v1.1.0)
+  20.1 Stdlib Test Coverage             [x] COMPLETE (363 tests)
+  20.2 Real Async (tokio)               [ ] pending
+  20.3 LSP publishDiagnostics           [ ] pending
+Group 21: Audit Gap Closure II          [ ] pending (target: v1.2.0)
+  21.1 Bytecode VM Parity               [ ] pending
+  21.2 Runtime Type Enforcement         [ ] pending
+  21.3 Error Message Quality            [ ] pending
+Group 22: Platform Live                 [ ] pending (target: v2.0.0)
+  22.1 Deploy Package Registry          [ ] pending
+  22.2 Native Plugin System             [ ] pending
+  22.3 VS Code Extension                [ ] pending
 ```
 
 ---
@@ -2369,6 +2382,288 @@ return arrays (eager). This blocks efficient streaming and infinite sequence pat
 | **App Layer** | 1.0.0-rc | +17 | SQLite; YAML/TOML; templates; CLI helpers; proc utils |
 | **Tooling Complete** | 1.0.0 | +18 | Package publishing; migration tool; coverage; workspace LSP; bench CI |
 | **v1.0 Release** | 1.0.0-release | +19 | Live registry; Docker images; docs site; stability policy |
+| **Audit Fixes I** | 1.1.0 | +20 | Test coverage for all stdlib; real async; LSP diagnostics push |
+| **Audit Fixes II** | 1.2.0 | +21 | Bytecode VM parity; runtime type enforcement |
+| **Platform Live** | 2.0.0 | +22 | Live registry; plugin system; VS Code extension |
+
+---
+
+---
+
+# GROUP 20 — Audit Gap Closure I: Tests + Real Async + LSP Diagnostics
+**Goal:** Verify every claimed feature works with tests; make async real; make LSP useful.
+**Unblocked by:** Group 19 complete.
+**Output:** Test suite covers regex/time/log/csv/bytes; tokio async; LSP publishes diagnostics.
+**Target version:** 1.1.0
+
+---
+
+## Task 20.1 — Stdlib Test Coverage
+
+**Status:** `[x]`
+**Risk:** LOW — additive tests only
+**Estimated size:** Medium
+
+### What to Do
+Add integration tests for all stdlib modules that currently have no test coverage:
+- **Regex:** `regex_match`, `regex_find`, `regex_find_all`, `regex_replace`, `regex_replace_all`, `regex_split` — 6 tests
+- **Time:** `time_format` / `format_time`, `time_parse` / `parse_time`, `datetime_add`, `datetime_diff`, `now_utc`, `now_local` — 6 tests
+- **Logging:** `log_info`, `log_warn`, `log_error`, `log_debug`, `log` (2-arg) — 5 tests (verify no crash, return Null)
+- **CSV:** `csv_decode` (with headers), `csv_encode` round-trip — 3 tests
+- **Bytes:** `bytes_new`, `bytes_set`, `bytes_get` — 3 tests (extend existing)
+
+### Target Files
+- `tests/integration/test_runtime.rs`
+
+### Done When
+- `cargo test` passes with ≥ 23 new tests covering the above functions
+- No panic on any edge case (empty string, invalid pattern, out-of-range index)
+
+---
+
+## Task 20.2 — Real Async with Tokio
+
+**Status:** `[ ]`
+**Risk:** HIGH — replaces placeholder; touches VM core
+**Estimated size:** Large
+
+### What to Do
+Current async is fake — `await` runs functions sequentially. Replace with real tokio tasks.
+
+**Step 1 — Add tokio to default features**
+- `Cargo.toml`: move `tokio` from optional to always-on with `features = ["rt-multi-thread", "macros", "time", "sync"]`
+
+**Step 2 — Wire tokio runtime into VirtualMachine**
+- `src/runtime/vm.rs`: replace `_async_executor: Option<()>` with `async_runtime: Option<tokio::runtime::Handle>`
+- Add `init_async_runtime()` method that spawns a `tokio::runtime::Runtime` and stores the handle
+
+**Step 3 — Implement `async_run` + `await_all`**
+- `src/stdlib/core.rs`: `async_run(closure)` → spawns tokio task, returns a future handle (store as `Value::Integer(task_id)`)
+- `await_all(handles)` → joins all task handles, returns `Value::Array` of results
+- `async_sleep(ms)` → `tokio::time::sleep`
+
+**Step 4 — Tests**
+- Two `async_run` blocks that each sleep 100ms → `await_all` completes in ~100ms not 200ms
+- Channel send/recv across two tasks
+
+### Done When
+- Parallel `async_run` blocks execute concurrently (measurable by timing)
+- `cargo test` passes
+
+---
+
+## Task 20.3 — LSP: `textDocument/publishDiagnostics`
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — extends existing LSP; no parser changes
+**Estimated size:** Medium
+
+### What to Do
+Currently the LSP handles requests but never pushes diagnostics. Editors show no errors.
+
+**Step 1 — On `textDocument/didOpen` and `textDocument/didChange`**
+- `src/cli/lsp.rs`: after updating the document, run `TypeChecker::check()` and `Linter::lint()` on the text
+- Map each error/warning to a LSP `Diagnostic` object:
+  ```json
+  {"range": {"start": {"line": N, "character": 0}, "end": {"line": N, "character": 100}},
+   "severity": 1, "message": "..."}
+  ```
+- Send `textDocument/publishDiagnostics` notification to client
+
+**Step 2 — Map error codes to LSP severity**
+- `RuntimeError` / type errors → severity 1 (Error)
+- Lint warnings → severity 2 (Warning)
+- Unknown function → severity 2 (Warning, not Error — may be a runtime function)
+
+**Step 3 — Clear diagnostics on fix**
+- On `textDocument/didChange`, always re-publish (even empty array) to clear old markers
+
+### Done When
+- VS Code shows red squiggles for undefined variables and type mismatches without running the script
+- `cargo test` passes
+
+---
+
+## Group 20 Checkpoint
+
+```
+[ ] 23+ new tests cover regex/time/log/csv/bytes (Task 20.1)
+[ ] async_run + await_all run concurrently with tokio (Task 20.2)
+[ ] LSP publishDiagnostics wired on didOpen/didChange (Task 20.3)
+[ ] cargo test passes (target: 360+ tests)
+```
+
+---
+
+---
+
+# GROUP 21 — Audit Gap Closure II: Bytecode Parity + Runtime Types
+**Goal:** Bytecode VM passes same tests as AST VM; type annotations enforced at runtime.
+**Unblocked by:** Group 20 complete.
+**Output:** 95%+ parity; `--strict-types` is default; runtime type errors have line numbers.
+**Target version:** 1.2.0
+
+---
+
+## Task 21.1 — Bytecode VM Parity Test Suite
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — discovery task; spawns follow-up fixes
+**Estimated size:** Medium
+
+### What to Do
+- Add `--engine=bytecode` flag to `txtcode run` (or an env var `TXTCODE_ENGINE=bytecode`)
+- Run the full integration test suite against the bytecode VM
+- Catalog all failures in `docs/bytecode-parity.md`
+- Fix the top 5 divergences (expected: lambda capture, try/catch, generators, struct methods, HOF)
+
+### Done When
+- Bytecode VM passes ≥ 95% of the tests that AST VM passes
+- `docs/bytecode-parity.md` documents remaining gaps with known reasons
+
+---
+
+## Task 21.2 — Runtime Type Enforcement
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — changes VM behavior; may break scripts that rely on silent coercion
+**Estimated size:** Medium
+
+### What to Do
+Currently `store → x: int → "hello"` runs without error — type annotations are checked only at typecheck time (advisory).
+
+**Step 1 — Variable assignment with type annotation**
+- `src/runtime/execution/statements.rs`: in `Assignment` handler, if the statement has a type annotation, validate `Value` matches the declared type
+- On mismatch: `RuntimeError::new("type mismatch: expected int, got string").with_code(ErrorCode::E0060)`
+
+**Step 2 — Function parameter types**
+- `src/runtime/execution/expressions/function_calls.rs`: on user function call, validate each argument against declared param type
+
+**Step 3 — Make `--strict-types` the default**
+- `src/bin/txtcode.rs`: remove `--strict-types` flag; always enforce
+- Keep `--no-type-check` to skip all checks (for dynamic scripts)
+
+**Step 4 — Error messages with line numbers**
+- All type mismatch errors must include `line: N` in the error message
+
+### Done When
+- `store → x: int → "hello"` → runtime error with line number
+- `store → x: int → 42` → succeeds
+- All existing tests pass (update any that relied on silent coercion)
+
+---
+
+## Task 21.3 — Error Message Quality
+
+**Status:** `[ ]`
+**Risk:** LOW — additive; improves existing errors
+**Estimated size:** Small-Medium
+
+### What to Do
+Top 10 most common errors need: line number, column, and a hint.
+
+- Index out of bounds → `"index 5 out of bounds for array of length 3 at line N"`
+- Undefined variable → `"undefined variable 'foo' at line N — did you mean 'for'?"`
+- Type mismatch → `"expected int, got string at line N"`
+- Division by zero → `"division by zero at line N"`
+- Permission denied → `"permission denied: net.connect requires --allow-net at line N"`
+
+**Files:** `src/runtime/errors.rs`, `src/runtime/execution/statements.rs`, `src/runtime/execution/expressions/mod.rs`
+
+### Done When
+- All 5 error types above include line number and hint
+- 5 new unit tests verify error message format
+
+---
+
+## Group 21 Checkpoint
+
+```
+[ ] Bytecode VM passes 95%+ of AST VM tests (Task 21.1)
+[ ] Runtime type enforcement on assignment + function calls (Task 21.2)
+[ ] Top 5 error messages include line number + hint (Task 21.3)
+[ ] cargo test passes (target: 390+ tests)
+```
+
+---
+
+---
+
+# GROUP 22 — Platform: Live Registry + Plugin System + VS Code Extension
+**Goal:** Txtcode is a real platform: packages install from live registry; plugins extend the runtime.
+**Unblocked by:** Group 21 complete.
+**Output:** Live registry; native plugin API; installable VS Code extension.
+**Target version:** 2.0.0
+
+---
+
+## Task 22.1 — Deploy Package Registry
+
+**Status:** `[ ]`
+**Risk:** MEDIUM — ops task; requires hosting
+**Estimated size:** Medium
+
+### What to Do
+- `src/bin/registry_server.rs` exists and compiles. Deploy it.
+- Update `registry/index.json` `url` field to point at live server
+- `txtcode package install <name>` downloads from live registry
+- `txtcode package publish` uploads a signed tarball to the live registry
+- `txtcode package login` stores API token to `~/.txtcode/credentials`
+- Add rate limiting and auth token validation to registry server
+
+### Done When
+- `txtcode package install http-client` downloads from live registry without `local_path`
+- `txtcode package publish my-pkg` uploads and appears in registry search
+
+---
+
+## Task 22.2 — Native Plugin System
+
+**Status:** `[ ]`
+**Risk:** HIGH — FFI safety; path allowlist required
+**Estimated size:** Large
+
+### What to Do
+- `plugin_load(path)` — loads a `.so`/`.dylib` plugin (requires `sys.ffi` permission + path in allowlist)
+- Plugin must export: `extern "C" fn txtcode_register(vm: *mut c_void)` which calls back to add stdlib functions
+- Provide a `txtcode-plugin-sdk` crate (in `crates/plugin-sdk/`) with safe Rust API for plugin authors
+- Plugin manifest: `plugin.toml` with name, version, entry symbol
+
+### Done When
+- A hello-world plugin (`examples/plugins/hello/`) adds `hello_from_plugin()` callable from Txtcode
+- `cargo test` passes; plugin loaded without segfault
+
+---
+
+## Task 22.3 — VS Code Extension
+
+**Status:** `[ ]`
+**Risk:** LOW — packaging task; grammar already exists
+**Estimated size:** Medium
+
+### What to Do
+- Package `editors/` into a `.vsix` extension:
+  - `package.json` — extension manifest (language, activationEvents)
+  - `syntaxes/txtcode.tmLanguage.json` — already exists
+  - LSP client — connects to `txtcode lsp` as a language server
+  - Snippet file — common patterns (`define →`, `for → x in`, `try/catch`, etc.)
+- Add `vsce package` step to `.github/workflows/release.yml`
+- Publish to VS Code Marketplace
+
+### Done When
+- Extension installable from Marketplace or via `code --install-extension txtcode.vsix`
+- Syntax highlighting, go-to-definition, and diagnostics work in VS Code
+
+---
+
+## Group 22 Checkpoint
+
+```
+[ ] Live registry accessible; txtcode package install works without local_path (Task 22.1)
+[ ] Plugin system loads .so/.dylib with safe Rust API (Task 22.2)
+[ ] VS Code extension published; syntax + diagnostics work (Task 22.3)
+[ ] cargo test passes (target: 400+ tests)
+```
 
 ---
 

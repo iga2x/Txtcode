@@ -3163,3 +3163,178 @@ fn test_filter_test_matches_filename() {
     let filter = "math";
     assert!(name.contains(filter), "Filter should match filename substring");
 }
+
+// ── GROUP 20 — Task 20.1: Stdlib Test Coverage ────────────────────────────────
+
+// Regex tests
+#[test]
+fn test_regex_match_basic() {
+    let result = run_ast_repl(r#"regex_match("[0-9]+", "abc123")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Boolean(true));
+}
+
+#[test]
+fn test_regex_match_no_match() {
+    let result = run_ast_repl(r#"regex_match("[0-9]+", "abc")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Boolean(false));
+}
+
+#[test]
+fn test_regex_find_returns_match_map() {
+    let result = run_ast_repl(r#"regex_find("[0-9]+", "abc123def")["match"]"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("123".to_string()));
+}
+
+#[test]
+fn test_regex_find_no_match_returns_null() {
+    let result = run_ast_repl(r#"regex_find("[0-9]+", "abc")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Null);
+}
+
+#[test]
+fn test_regex_find_all_returns_array() {
+    let result = run_ast_repl(r#"len(regex_find_all("[0-9]+", "a1b22c333"))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(3));
+}
+
+#[test]
+fn test_regex_replace_first() {
+    let result = run_ast_repl(r#"regex_replace("[0-9]+", "abc123def456", "NUM")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("abcNUMdef456".to_string()));
+}
+
+#[test]
+fn test_regex_replace_all() {
+    let result = run_ast_repl(r#"regex_replace_all("[0-9]+", "abc123def456", "NUM")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("abcNUMdefNUM".to_string()));
+}
+
+#[test]
+fn test_regex_split_basic() {
+    let result = run_ast_repl(r#"len(regex_split(",", "a,b,c"))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(3));
+}
+
+#[test]
+fn test_regex_invalid_pattern_errors() {
+    let result = run_ast_repl(r#"regex_match("[invalid", "text")"#);
+    assert!(result.is_err(), "invalid regex pattern should return error");
+}
+
+// Time / date tests
+#[test]
+fn test_time_format_epoch_utc() {
+    let result = run_ast_repl(r#"format_datetime(0, "%Y-%m-%d", "UTC")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("1970-01-01".to_string()));
+}
+
+#[test]
+fn test_time_format_local_no_crash() {
+    // Just check it returns a string without panicking
+    let result = run_ast_repl("format_time(0, \"%Y\")");
+    assert!(matches!(result.unwrap(), txtcode::runtime::Value::String(_)));
+}
+
+#[test]
+fn test_datetime_add_days_v2() {
+    // 0 + 1 day = 86400 seconds
+    let result = run_ast_repl(r#"datetime_add(0, 1, "days")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(86400));
+}
+
+#[test]
+fn test_datetime_add_hours_v2() {
+    let result = run_ast_repl(r#"datetime_add(0, 2, "hours")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(7200));
+}
+
+#[test]
+fn test_datetime_diff_seconds_v2() {
+    let result = run_ast_repl(r#"datetime_diff(100, 40, "seconds")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(60));
+}
+
+#[test]
+fn test_datetime_diff_days_v2() {
+    let result = run_ast_repl(r#"datetime_diff(86400, 0, "days")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(1));
+}
+
+#[test]
+fn test_now_utc_returns_string() {
+    let result = run_ast_repl("now_utc()");
+    match result.unwrap() {
+        txtcode::runtime::Value::String(s) => assert!(s.contains("T"), "now_utc should return ISO8601: {}", s),
+        other => panic!("expected String, got {:?}", other),
+    }
+}
+
+// Logging tests (verify no panic, returns Null)
+#[test]
+fn test_log_info_returns_null() {
+    let result = run_ast_repl(r#"log_info("hello world")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Null);
+}
+
+#[test]
+fn test_log_warn_returns_null() {
+    let result = run_ast_repl(r#"log_warn("something fishy")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Null);
+}
+
+#[test]
+fn test_log_error_returns_null() {
+    let result = run_ast_repl(r#"log_error("something broke")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Null);
+}
+
+#[test]
+fn test_log_debug_returns_null() {
+    let result = run_ast_repl(r#"log_debug("verbose info")"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Null);
+}
+
+#[test]
+fn test_log_multi_args() {
+    // log_info accepts multiple args joined with spaces
+    let result = run_ast_repl(r#"log_info("hello", "world", 42)"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Null);
+}
+
+// CSV tests
+#[test]
+fn test_csv_decode_basic() {
+    let result = run_ast_repl(r#"len(csv_decode("a,b,c\n1,2,3"))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(2));
+}
+
+#[test]
+fn test_csv_roundtrip() {
+    let result = run_ast_repl(r#"csv_decode(csv_to_string([["x", "y"], [1, 2]]))"#);
+    match result.unwrap() {
+        txtcode::runtime::Value::Array(rows) => assert_eq!(rows.len(), 2),
+        other => panic!("expected Array, got {:?}", other),
+    }
+}
+
+// Bytes extended tests
+#[test]
+fn test_bytes_new_length() {
+    let result = run_ast_repl("bytes_len(bytes_new(8))");
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(8));
+}
+
+#[test]
+fn test_bytes_set_get_roundtrip() {
+    let result = run_ast_repl(
+        "store → b → bytes_new(4)\nstore → b2 → bytes_set(b, 2, 255)\nbytes_get(b2, 2)"
+    );
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(255));
+}
+
+#[test]
+fn test_bytes_from_string_to_hex() {
+    // "A" = 0x41
+    let result = run_ast_repl(r#"bytes_to_hex(bytes_from_hex("41"))"#);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::String("41".to_string()));
+}
