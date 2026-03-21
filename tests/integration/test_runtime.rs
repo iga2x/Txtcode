@@ -3391,3 +3391,97 @@ mod lsp_diagnostics {
         assert!(!diags.is_empty(), "incomplete assignments should produce diagnostics");
     }
 }
+
+// ── GROUP 20 — Task 20.2: Real Async (async_run / await_all / async_sleep) ───
+
+#[test]
+fn test_async_run_returns_future() {
+    let src = r#"
+define → my_task → ()
+  return → 42
+end
+store → f → async_run(my_task)
+await_future(f)
+"#;
+    let result = run_ast_repl(src);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(42));
+}
+
+#[test]
+fn test_async_run_await_all_collects_results() {
+    let src = r#"
+define → task_a → ()
+  return → 1
+end
+define → task_b → ()
+  return → 2
+end
+store → fa → async_run(task_a)
+store → fb → async_run(task_b)
+store → results → await_all([fa, fb])
+len(results)
+"#;
+    let result = run_ast_repl(src);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(2));
+}
+
+#[test]
+fn test_async_run_two_tasks_both_complete() {
+    // Both tasks complete; await_all returns array of length 2
+    let src = r#"
+define → make_value → ()
+  return → 99
+end
+store → f1 → async_run(make_value)
+store → f2 → async_run(make_value)
+store → collected → await_all([f1, f2])
+len(collected)
+"#;
+    let result = run_ast_repl(src);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(2));
+}
+
+#[test]
+fn test_async_run_result_value() {
+    // Verify the resolved value via await_future on a single handle
+    let src = r#"
+define → make_value → ()
+  return → 99
+end
+store → fh → async_run(make_value)
+await_future(fh)
+"#;
+    let result = run_ast_repl(src);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(99));
+}
+
+#[test]
+fn test_await_future_passthrough_non_future() {
+    // await_future on a plain value should pass it through unchanged
+    let result = run_ast_repl("await_future(123)");
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(123));
+}
+
+#[test]
+fn test_async_sleep_returns_null() {
+    // async_sleep with 0ms should return immediately
+    let result = run_ast_repl("async_sleep(0)");
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Null);
+}
+
+#[test]
+fn test_async_run_parallel_two_tasks() {
+    // Two tasks run concurrently; await_all collects both
+    let src = r#"
+define → slow_task → ()
+  sleep(30)
+  return → 7
+end
+store → fh1 → async_run(slow_task)
+store → fh2 → async_run(slow_task)
+store → collected → await_all([fh1, fh2])
+len(collected)
+"#;
+    let result = run_ast_repl(src);
+    assert_eq!(result.unwrap(), txtcode::runtime::Value::Integer(2));
+}

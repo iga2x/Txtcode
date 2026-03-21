@@ -116,6 +116,17 @@ pub trait ExpressionVM {
         ))
     }
 
+    /// Spawn `func` in a new OS thread and return a `Value::Future`.
+    ///
+    /// This is the free-standing `async_run(closure)` stdlib function — does NOT
+    /// require a nursery block. Pair with `await_all([handle, ...])` to collect results.
+    /// Default implementation returns an error (no async support).
+    fn async_run(&mut self, _func: Value) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::new(
+            "async_run requires an async-capable VM".to_string(),
+        ))
+    }
+
     /// Attempt to spawn `name` as an async task.
     ///
     /// Returns `Some(Ok(Value::Future(…)))` when the function is async and a

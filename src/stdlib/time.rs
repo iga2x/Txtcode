@@ -19,14 +19,16 @@ impl TimeLib {
                     Err(_) => Err(RuntimeError::new("Failed to get current time".to_string())),
                 }
             }
-            "sleep" => {
+            "sleep" | "async_sleep" => {
+                // async_sleep is the same as sleep inside a thread (the thread sleeps,
+                // not the event loop — acceptable for script-level async tasks).
                 let ms = if let Some(Value::Integer(m)) = args.first() {
                     *m as u64
                 } else if let Some(Value::Float(f)) = args.first() {
                     *f as u64
                 } else {
                     return Err(RuntimeError::new(
-                        "sleep() requires a number argument (milliseconds)".to_string(),
+                        "sleep/async_sleep requires a number argument (milliseconds)".to_string(),
                     ));
                 };
                 std::thread::sleep(std::time::Duration::from_millis(ms));

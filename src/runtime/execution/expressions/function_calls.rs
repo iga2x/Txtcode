@@ -49,6 +49,25 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         return vm.with_timeout_function(ms, func);
     }
 
+    // Task 20.2: Handle async_run before stdlib — needs VM access to spawn threads
+    if name == "async_run" {
+        let func = args.into_iter().next().ok_or_else(|| {
+            vm.create_error("async_run requires 1 argument (a zero-arg closure)".to_string())
+        })?;
+        return vm.async_run(func);
+    }
+
+    // Task 20.2: Handle await_future (single future resolve) before stdlib
+    if name == "await_future" {
+        let fut = args.into_iter().next().ok_or_else(|| {
+            vm.create_error("await_future requires 1 argument (a Future)".to_string())
+        })?;
+        return match fut {
+            Value::Future(handle) => handle.resolve().map_err(|e| RuntimeError::new(e)),
+            other => Ok(other), // pass-through for non-futures
+        };
+    }
+
     // Task 15.1: Handle nursery_spawn before stdlib — needs VM access to spawn threads
     if name == "nursery_spawn" {
         let func = args.into_iter().next().ok_or_else(|| {

@@ -333,7 +333,10 @@ impl StdLib {
             || name == "os_version"
         {
             SysLib::call_function(name, args, exec_allowed, effective_permission_checker)
-        } else if name == "now" || (name == "sleep" && args.len() == 1) {
+        } else if name == "now"
+            || (name == "sleep" && args.len() == 1)
+            || (name == "async_sleep" && args.len() == 1)
+        {
             TimeLib::call_function(name, args, time_override)
         } else if name.starts_with("json_") {
             JsonLib::call_function(name, args)

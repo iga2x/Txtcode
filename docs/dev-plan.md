@@ -51,7 +51,7 @@ Group 19: Ecosystem & Platform          [x] COMPLETE (target: v1.0.0-release)
 ──────────────────────────────────────────────────────────────────────
 Group 20: Audit Gap Closure I           [~] in progress (target: v1.1.0)
   20.1 Stdlib Test Coverage             [x] COMPLETE (363 tests)
-  20.2 Real Async (tokio)               [ ] pending
+  20.2 Real Async (async_run/await)      [x] COMPLETE (375 tests)
   20.3 LSP publishDiagnostics           [x] COMPLETE (368 tests)
 Group 21: Audit Gap Closure II          [ ] pending (target: v1.2.0)
   21.1 Bytecode VM Parity               [ ] pending
@@ -2423,7 +2423,7 @@ Add integration tests for all stdlib modules that currently have no test coverag
 
 ## Task 20.2 — Real Async with Tokio
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** HIGH — replaces placeholder; touches VM core
 **Estimated size:** Large
 

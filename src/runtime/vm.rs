@@ -871,6 +871,48 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
         }
     }
 
+    /// Task 20.2: Free-standing async_run(closure) — spawns an OS thread and returns
+    /// a `Value::Future` that can be passed to `await_all([...])`.
+    /// Does NOT require a nursery block.
+    fn async_run(&mut self, func: Value) -> Result<Value, RuntimeError> {
+        let (name, params, body, captured_env) = match func {
+            Value::Function(n, p, b, e) => (n, p, b, e),
+            _ => return Err(RuntimeError::new(
+                "async_run expects a function (zero-argument closure) as argument".to_string(),
+            )),
+        };
+
+        let globals = self.scope_manager.globals().clone();
+        let exec_allowed = self.exec_allowed;
+
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+
+        std::thread::spawn(move || {
+            use crate::runtime::execution::expressions::call_user_function;
+            use crate::parser::ast::{Expression, Literal};
+
+            let mut child_vm = VirtualMachine::new();
+            child_vm.set_exec_allowed(exec_allowed);
+            for (k, v) in globals {
+                child_vm.define_global(k, v);
+            }
+            let dummy_expr = Expression::Literal(Literal::Null);
+            let result = call_user_function(
+                &mut child_vm,
+                &name,
+                &params,
+                &body,
+                &captured_env,
+                &[],
+                &dummy_expr,
+            )
+            .map_err(|e: RuntimeError| e.to_string());
+            sender.send(result);
+        });
+
+        Ok(Value::Future(handle))
+    }
+
     /// Task 15.1: Spawn a function as an async nursery task.
     /// Pushes the resulting FutureHandle into the active NURSERY_HANDLES collector.
     fn spawn_for_nursery(&mut self, func: Value) -> Result<(), RuntimeError> {
