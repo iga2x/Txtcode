@@ -52,7 +52,7 @@ Group 19: Ecosystem & Platform          [x] COMPLETE (target: v1.0.0-release)
 Group 20: Audit Gap Closure I           [~] in progress (target: v1.1.0)
   20.1 Stdlib Test Coverage             [x] COMPLETE (363 tests)
   20.2 Real Async (tokio)               [ ] pending
-  20.3 LSP publishDiagnostics           [ ] pending
+  20.3 LSP publishDiagnostics           [x] COMPLETE (368 tests)
 Group 21: Audit Gap Closure II          [ ] pending (target: v1.2.0)
   21.1 Bytecode VM Parity               [ ] pending
   21.2 Runtime Type Enforcement         [ ] pending
@@ -2454,7 +2454,7 @@ Current async is fake — `await` runs functions sequentially. Replace with real
 
 ## Task 20.3 — LSP: `textDocument/publishDiagnostics`
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Risk:** MEDIUM — extends existing LSP; no parser changes
 **Estimated size:** Medium
 

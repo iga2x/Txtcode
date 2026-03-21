@@ -314,11 +314,11 @@ fn write_message(stdout: &mut dyn Write, value: &Value) -> io::Result<()> {
 
 // ── Diagnostics ──────────────────────────────────────────────────────────────
 
-/// Parse `source` and return LSP diagnostics (errors only).
+/// Parse + lint + typecheck `source` and return LSP diagnostics.
 fn diagnostics_for(source: &str) -> Vec<Value> {
     let mut diags = Vec::new();
 
-    // Lex phase
+    // Lex phase — hard stop on lex error
     let mut lexer = crate::lexer::Lexer::new(source.to_string());
     let tokens = match lexer.tokenize() {
         Ok(t) => t,
@@ -328,15 +328,63 @@ fn diagnostics_for(source: &str) -> Vec<Value> {
         }
     };
 
-    // Parse phase
+    // Parse phase — hard stop on parse error
     let mut parser = crate::parser::Parser::new(tokens);
-    if let Err(e) = parser.parse() {
-        // Try to extract line/col from error message (format: "line X col Y: ...")
-        let (line, col) = extract_position(&e.to_string());
-        diags.push(make_diagnostic(line, col, line, col + 1, &e.to_string(), 1));
+    let program = match parser.parse() {
+        Ok(p) => p,
+        Err(e) => {
+            let (line, col) = extract_position(&e.to_string());
+            diags.push(make_diagnostic(line, col, line, col + 1, &e.to_string(), 1));
+            return diags;
+        }
+    };
+
+    // Type-check phase — advisory warnings (severity 2)
+    let mut checker = crate::typecheck::checker::TypeChecker::new();
+    if let Err(msgs) = checker.check(&program) {
+        for msg in msgs {
+            let (line, col) = extract_position(&msg);
+            diags.push(make_diagnostic(line, col, line, col + 80, &msg, 2));
+        }
+    }
+
+    // Lint phase — run linter for style / semantic warnings
+    if let Ok(issues) = crate::tools::linter::Linter::lint_source(source) {
+        for issue in issues {
+            // line/col from linter are 1-based; LSP wants 0-based
+            let line = issue.line.saturating_sub(1);
+            let col = issue.column.saturating_sub(1);
+            let severity: u8 = match issue.severity {
+                crate::tools::linter::Severity::Error => 1,
+                crate::tools::linter::Severity::Warning => 2,
+                crate::tools::linter::Severity::Info => 3,
+            };
+            diags.push(make_diagnostic(line, col, line, col + issue.message.len(), &issue.message, severity));
+        }
     }
 
     diags
+}
+
+/// A typed diagnostic suitable for testing, extracted from the JSON representation.
+#[derive(Debug)]
+pub struct LspDiagnostic {
+    pub message: String,
+    pub severity: u8,
+    pub line: usize,
+}
+
+/// Public test helper — returns typed diagnostics for the given source.
+pub fn diagnostics_for_test(source: &str) -> Vec<LspDiagnostic> {
+    diagnostics_for(source)
+        .into_iter()
+        .filter_map(|d| {
+            let message = d["message"].as_str()?.to_string();
+            let severity = d["severity"].as_u64()? as u8;
+            let line = d["range"]["start"]["line"].as_u64().unwrap_or(0) as usize;
+            Some(LspDiagnostic { message, severity, line })
+        })
+        .collect()
 }
 
 fn make_diagnostic(
