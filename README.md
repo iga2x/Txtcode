@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icons/logo-512-white.png" alt="Txtcode Logo" width="200"/>
+</p>
+
 # Txtcode Programming Language v1.0.0
 
 **Txtcode** © 2026 — A multipurpose, security-native programming language for automation, networking, and system scripting.

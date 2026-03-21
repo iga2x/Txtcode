@@ -7,6 +7,8 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  logo: assets/logo.png
+  favicon: assets/favicon.ico
   features:
     - navigation.tabs
     - navigation.sections
@@ -16,14 +18,14 @@ theme:
     - content.code.copy
   palette:
     - scheme: default
-      primary: indigo
-      accent: blue
+      primary: cyan
+      accent: light-blue
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: indigo
-      accent: blue
+      primary: cyan
+      accent: light-blue
       toggle:
         icon: material/brightness-4
         name: Switch to light mode

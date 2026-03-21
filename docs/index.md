@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon-512.png" alt="Txtcode Logo" width="160"/>
+</p>
+
 # Txt-code Programming Language
 
 **Txt-code** © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.
