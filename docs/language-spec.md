@@ -756,24 +756,48 @@ store → abs → x >= 0 ? x : -x
 
 ### 3.8 Operator Precedence (highest to lowest)
 
-| Level | Operators |
-|-------|-----------|
-| 1 | `()` parentheses, `[]` index, `.` member, `?.` `?[]` `?()` optional |
-| 2 | `++` `--` (prefix), `-` (unary), `not`, `~` |
-| 3 | `**` |
-| 4 | `*` `/` `%` |
-| 5 | `+` `-` |
-| 6 | `<<` `>>` |
-| 7 | `&` |
-| 8 | `^` |
-| 9 | `\|` |
-| 10 | `<` `>` `<=` `>=` |
-| 11 | `==` `!=` |
-| 12 | `and` |
-| 13 | `or` |
-| 14 | `??` (null coalesce) |
-| 15 | `? :` (ternary) |
-| 16 | `→` (arrow, assignment/call) |
+Higher level number = lower precedence (binds more loosely).
+`L` = left-associative · `R` = right-associative · `—` = postfix/prefix (non-binary).
+
+| Level | Operators | Assoc | Notes |
+|-------|-----------|-------|-------|
+| 1 | `()` `[]` `.` `?.` `?[]` `?()` | L | call, index, member access, optional-chain |
+| 2 | postfix `?` | — | error propagation; binds to immediate left operand |
+| 3 | prefix `++` `--` `-` `not` `~` | — | unary; `not` is logical NOT, `~` is bitwise NOT |
+| 4 | `**` | **R** | power; right-associative: `2**3**2` = `2**(3**2)` = 512 |
+| 5 | `*` `/` `%` | L | multiply, floor-divide, floor-modulo |
+| 6 | `+` `-` | L | add/concat, subtract |
+| 7 | `<<` `>>` | L | bitwise shift |
+| 8 | `&` | L | bitwise AND |
+| 9 | `^` | L | bitwise XOR |
+| 10 | `\|` | L | bitwise OR |
+| 11 | `<` `>` `<=` `>=` | L | comparison |
+| 12 | `==` `!=` | L | equality |
+| 13 | `and` | L | logical AND (short-circuit) |
+| 14 | `or` | L | logical OR (short-circuit) |
+| 15 | `??` | L | null-coalesce: returns left if non-null, else right |
+| 16 | `? :` | R | ternary conditional |
+| 17 | `\|>` | L | pipe: `x \|> f` desugars to `f(x)` |
+
+**Key disambiguation examples:**
+
+```txtcode
+2 + 3 * 4        ;; 14  (* before +)
+2 ** 3 * 4       ;; 32  (** before *, left-assoc mult: (2**3)*4)
+2 ** 3 ** 2      ;; 512 (right-assoc **: 2**(3**2))
+not true and false  ;; false  (not before and: (not true) and false)
+1 | 2 & 3        ;; 3   (& before |: 1|(2&3))
+a ?? b ? c : d   ;; (a??b) ? c : d  (?? before ternary)
+x |> f |> g      ;; g(f(x))  (left-assoc pipe)
+```
+
+**Integer division and modulo use floor semantics** (result has the same sign as the divisor):
+```txtcode
+7 / 2      ;; 3   (not 3.5 — integer floor division)
+-7 / 2     ;; -4  (floor toward −∞, not truncation toward 0)
+-7 % 3     ;; 2   (floor modulo: same sign as divisor 3)
+7 % -3     ;; -2  (floor modulo: same sign as divisor -3)
+```
 
 ---
 
@@ -1159,6 +1183,52 @@ end
 1. An uncaught `RuntimeError` propagates up the call stack until a `try/catch` handles it.
 2. If it reaches the top-level without being caught, the interpreter prints it to `stderr` and exits with code `1`.
 3. Errors from async functions propagate when the `Future` is `await`-ed.
+
+### 7.4a `?` and `try/catch` Interaction
+
+`?` and `try/catch` are independent mechanisms with no interaction:
+
+| Mechanism | Scope | Interacts with `try/catch`? |
+|-----------|-------|------------------------------|
+| `?` | **Function boundary** — early-return from current function | **No** |
+| `throw` / VM error | **Block boundary** — caught by innermost enclosing `try` | **Yes** |
+
+**Rule 1 — `?` propagates via function return, not via catch.**
+Using `?` inside a `try` block does NOT trigger the `catch` handler.
+`?` exits the current *function* by emitting a `ReturnValue` signal, which bypasses all `try/catch` blocks.
+
+```txtcode
+define → risky → ()
+  try
+    store → r → err("oops")?   ;; ? early-returns from risky(), does NOT hit catch
+    return → ok("never reached")
+  catch e
+    return → ok(f"caught: {e}")  ;; this block is NEVER executed when ? fires
+  end
+end
+
+store → result → risky()
+# result is err("oops"), NOT ok("caught: oops")
+```
+
+**Rule 2 — `throw` inside a function IS caught by a caller's `try/catch`.**
+```txtcode
+define → explode → ()
+  throw → "boom"
+end
+
+try
+  explode()         ;; throw propagates normally and is caught here
+catch e
+  print → e         ;; prints "boom"
+end
+```
+
+**Rule 3 — `?` at the top level (outside any function) is a runtime error [E0034].**
+```txtcode
+store → r → err("bad")
+r?   ;; RuntimeError [E0034]: ? operator used outside of a function body
+```
 
 ### 7.5 Standard Error Conditions
 

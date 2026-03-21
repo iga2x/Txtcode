@@ -16,8 +16,214 @@
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
+
+// ── Workspace Index ───────────────────────────────────────────────────────────
+
+/// A single symbol definition found while indexing workspace files.
+#[derive(Debug, Clone)]
+pub struct SymbolInfo {
+    pub name: String,
+    /// LSP SymbolKind: 12=Function, 5=Class/Struct, 13=Variable, 6=Method
+    pub kind: u32,
+    pub uri: String,
+    pub line: usize,
+    pub col: usize,
+}
+
+/// Cross-file symbol index built by scanning all `.tc` files in the workspace.
+pub struct WorkspaceIndex {
+    /// symbol name → list of definition locations (multiple files may define it)
+    pub definitions: HashMap<String, Vec<SymbolInfo>>,
+    /// uri → list of symbols defined in that file
+    pub symbols_by_file: HashMap<String, Vec<SymbolInfo>>,
+}
+
+impl WorkspaceIndex {
+    pub fn new() -> Self {
+        Self {
+            definitions: HashMap::new(),
+            symbols_by_file: HashMap::new(),
+        }
+    }
+
+    /// Scan all `.tc` files under `root` and index their top-level symbols.
+    pub fn build_from_root(&mut self, root: &Path) {
+        self.definitions.clear();
+        self.symbols_by_file.clear();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        // Skip hidden dirs and target/
+                        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        if !name.starts_with('.') && name != "target" {
+                            stack.push(path);
+                        }
+                    } else if path.extension().and_then(|e| e.to_str()) == Some("tc") {
+                        let uri = path_to_uri(&path);
+                        if let Ok(src) = std::fs::read_to_string(&path) {
+                            let syms = index_source(&src, &uri);
+                            for sym in &syms {
+                                self.definitions
+                                    .entry(sym.name.clone())
+                                    .or_default()
+                                    .push(sym.clone());
+                            }
+                            self.symbols_by_file.insert(uri, syms);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Update the index for a single file (called on didOpen/didChange).
+    pub fn update_file(&mut self, uri: &str, source: &str) {
+        // Remove old symbols for this file
+        if let Some(old_syms) = self.symbols_by_file.remove(uri) {
+            for sym in old_syms {
+                if let Some(defs) = self.definitions.get_mut(&sym.name) {
+                    defs.retain(|d| d.uri != uri);
+                    if defs.is_empty() {
+                        self.definitions.remove(&sym.name);
+                    }
+                }
+            }
+        }
+        // Index the new content
+        let syms = index_source(source, uri);
+        for sym in &syms {
+            self.definitions
+                .entry(sym.name.clone())
+                .or_default()
+                .push(sym.clone());
+        }
+        self.symbols_by_file.insert(uri.to_string(), syms);
+    }
+
+    /// Look up the definition locations of `name` across the entire workspace.
+    pub fn find_definition(&self, name: &str) -> Vec<&SymbolInfo> {
+        self.definitions.get(name).map(|v| v.iter().collect()).unwrap_or_default()
+    }
+
+    /// Search for symbols whose name contains `query` (case-insensitive).
+    pub fn search_symbols(&self, query: &str) -> Vec<&SymbolInfo> {
+        let q = query.to_lowercase();
+        let mut results: Vec<&SymbolInfo> = self
+            .definitions
+            .values()
+            .flatten()
+            .filter(|s| s.name.to_lowercase().contains(&q))
+            .collect();
+        results.sort_by(|a, b| a.name.cmp(&b.name));
+        results
+    }
+
+    /// Find all references to `name` across all indexed files.
+    pub fn find_references(&self, name: &str, documents: &HashMap<String, String>) -> Vec<Value> {
+        let mut locs = Vec::new();
+        // Search open documents first (they have the latest content)
+        for (uri, text) in documents {
+            for (sl, sc, el, ec) in find_all_occurrences(text, name) {
+                locs.push(json!({ "uri": uri, "range": lsp_range(sl, sc, el, ec) }));
+            }
+        }
+        // Also search indexed files not currently open
+        for (uri, syms) in &self.symbols_by_file {
+            if documents.contains_key(uri) { continue; }
+            // Re-read from disk for non-open files
+            if let Some(path) = uri_to_path(uri) {
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    for (sl, sc, el, ec) in find_all_occurrences(&text, name) {
+                        locs.push(json!({ "uri": uri, "range": lsp_range(sl, sc, el, ec) }));
+                    }
+                }
+            }
+            // Suppress unused warning
+            let _ = syms;
+        }
+        locs
+    }
+}
+
+/// Parse source and extract top-level symbol definitions.
+fn index_source(source: &str, uri: &str) -> Vec<SymbolInfo> {
+    let mut syms = Vec::new();
+    for (ln, line) in source.lines().enumerate() {
+        let trimmed = line.trim();
+        // `define → name → (params)` or `define name`
+        if trimmed.starts_with("define") {
+            let after = trimmed["define".len()..].trim().trim_start_matches('→').trim();
+            let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !name.is_empty() {
+                let col = line.find(&name).unwrap_or(0);
+                syms.push(SymbolInfo { name, kind: 12, uri: uri.to_string(), line: ln, col });
+            }
+        }
+        // `struct Name(...)` — kind 5 (Class)
+        else if let Some(rest) = trimmed.strip_prefix("struct ") {
+            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !name.is_empty() {
+                let col = line.find(&name).unwrap_or(0);
+                syms.push(SymbolInfo { name, kind: 5, uri: uri.to_string(), line: ln, col });
+            }
+        }
+        // `store → name → ...` — kind 13 (Variable), only top-level (indent = 0)
+        else if trimmed.starts_with("store") && line.starts_with("store") {
+            let after = trimmed["store".len()..].trim().trim_start_matches('→').trim();
+            let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !name.is_empty() {
+                let col = line.find(&name).unwrap_or(0);
+                syms.push(SymbolInfo { name, kind: 13, uri: uri.to_string(), line: ln, col });
+            }
+        }
+    }
+    syms
+}
+
+/// Convert a file path to an LSP `file://` URI.
+pub fn path_to_uri(path: &Path) -> String {
+    // Canonicalize if possible, then encode
+    let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let s = abs.display().to_string();
+    // Simple encoding: ensure forward slashes on all platforms
+    let forward = s.replace('\\', "/");
+    if forward.starts_with('/') {
+        format!("file://{}", forward)
+    } else {
+        format!("file:///{}", forward)
+    }
+}
+
+/// Convert an LSP `file://` URI to a PathBuf.
+fn uri_to_path(uri: &str) -> Option<PathBuf> {
+    let path_str = uri.strip_prefix("file://")?;
+    // On Windows, strip extra leading slash before drive letter
+    let path_str = if path_str.starts_with('/') && path_str.len() > 2
+        && path_str.chars().nth(2) == Some(':') {
+        &path_str[1..]
+    } else {
+        path_str
+    };
+    Some(PathBuf::from(path_str))
+}
+
+/// Extract the workspace root from `initialize` params.
+fn root_from_params(params: &Value) -> Option<PathBuf> {
+    // Prefer rootUri (newer), fall back to rootPath
+    if let Some(uri) = params["rootUri"].as_str().filter(|s| !s.is_empty()) {
+        return uri_to_path(uri);
+    }
+    if let Some(path) = params["rootPath"].as_str().filter(|s| !s.is_empty()) {
+        return Some(PathBuf::from(path));
+    }
+    None
+}
 
 /// All stdlib function names offered as completion items.
 const STDLIB_FUNCTIONS: &[&str] = &[
@@ -202,6 +408,8 @@ pub fn run() -> Result<(), String> {
 
     // Track open document contents: URI → text
     let mut documents: HashMap<String, String> = HashMap::new();
+    // Workspace-wide symbol index
+    let mut workspace_index = WorkspaceIndex::new();
 
     loop {
         let msg = match read_message(&mut stdin) {
@@ -215,6 +423,10 @@ pub fn run() -> Result<(), String> {
 
         match method {
             "initialize" => {
+                // Scan workspace for cross-file symbol index
+                if let Some(root) = root_from_params(&msg["params"]) {
+                    workspace_index.build_from_root(&root);
+                }
                 let response = json!({
                     "jsonrpc": "2.0",
                     "id": id,
@@ -230,8 +442,10 @@ pub fn run() -> Result<(), String> {
                             "definitionProvider": true,
                             "hoverProvider": true,
                             "renameProvider": true,
+                            "referencesProvider": true,
+                            "workspaceSymbolProvider": true,
                             "diagnosticProvider": {
-                                "interFileDependencies": false,
+                                "interFileDependencies": true,
                                 "workspaceDiagnostics": false
                             }
                         },
@@ -261,6 +475,7 @@ pub fn run() -> Result<(), String> {
                 let version = msg["params"]["textDocument"]["version"]
                     .as_i64()
                     .unwrap_or(0);
+                workspace_index.update_file(&uri, &text);
                 documents.insert(uri.clone(), text.clone());
                 publish_diagnostics(&mut stdout, &uri, version, &text)?;
             }
@@ -277,6 +492,7 @@ pub fn run() -> Result<(), String> {
                 if let Some(changes) = msg["params"]["contentChanges"].as_array() {
                     if let Some(last) = changes.last() {
                         let text = last["text"].as_str().unwrap_or("").to_string();
+                        workspace_index.update_file(&uri, &text);
                         documents.insert(uri.clone(), text.clone());
                         publish_diagnostics(&mut stdout, &uri, version, &text)?;
                     }
@@ -318,16 +534,79 @@ pub fn run() -> Result<(), String> {
                 let character = msg["params"]["position"]["character"].as_u64().unwrap_or(0) as usize;
                 let result = if let Some(text) = documents.get(&uri) {
                     let sym = symbol_at(text, line, character);
-                    sym.and_then(|name| find_definition(text, &name))
+                    // Try same-file first
+                    let same_file = sym.as_deref()
+                        .and_then(|name| find_definition(text, name))
                         .map(|(def_line, def_char)| json!({
-                            "uri": uri,
+                            "uri": &uri,
                             "range": lsp_range(def_line, def_char, def_line, def_char)
-                        }))
-                        .unwrap_or(Value::Null)
+                        }));
+                    if same_file.is_some() {
+                        same_file.unwrap()
+                    } else if let Some(name) = sym {
+                        // Fall back to workspace index (cross-file)
+                        let defs = workspace_index.find_definition(&name);
+                        if defs.is_empty() {
+                            Value::Null
+                        } else {
+                            // Return array of locations
+                            let locations: Vec<Value> = defs.iter().map(|d| json!({
+                                "uri": d.uri,
+                                "range": lsp_range(d.line, d.col, d.line, d.col + d.name.len())
+                            })).collect();
+                            if locations.len() == 1 {
+                                locations.into_iter().next().unwrap()
+                            } else {
+                                Value::Array(locations)
+                            }
+                        }
+                    } else {
+                        Value::Null
+                    }
                 } else {
                     Value::Null
                 };
                 let response = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+                write_message(&mut stdout, &response)
+                    .map_err(|e| format!("LSP write error: {}", e))?;
+            }
+
+            "textDocument/references" => {
+                let uri = msg["params"]["textDocument"]["uri"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+                let line = msg["params"]["position"]["line"].as_u64().unwrap_or(0) as usize;
+                let character = msg["params"]["position"]["character"].as_u64().unwrap_or(0) as usize;
+                let locations: Vec<Value> = if let Some(text) = documents.get(&uri) {
+                    symbol_at(text, line, character)
+                        .map(|name| workspace_index.find_references(&name, &documents))
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+                let response = json!({ "jsonrpc": "2.0", "id": id, "result": locations });
+                write_message(&mut stdout, &response)
+                    .map_err(|e| format!("LSP write error: {}", e))?;
+            }
+
+            "workspace/symbol" => {
+                let query = msg["params"]["query"].as_str().unwrap_or("");
+                let symbols: Vec<Value> = workspace_index
+                    .search_symbols(query)
+                    .iter()
+                    .map(|s| {
+                        json!({
+                            "name": s.name,
+                            "kind": s.kind,
+                            "location": {
+                                "uri": s.uri,
+                                "range": lsp_range(s.line, s.col, s.line, s.col + s.name.len())
+                            }
+                        })
+                    })
+                    .collect();
+                let response = json!({ "jsonrpc": "2.0", "id": id, "result": symbols });
                 write_message(&mut stdout, &response)
                     .map_err(|e| format!("LSP write error: {}", e))?;
             }
@@ -575,4 +854,101 @@ fn find_all_occurrences(text: &str, name: &str) -> Vec<(usize, usize, usize, usi
         }
     }
     results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn make_doc(uri: &str, src: &str) -> (String, String) {
+        (uri.to_string(), src.to_string())
+    }
+
+    #[test]
+    fn test_index_source_functions() {
+        let src = "define → add → (a, b)\n  return → a + b\nend\n";
+        let syms = index_source(src, "file:///test.tc");
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "add");
+        assert_eq!(syms[0].kind, 12); // Function
+    }
+
+    #[test]
+    fn test_index_source_struct() {
+        let src = "struct Point(x: int, y: int)\n";
+        let syms = index_source(src, "file:///test.tc");
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "Point");
+        assert_eq!(syms[0].kind, 5); // Class/Struct
+    }
+
+    #[test]
+    fn test_index_source_top_level_store() {
+        let src = "store → MAX → 100\n  store → ignored → 1\n";
+        let syms = index_source(src, "file:///test.tc");
+        // Only top-level (unindented) store statements
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "MAX");
+    }
+
+    #[test]
+    fn test_workspace_index_find_definition() {
+        let mut idx = WorkspaceIndex::new();
+        idx.update_file("file:///a.tc", "define → foo → ()\n  return → 1\nend\n");
+        idx.update_file("file:///b.tc", "define → bar → ()\n  return → 2\nend\n");
+        let defs = idx.find_definition("foo");
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].uri, "file:///a.tc");
+        // bar is not in a.tc
+        let defs2 = idx.find_definition("bar");
+        assert_eq!(defs2.len(), 1);
+        assert_eq!(defs2[0].uri, "file:///b.tc");
+    }
+
+    #[test]
+    fn test_workspace_index_search_symbols() {
+        let mut idx = WorkspaceIndex::new();
+        idx.update_file("file:///a.tc", "define → multiply → (a, b)\nend\ndefine → add → (a, b)\nend\n");
+        let results = idx.search_symbols("mul");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "multiply");
+        let all = idx.search_symbols("");
+        assert!(all.len() >= 2);
+    }
+
+    #[test]
+    fn test_workspace_index_find_references_across_files() {
+        let mut idx = WorkspaceIndex::new();
+        idx.update_file("file:///a.tc", "define → helper → ()\nend\n");
+        idx.update_file("file:///b.tc", "store → x → helper()\n");
+        let mut docs = HashMap::new();
+        docs.insert("file:///a.tc".to_string(), "define → helper → ()\nend\n".to_string());
+        docs.insert("file:///b.tc".to_string(), "store → x → helper()\n".to_string());
+        let refs = idx.find_references("helper", &docs);
+        // Should find "helper" in both files
+        assert!(refs.len() >= 2, "Expected at least 2 references, got {}", refs.len());
+    }
+
+    #[test]
+    fn test_workspace_index_update_removes_old_symbols() {
+        let mut idx = WorkspaceIndex::new();
+        idx.update_file("file:///a.tc", "define → old_fn → ()\nend\n");
+        assert!(!idx.find_definition("old_fn").is_empty());
+        // Update the file — old symbol should be removed
+        idx.update_file("file:///a.tc", "define → new_fn → ()\nend\n");
+        assert!(idx.find_definition("old_fn").is_empty(), "Old symbol should be removed on update");
+        assert!(!idx.find_definition("new_fn").is_empty());
+    }
+
+    #[test]
+    fn test_path_to_uri_and_back() {
+        let path = std::path::PathBuf::from("/tmp/test.tc");
+        let uri = path_to_uri(&path);
+        assert!(uri.starts_with("file://"), "URI should start with file://");
+        // uri_to_path should round-trip
+        if let Some(p) = uri_to_path(&uri) {
+            assert!(p.to_string_lossy().contains("test.tc"));
+        }
+    }
 }

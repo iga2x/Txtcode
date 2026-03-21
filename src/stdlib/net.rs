@@ -1,7 +1,21 @@
 use crate::runtime::{RuntimeError, Value};
 use indexmap::IndexMap;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+// ── Task 16.2: WebSocket connection registry ─────────────────────────────────
+// Maps integer handle IDs to open WebSocket streams.
+// Using MaybeTlsWebSocket to support both ws:// and wss://.
+#[cfg(feature = "net")]
+type WsStream = tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>;
+
+#[cfg(feature = "net")]
+lazy_static::lazy_static! {
+    static ref WS_CONNECTIONS: Mutex<HashMap<i64, Arc<Mutex<WsStream>>>> =
+        Mutex::new(HashMap::new());
+    static ref WS_NEXT_ID: Mutex<i64> = Mutex::new(1);
+}
 
 /// Networking library
 pub struct NetLib;
@@ -249,10 +263,79 @@ impl NetLib {
                      Call http_serve via the standard VM dispatch path.".to_string()
                 ))
             }
+            // ── Task 16.2: WebSocket client ──────────────────────────────────
+            "ws_connect" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("ws_connect requires 1 argument (url)".to_string()));
+                }
+                let url = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("ws_connect: url must be a string".to_string())),
+                };
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    let host = Self::extract_hostname(&url).ok_or_else(||
+                        RuntimeError::new(format!("ws_connect: cannot extract hostname from '{}'", url)))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                }
+                Self::ws_connect_impl(&url)
+            }
+            "ws_send" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new("ws_send requires 2 arguments (id, message)".to_string()));
+                }
+                let id = match &args[0] {
+                    Value::Integer(n) => *n,
+                    _ => return Err(RuntimeError::new("ws_send: id must be an integer".to_string())),
+                };
+                let msg = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                Self::ws_send_impl(id, &msg)
+            }
+            "ws_recv" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("ws_recv requires 1 argument (id)".to_string()));
+                }
+                let id = match &args[0] {
+                    Value::Integer(n) => *n,
+                    _ => return Err(RuntimeError::new("ws_recv: id must be an integer".to_string())),
+                };
+                Self::ws_recv_impl(id)
+            }
+            "ws_close" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("ws_close requires 1 argument (id)".to_string()));
+                }
+                let id = match &args[0] {
+                    Value::Integer(n) => *n,
+                    _ => return Err(RuntimeError::new("ws_close: id must be an integer".to_string())),
+                };
+                Self::ws_close_impl(id)
+            }
             "websocket_connect" => {
+                // Legacy alias for ws_connect — kept for backward compatibility.
+                if args.is_empty() {
+                    return Err(RuntimeError::new("ws_connect requires 1 argument (url)".to_string()));
+                }
+                let url = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("ws_connect: url must be a string".to_string())),
+                };
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    let host = Self::extract_hostname(&url).ok_or_else(||
+                        RuntimeError::new(format!("ws_connect: cannot extract hostname from '{}'", url)))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                }
+                Self::ws_connect_impl(&url)
+            }
+            "ws_serve" => {
+                // ws_serve requires an executor to call the handler; routed via serve_ws_with_executor.
                 Err(RuntimeError::new(
-                    "websocket_connect: WebSocket support is not built in by default. \
-                     It is planned for v0.5. Track progress at: https://github.com/iga2x/txtcode/issues".to_string()
+                    "ws_serve: handler callback requires VM context. \
+                     Call ws_serve via the standard VM dispatch path.".to_string()
                 ))
             }
             "tcp_connect" => {
@@ -317,6 +400,105 @@ impl NetLib {
                     _ => Err(RuntimeError::new("resolve requires a string domain".to_string())),
                 }
             }
+            // ── Task 16.5: DNS and network utilities ─────────────────────────
+
+            // dns_resolve(hostname) → Array<String> of IP addresses
+            "dns_resolve" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("dns_resolve requires 1 argument (hostname)".to_string()));
+                }
+                let host = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("dns_resolve: hostname must be a string".to_string())),
+                };
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                }
+                Self::resolve_dns_sync(&host)
+            }
+
+            // net_port_open(host, port, timeout_ms) → bool
+            "net_port_open" => {
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(RuntimeError::new("net_port_open requires 2-3 arguments (host, port, timeout_ms?)".to_string()));
+                }
+                let host = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("net_port_open: host must be a string".to_string())),
+                };
+                let port = match &args[1] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err(RuntimeError::new("net_port_open: port must be an integer".to_string())),
+                };
+                if !(1..=65535).contains(&port) {
+                    return Err(RuntimeError::new("net_port_open: port must be between 1 and 65535".to_string()));
+                }
+                let timeout_ms: u64 = if args.len() == 3 {
+                    match &args[2] {
+                        Value::Integer(ms) => *ms as u64,
+                        Value::Float(f) => *f as u64,
+                        _ => 3000,
+                    }
+                } else { 3000 };
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                }
+                Ok(Value::Boolean(Self::tcp_probe(&host, port as u16, timeout_ms)))
+            }
+
+            // net_ping(host, timeout_ms) → bool
+            // Implemented as TCP probe to port 80 (ICMP requires root; TCP probe is portable).
+            "net_ping" => {
+                if args.len() < 1 || args.len() > 2 {
+                    return Err(RuntimeError::new("net_ping requires 1-2 arguments (host, timeout_ms?)".to_string()));
+                }
+                let host = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("net_ping: host must be a string".to_string())),
+                };
+                let timeout_ms: u64 = if args.len() == 2 {
+                    match &args[1] {
+                        Value::Integer(ms) => *ms as u64,
+                        Value::Float(f) => *f as u64,
+                        _ => 3000,
+                    }
+                } else { 3000 };
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                }
+                // Probe ports 80 and 443; reachable if either succeeds.
+                let reachable = Self::tcp_probe(&host, 80, timeout_ms)
+                    || Self::tcp_probe(&host, 443, timeout_ms);
+                Ok(Value::Boolean(reachable))
+            }
+
+            // ── Task 16.1: Raw TLS socket connection ─────────────────────────
+            "tls_connect" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new("tls_connect requires 2 arguments (host, port)".to_string()));
+                }
+                let host = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("tls_connect: host must be a string".to_string())),
+                };
+                let port = match &args[1] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err(RuntimeError::new("tls_connect: port must be an integer".to_string())),
+                };
+                if !(1..=65535).contains(&port) {
+                    return Err(RuntimeError::new("tls_connect: port must be between 1 and 65535".to_string()));
+                }
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                }
+                Self::tls_connect_sync(&host, port as u16)
+            }
             _ => Err(RuntimeError::new(format!("Unknown networking function: {}", name))),
         }
     }
@@ -345,6 +527,7 @@ impl NetLib {
 
     pub async fn http_get_async(url: &str) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
@@ -378,6 +561,7 @@ impl NetLib {
         headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
@@ -422,6 +606,7 @@ impl NetLib {
         headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
@@ -465,6 +650,7 @@ impl NetLib {
         headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
@@ -508,6 +694,7 @@ impl NetLib {
         headers: Option<&IndexMap<String, Value>>,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
@@ -595,6 +782,7 @@ impl NetLib {
 
     async fn http_headers_async(url: &str) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
@@ -614,6 +802,7 @@ impl NetLib {
 
     async fn http_status_async(url: &str) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
@@ -638,6 +827,7 @@ impl NetLib {
         timeout_ms: u64,
     ) -> Result<Value, RuntimeError> {
         let client = reqwest::Client::builder()
+            .use_rustls_tls()
             .timeout(Duration::from_millis(timeout_ms))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
@@ -753,6 +943,207 @@ impl NetLib {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| RuntimeError::new(format!("Failed to create async runtime: {}", e)))?;
         rt.block_on(Self::resolve_dns_async(domain))
+    }
+
+    // ── Task 16.1: Raw TLS connection ────────────────────────────────────────
+
+    /// Establish a TLS connection to `host:port` and return a connection-info map.
+    /// Uses the platform native TLS stack via the `native-tls` crate.
+    fn tls_connect_sync(host: &str, port: u16) -> Result<Value, RuntimeError> {
+        use native_tls::TlsConnector;
+        use std::net::TcpStream;
+
+        let connector = TlsConnector::new()
+            .map_err(|e| RuntimeError::new(format!("tls_connect: failed to create TLS context: {}", e)))?;
+
+        let addr = format!("{}:{}", host, port);
+        let tcp = TcpStream::connect(&addr)
+            .map_err(|e| RuntimeError::new(format!("tls_connect: TCP connection failed: {}", e)))?;
+
+        // Perform TLS handshake; validates the server certificate.
+        let _tls_stream = connector
+            .connect(host, tcp)
+            .map_err(|e| RuntimeError::new(format!("tls_connect: TLS handshake failed: {}", e)))?;
+
+        let mut result = IndexMap::new();
+        result.insert("host".to_string(), Value::String(host.to_string()));
+        result.insert("port".to_string(), Value::Integer(port as i64));
+        result.insert("connected".to_string(), Value::Boolean(true));
+        result.insert("tls".to_string(), Value::Boolean(true));
+        Ok(Value::Map(result))
+    }
+
+    // ── Task 16.5: TCP reachability probe ────────────────────────────────────
+
+    /// Attempt a TCP connect to `host:port` within `timeout_ms` milliseconds.
+    /// Returns `true` if the port is open (connection succeeded), `false` otherwise.
+    fn tcp_probe(host: &str, port: u16, timeout_ms: u64) -> bool {
+        use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+        let addr_str = format!("{}:{}", host, port);
+        let timeout = std::time::Duration::from_millis(timeout_ms);
+        let addrs: Vec<SocketAddr> = match addr_str.to_socket_addrs() {
+            Ok(a) => a.collect(),
+            Err(_) => return false,
+        };
+        for addr in addrs {
+            if TcpStream::connect_timeout(&addr, timeout).is_ok() {
+                return true;
+            }
+        }
+        false
+    }
+
+    // ── Task 16.2: WebSocket implementation ─────────────────────────────────
+
+    #[cfg(feature = "net")]
+    fn ws_connect_impl(url: &str) -> Result<Value, RuntimeError> {
+        use tungstenite::connect;
+        let (ws, _response) = connect(url)
+            .map_err(|e| RuntimeError::new(format!("ws_connect: failed to connect to '{}': {}", url, e)))?;
+        let id = {
+            let mut next = WS_NEXT_ID.lock().unwrap();
+            let id = *next;
+            *next += 1;
+            id
+        };
+        WS_CONNECTIONS.lock().unwrap().insert(id, Arc::new(Mutex::new(ws)));
+        Ok(Value::Integer(id))
+    }
+
+    #[cfg(not(feature = "net"))]
+    fn ws_connect_impl(_url: &str) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::new("ws_connect requires the 'net' feature.".to_string()))
+    }
+
+    #[cfg(feature = "net")]
+    fn ws_send_impl(id: i64, message: &str) -> Result<Value, RuntimeError> {
+        use tungstenite::Message;
+        let conns = WS_CONNECTIONS.lock().unwrap();
+        let ws = conns.get(&id).ok_or_else(|| RuntimeError::new(format!("ws_send: no open WebSocket with id {}", id)))?;
+        ws.lock().unwrap()
+            .send(Message::Text(message.to_string().into()))
+            .map_err(|e| RuntimeError::new(format!("ws_send: failed to send: {}", e)))?;
+        Ok(Value::Null)
+    }
+
+    #[cfg(not(feature = "net"))]
+    fn ws_send_impl(_id: i64, _message: &str) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::new("ws_send requires the 'net' feature.".to_string()))
+    }
+
+    #[cfg(feature = "net")]
+    fn ws_recv_impl(id: i64) -> Result<Value, RuntimeError> {
+        use tungstenite::Message;
+        let conns = WS_CONNECTIONS.lock().unwrap();
+        let ws = conns.get(&id).ok_or_else(|| RuntimeError::new(format!("ws_recv: no open WebSocket with id {}", id)))?;
+        let msg = ws.lock().unwrap()
+            .read()
+            .map_err(|e| RuntimeError::new(format!("ws_recv: failed to receive: {}", e)))?;
+        match msg {
+            Message::Text(t) => Ok(Value::String(t.to_string())),
+            Message::Binary(b) => Ok(Value::String(String::from_utf8_lossy(&b).to_string())),
+            Message::Close(_) => Ok(Value::Null),
+            Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(Value::String(String::new())),
+        }
+    }
+
+    #[cfg(not(feature = "net"))]
+    fn ws_recv_impl(_id: i64) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::new("ws_recv requires the 'net' feature.".to_string()))
+    }
+
+    #[cfg(feature = "net")]
+    fn ws_close_impl(id: i64) -> Result<Value, RuntimeError> {
+        use tungstenite::protocol::CloseFrame;
+        use tungstenite::protocol::frame::coding::CloseCode;
+        if let Some(ws) = WS_CONNECTIONS.lock().unwrap().remove(&id) {
+            let _ = ws.lock().unwrap().close(Some(CloseFrame {
+                code: CloseCode::Normal,
+                reason: "closed by client".into(),
+            }));
+        }
+        Ok(Value::Null)
+    }
+
+    #[cfg(not(feature = "net"))]
+    fn ws_close_impl(_id: i64) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::new("ws_close requires the 'net' feature.".to_string()))
+    }
+
+    /// WebSocket server: accepts connections on `port`, calls `handler_fn` for each message.
+    ///
+    /// Handler receives `{id, message}` and its return value is sent back as the reply.
+    pub fn serve_ws_with_executor<E: crate::stdlib::function_executor::FunctionExecutor>(
+        args: &[Value],
+        executor: &mut E,
+        permission_checker: Option<&dyn crate::stdlib::permission_checker::PermissionChecker>,
+    ) -> Result<Value, RuntimeError> {
+        #[cfg(feature = "net")]
+        {
+            use tungstenite::{accept, Message};
+
+            if args.len() != 2 {
+                return Err(RuntimeError::new("ws_serve requires 2 arguments (port, handler)".to_string()));
+            }
+            let port = match &args[0] {
+                Value::Integer(p) => *p as u16,
+                Value::Float(f) => *f as u16,
+                _ => return Err(RuntimeError::new("ws_serve: port must be an integer".to_string())),
+            };
+            let handler_fn = args[1].clone();
+
+            if let Some(checker) = permission_checker {
+                checker.check_permission(
+                    &crate::runtime::permissions::PermissionResource::Network("bind".to_string()),
+                    Some(&format!("0.0.0.0:{}", port)),
+                )?;
+            }
+
+            let listener = std::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+                .map_err(|e| RuntimeError::new(format!("ws_serve: cannot bind to port {}: {}", port, e)))?;
+
+            let mut conn_id: i64 = 1;
+            for stream_result in listener.incoming() {
+                let stream = match stream_result {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                let mut ws = match accept(stream) {
+                    Ok(w) => w,
+                    Err(_) => continue,
+                };
+                loop {
+                    let msg = match ws.read() {
+                        Ok(m) => m,
+                        Err(_) => break,
+                    };
+                    let text = match &msg {
+                        Message::Text(t) => t.to_string(),
+                        Message::Close(_) => break,
+                        _ => continue,
+                    };
+                    let mut req = IndexMap::new();
+                    req.insert("id".to_string(), Value::Integer(conn_id));
+                    req.insert("message".to_string(), Value::String(text));
+                    let reply = executor.call_function_value(&handler_fn, &[Value::Map(req)])?;
+                    let reply_str = match reply {
+                        Value::String(s) => s,
+                        Value::Null => break,
+                        other => other.to_string(),
+                    };
+                    if ws.send(Message::Text(reply_str.into())).is_err() {
+                        break;
+                    }
+                }
+                conn_id += 1;
+            }
+            Ok(Value::Null)
+        }
+        #[cfg(not(feature = "net"))]
+        {
+            let _ = (args, executor, permission_checker);
+            Err(RuntimeError::new("ws_serve requires the 'net' feature.".to_string()))
+        }
     }
 
     /// Start a blocking HTTP/1.1 server on `port`.

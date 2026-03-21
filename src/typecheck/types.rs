@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Type system representation
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +62,33 @@ pub enum InferenceResult {
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub return_type: Box<Type>,
+    /// Names of generic type parameters, e.g. `["T", "U"]`
+    pub generic_params: Vec<String>,
+    /// Constraint bounds per type var, e.g. `{"T": "Comparable"}`
+    pub generic_constraints: HashMap<String, String>,
+}
+
+/// Allowed types for each built-in constraint
+pub fn constraint_allowed_types(constraint: &str) -> HashSet<&'static str> {
+    match constraint {
+        "Comparable" => ["Int", "Float", "String", "Bool", "Char"].iter().copied().collect(),
+        "Numeric"    => ["Int", "Float"].iter().copied().collect(),
+        "Printable"  => ["Int", "Float", "String", "Bool", "Char", "Null"].iter().copied().collect(),
+        _ => HashSet::new(),
+    }
+}
+
+/// Return the canonical constraint-check name for a Type
+pub fn type_constraint_name(ty: &Type) -> Option<&'static str> {
+    match ty {
+        Type::Int   => Some("Int"),
+        Type::Float => Some("Float"),
+        Type::String => Some("String"),
+        Type::Bool  => Some("Bool"),
+        Type::Char  => Some("Char"),
+        Type::Null  => Some("Null"),
+        _ => None, // Array, Map, etc. — never satisfy constraints
+    }
 }
 
 /// Type context for tracking variable and function types

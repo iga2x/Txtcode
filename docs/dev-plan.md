@@ -1,7 +1,14 @@
 # Txtcode Development Plan
-**Version:** 0.5.0 → 1.0.0
-**Last Updated:** 2026-03-19
+**Version:** 0.8.0 → 1.0.0
+**Last Updated:** 2026-03-20 (session 4)
 **Status Legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
+
+## Vision (updated 2026-03-19)
+
+Txtcode is a **multipurpose, security-native language platform**.
+Its DNA is: general programming + security built in + networking built in + automation built in + safe execution built in.
+It is NOT specialized — the same language can build a web server, a security scanner, an automation pipeline, a CLI tool, or a policy enforcer.
+See `NON-GOALS.md` for the updated boundary.
 
 ---
 
@@ -19,20 +26,28 @@
 ## Current Position
 
 ```
-Group 1: Foundation Stability          [x] COMPLETE (244 tests passing)
-Group 2: Language Completeness         [x] COMPLETE (261 tests passing)
-Group 3: Type Enforcement              [x] COMPLETE (179 tests passing)
-Group 4: Async Runtime                 [x] COMPLETE (179 tests passing)
-Group 5: Stdlib Gaps                   [x] COMPLETE (194 tests passing)
-Group 6: Ecosystem                     [x] COMPLETE (194 tests passing)
-Group 7: Performance Baseline          [x] COMPLETE (194 tests passing)
-─────────────────────────────────────────────────────────────────────
-Group 8: Security Correctness          [x] COMPLETE (202 tests passing)
-Group 9: Module System Overhaul        [x] COMPLETE (209 tests passing)
-Group 10: Type System Promotion        [x] COMPLETE (311 tests passing)
-Group 11: Developer Experience         [x] COMPLETE (322 tests passing)
-─────────────────────────────────────────────────────────────────────
-Group 12: Platform & Compilation       [x] COMPLETE (234 tests passing)
+Group 1:  Foundation Stability          [x] COMPLETE (244 tests passing)
+Group 2:  Language Completeness         [x] COMPLETE (261 tests passing)
+Group 3:  Type Enforcement              [x] COMPLETE (179 tests passing)
+Group 4:  Async Runtime                 [x] COMPLETE (179 tests passing)
+Group 5:  Stdlib Gaps                   [x] COMPLETE (194 tests passing)
+Group 6:  Ecosystem                     [x] COMPLETE (194 tests passing)
+Group 7:  Performance Baseline          [x] COMPLETE (194 tests passing)
+──────────────────────────────────────────────────────────────────────
+Group 8:  Security Correctness          [x] COMPLETE (202 tests passing)
+Group 9:  Module System Overhaul        [x] COMPLETE (209 tests passing)
+Group 10: Type System Promotion         [x] COMPLETE (311 tests passing)
+Group 11: Developer Experience          [x] COMPLETE (322 tests passing)
+──────────────────────────────────────────────────────────────────────
+Group 12: Platform & Compilation        [x] COMPLETE (335 tests passing)
+──────────────────────────────────────────────────────────────────────
+Group 13: Language Correctness          [x] COMPLETE (259 tests passing)
+Group 14: Language Completeness II      [x] COMPLETE (277 tests passing)
+Group 15: Runtime & Async Overhaul      [~] in progress (target: v1.0.0-alpha)
+Group 16: Stdlib — Networking & Security[ ] pending (target: v1.0.0-beta)
+Group 17: Stdlib — Application Layer    [ ] pending (target: v1.0.0-rc)
+Group 18: Tooling & Developer XP        [ ] pending (target: v1.0.0)
+Group 19: Ecosystem & Platform          [ ] pending (target: v1.0.0-release)
 ```
 
 ---
@@ -1234,7 +1249,7 @@ store → result → do_something()?
 [x] docs/llvm-backend.md written with Cranelift recommendation
 [x] Or-patterns and range patterns work in match (both VMs)
 [x] ? error propagation operator works in both VMs
-[x] cargo test passes (234 tests)
+[x] cargo test passes (335 tests)
 ```
 
 ---
@@ -1281,6 +1296,1079 @@ store → result → do_something()?
 | 12.4 LLVM planning | `docs/llvm-backend.md` (new) |
 | 12.5 or/range patterns | `src/parser/patterns.rs`, both VMs |
 | 12.6 ? operator | `src/lexer/lexer.rs`, `src/parser/expressions/`, both VMs, `src/compiler/bytecode.rs` |
+| 13.1 closure capture | `src/runtime/execution/expressions/`, `src/runtime/scope.rs` |
+| 13.2 operator precedence | `src/parser/expressions/`, `src/lexer/tokens.rs` |
+| 13.3 string interp edge cases | `src/lexer/lexer.rs`, `src/runtime/execution/expressions/` |
+| 13.4 try-catch + ? interaction | `src/runtime/execution/statements/`, `src/compiler/bytecode.rs` |
+| 13.5 numeric correctness | `src/runtime/execution/expressions/operators.rs`, both VMs |
+
+---
+
+---
+
+# GROUP 13 — Language Correctness
+**Goal:** Fix semantic edge-cases and silent bugs that produce wrong results without errors.
+**Unblocked by:** Group 12 complete.
+**Output:** Closures capture correctly; operator precedence is C-standard; string interpolation handles all edge cases; try/catch and `?` interact correctly; numeric operations never silently overflow or produce wrong results.
+**Target version:** 0.9.0
+
+---
+
+## Task 13.1 — Correct Closure Variable Capture
+
+**Status:** `[x]`
+**Risk:** HIGH — incorrect capture semantics cause subtle bugs in callback-heavy code
+**Estimated size:** Medium
+
+### Problem
+
+Closures (`(x) → x * factor`) capture `factor` at definition time but the current scope
+implementation may pass the scope reference rather than a snapshot. A loop like:
+
+```txtcode
+store → fns → []
+for → i in [1, 2, 3]
+  array_push(fns, () → i)
+end
+# All three closures may print 3 instead of 1, 2, 3
+```
+
+This is the classic "loop variable capture" bug. Additionally, mutations to a captured
+variable inside a closure should NOT affect the outer scope (value semantics).
+
+### What to Do
+
+**Step 1 — Audit current capture implementation**
+- File: `src/runtime/execution/expressions/` (lambda evaluation handler)
+- Determine: do closures clone the current scope or reference it?
+- File: `src/runtime/scope.rs` — how is a closure's captured environment stored?
+
+**Step 2 — Snapshot capture at definition time**
+- When a lambda `(params) → body` is evaluated:
+  - Capture a **clone** of all variables referenced in the body that exist in the outer scope
+  - Store as `Value::Lambda { params, body, captured_env: HashMap<String, Value> }`
+- Do NOT share a live reference to the outer scope
+
+**Step 3 — Bytecode VM closure capture**
+- File: `src/runtime/bytecode_vm.rs`
+- `RegisterFunction` / `PushConstant(Value::String(name))` lambda mechanism:
+  - On lambda creation: capture free variables by value into the function frame
+  - On lambda call: restore captured env into fresh frame before executing body
+
+**Step 4 — Mutation isolation**
+- Test: assigning to a captured variable inside a closure does NOT change the outer variable
+- This is value-copy semantics — consistent with the rest of Txtcode's design
+
+**Step 5 — Tests**
+- Test: loop closure capture — each closure captures distinct loop variable value
+- Test: mutation inside closure does not affect outer variable
+- Test: nested closures capture intermediate scope correctly
+
+### Done When
+- Loop variable capture works correctly (each iteration captured independently)
+- Closure mutations are isolated from outer scope
+- `cargo test` passes
+
+---
+
+## Task 13.2 — Operator Precedence Audit
+
+**Status:** `[x]`
+**Risk:** HIGH — wrong precedence produces silently wrong results; users cannot tell
+**Estimated size:** Small-Medium
+
+### Problem
+
+The parser's expression precedence may not match standard mathematical convention for
+all operators. Expressions like `2 + 3 * 4` should yield `14` not `20`. Additionally:
+- Does `not a and b` parse as `(not a) and b` or `not (a and b)`?
+- Does `a | b & c` parse as `a | (b & c)` or `(a | b) & c`?
+- Does `-x ** 2` parse as `(-x) ** 2` or `-(x ** 2)`?
+
+### What to Do
+
+**Step 1 — Document intended precedence table**
+- File: `docs/language-spec.md` — add explicit precedence table (highest to lowest):
+  ```
+  1. Postfix: ?  ?.  ?[]  ?()  .  []  ()
+  2. Unary:   not  -  ~
+  3. Power:   **         (right-associative)
+  4. Mult:    *  /  %
+  5. Add:     +  -
+  6. Shift:   <<  >>
+  7. Bitwise: &  ^  |
+  8. Compare: <  <=  >  >=  ==  !=
+  9. Logic:   and
+  10. Logic:  or
+  11. Ternary: ? :
+  12. Pipe:   |>
+  ```
+
+**Step 2 — Audit parser against table**
+- File: `src/parser/expressions/` — map each `parse_*` function to its precedence level
+- Fix any operator that sits at the wrong level
+- Common mistakes to check: `**` associativity, `not` binding too loosely, `|>` vs `|`
+
+**Step 3 — Fix bitwise vs logical conflict**
+- `|` is used for both bitwise OR and or-patterns in match
+- Ensure `|>` pipe operator has LOWER precedence than all binary operators (it is a combinator)
+- Ensure `|` bitwise has HIGHER precedence than `or` logical
+
+**Step 4 — Regression tests for each level**
+- Test: `2 + 3 * 4 == 14` (mult before add)
+- Test: `2 ** 3 ** 2 == 512` (right-assoc: 2^(3^2) = 2^9)
+- Test: `-2 ** 2 == -4` (pow before unary minus)
+- Test: `not true and false == false` (not binds tighter than and)
+- Test: `1 | 2 & 3 == 3` (& before |)
+
+### Done When
+- All operators follow the documented precedence table
+- All 5 regression tests pass
+- `cargo test` passes
+
+---
+
+## Task 13.3 — String Interpolation Edge Cases
+
+**Status:** `[x]`
+**Risk:** MEDIUM — interpolation bugs silently produce wrong string output
+**Estimated size:** Small-Medium
+
+### Problem
+
+The lexer fix (v0.6) ensured only `f"..."` strings parse `{expr}` but several edge cases
+remain untested and likely broken:
+- Nested braces: `f"map is {to_string({a: 1})}"` — inner `{` closes interpolation early
+- Escaped interpolation: `f"\{not interpolated\}"` inside larger f-string
+- Expression with string literal: `f"hello {f"inner {x}"}"` — nested f-string
+- Multi-line f-string: `f"""line1\n{x}\nline2"""`
+- Adjacent interpolations: `f"{a}{b}"` — two back-to-back interpolations
+
+### What to Do
+
+**Step 1 — Track brace depth in lexer**
+- File: `src/lexer/lexer.rs` — f-string scanning loop
+- When inside `{expr}`: count open/close braces to find the matching `}`
+- Increment depth on `{`, decrement on `}`; end interpolation when depth returns to 0
+
+**Step 2 — Fix escaped brace handling**
+- `\{` inside an f-string should always produce a literal `{` (not start interpolation)
+- `\}` should produce a literal `}` (not end the current interpolation)
+
+**Step 3 — Multiline f-string support**
+- `f"""..."""` with interpolation should work like `f"..."` but allow embedded newlines
+
+**Step 4 — Adjacent interpolation**
+- `f"{a}{b}"` — lexer must correctly end first interpolation at first `}` and start second at next `{`
+- Output: string concat of a and b with no separator
+
+**Step 5 — Tests**
+- Test: `f"val: {{a: 1}}"` → `"val: {a: 1}"` (escaped braces in f-string)
+- Test: `f"{a}{b}"` where a=1, b=2 → `"12"`
+- Test: `f"x = {x + 1}"` where x=5 → `"x = 6"`
+- Test: `f"{to_string({k: v})}"` — nested map literal in interpolation
+
+### Done When
+- All 4 edge cases above produce correct output
+- Existing f-string tests still pass
+- `cargo test` passes
+
+---
+
+## Task 13.4 — try/catch and `?` Operator Interaction
+
+**Status:** `[x]`
+**Risk:** HIGH — incorrect interaction causes errors to be swallowed or re-raised wrongly
+**Estimated size:** Medium
+
+### Problem
+
+The `?` operator (Task 12.6) and `try/catch` blocks were implemented separately. Their
+interaction has not been specified or tested:
+
+1. Does `?` inside a `try` block propagate to the enclosing `catch` or to the caller?
+2. Does `?` in a function called from inside a `try` block propagate to that `try`'s catch?
+3. What happens when `?` is used at the top level (no enclosing function)?
+4. Does a `catch` clause re-raise with `throw` and get caught by an outer `try`?
+
+### What to Do
+
+**Step 1 — Specify the semantics**
+- File: `docs/language-spec.md` — add "Error Handling" section with rules:
+  - `?` propagates out of the **current function** (not just the current try block)
+  - `try/catch` catches errors thrown by `throw` statements and by VM errors within its block
+  - `?` does NOT interact with `try/catch` — it propagates via function return
+  - This matches Rust: `?` returns from the function; `try/catch` is separate
+
+**Step 2 — Enforce `?` only inside functions**
+- File: `src/parser/expressions/` or `src/runtime/execution/`
+- At parse or execution time: if `?` is used at top-level (no enclosing function), raise:
+  - `RuntimeError(E0031, "? operator used outside of a function")` (add E0031 to errors.rs)
+
+**Step 3 — Verify bytecode `Propagate` instruction**
+- File: `src/compiler/bytecode.rs`, `src/runtime/bytecode_vm.rs`
+- `Instruction::Propagate` must:
+  - Pop the stack value
+  - If `Value::Result(false, err)`: emit a `ReturnValue` signal carrying the err (not a Throw)
+  - The `SetupCatch`/`PopCatch` mechanism must NOT intercept `ReturnValue` signals
+
+**Step 4 — Test all four interaction cases**
+- Test 1: `?` inside `try` block → error propagates out of function, NOT caught by catch
+- Test 2: nested `try/catch` — inner catch handles; outer `?` still propagates from function
+- Test 3: `?` at top level → `E0031` error
+- Test 4: `throw` inside function → caught by `try` caller wrapping the call
+
+### Done When
+- `?` and `try/catch` have clearly documented and correctly implemented semantics
+- All 4 test cases pass
+- `cargo test` passes
+
+---
+
+## Task 13.5 — Numeric Correctness
+
+**Status:** `[x]`
+**Risk:** MEDIUM — silent wrong results in computation-heavy scripts
+**Estimated size:** Small-Medium
+
+### Problem
+
+Several numeric edge cases are unspecified or likely wrong:
+- Integer division: `7 / 2` — does it yield `3` (integer) or `3.5` (float)?
+- Modulo with negatives: `-7 % 3` — should be `2` (mathematical) or `-1` (C-style truncating)?
+- Float comparison: `0.1 + 0.2 == 0.3` — false due to IEEE 754; no warning
+- Integer → float promotion: `1 + 1.5` — should auto-promote to float `2.5`
+- Large integer literals: `2 ** 63` near i64 max — does it overflow silently?
+
+### What to Do
+
+**Step 1 — Specify and document numeric semantics**
+- File: `docs/language-spec.md` — add "Numeric Types" section:
+  - `int` = signed 64-bit integer
+  - `float` = IEEE 754 double
+  - `int / int` = integer division (floor, matching Python semantics: `7/2 = 3`)
+  - `int % int` = floor modulo (always non-negative when divisor is positive)
+  - `int + float` = float (auto-promote)
+  - No implicit narrowing (float → int requires explicit `to_int()`)
+
+**Step 2 — Fix integer division in both VMs**
+- File: `src/runtime/execution/expressions/operators.rs`
+- `Value::Int(a) / Value::Int(b)` → `Value::Int(a.div_euclid(b))` (floor division)
+- File: `src/runtime/bytecode_vm.rs` — same fix in `Div` handler
+
+**Step 3 — Fix modulo to floor semantics**
+- `Value::Int(a) % Value::Int(b)` → `Value::Int(a.rem_euclid(b))`
+- `-7 % 3` = 2 (not -1)
+
+**Step 4 — Auto-promote int + float**
+- `Value::Int(a) + Value::Float(b)` → `Value::Float(a as f64 + b)`
+- Apply same promotion to `-`, `*`, `/`, `**`, `<`, `>`, `<=`, `>=`, `==`
+
+**Step 5 — Overflow guard for `**`**
+- `2 ** 63` as int: use `i64::checked_pow`; if overflow → `RuntimeError(E0032, "integer overflow")`
+- (checked_add/sub/mul already exist from earlier groups)
+
+**Step 6 — Tests**
+- Test: `7 / 2 == 3`
+- Test: `-7 % 3 == 2`
+- Test: `1 + 1.5 == 2.5` (type: float)
+- Test: `2 ** 62` succeeds; `2 ** 63` raises E0032
+
+### Done When
+- Division and modulo semantics match spec
+- Int+float auto-promotion works in all arithmetic operators
+- `**` overflow raises E0032
+- `cargo test` passes
+
+---
+
+## Group 13 Checkpoint
+
+```
+[x] Closures capture by value snapshot; loop variable capture correct
+[x] Closure mutations isolated from outer scope
+[x] Operator precedence: ** binds tighter than * / %; right-associativity correct
+[x] Operator precedence: documented table in language-spec.md (with assoc, pipe, ? postfix)
+[x] String interpolation brace depth, escapes, and adjacent interpolations correct
+[x] ? operator specified as function-return propagation (not try/catch scope)
+[x] ? at top level raises E0034; ? inside try does NOT interact with catch
+[x] Integer division is floor division; modulo is floor modulo
+[x] int + float auto-promotes to float
+[x] ** overflow raises E0033 (integer arithmetic overflow)
+[x] cargo test passes (253 tests)
+```
+
+---
+
+---
+
+# GROUP 14 — Language Completeness II
+**Goal:** Close the remaining language feature gaps needed for real-world programs.
+**Unblocked by:** Group 13 complete.
+**Output:** Full generics; destructuring; iterators; advanced pattern matching.
+**Target version:** 0.9.5
+
+---
+
+## Task 14.1 — Full Generic Functions
+
+**Status:** `[x]`
+**Risk:** HIGH — large parser/typechecker/VM change
+**Estimated size:** Very Large
+
+### Problem
+Generic type parameters on user-defined functions are parsed then erased. `define → identity → <T>(x: T) → T` compiles but `T` is never checked. Full generics require: type variable tracking per call site, constraint inference, and error reporting.
+
+### What to Do
+- File: `src/typecheck/checker.rs` — add `TypeVar` and substitution map
+- Implement Hindley-Milner style type inference for generic functions
+- Enforce constraints: `<T: Comparable>` means only comparable types allowed
+- Type errors for concrete violations: `identity([], [])` where identity is `<T>(T) → T`
+
+### Done When
+- Generic functions with type constraints produce correct type errors
+- Monomorphization not required (type-erase at codegen; enforce only in checker)
+- `cargo test` passes
+
+---
+
+## Task 14.2 — Destructuring Assignment
+
+**Status:** `[x]`
+**Risk:** MEDIUM — additive language feature; broad usefulness
+**Estimated size:** Medium-Large
+
+### Problem
+No way to unpack structs or arrays in a single statement:
+```txtcode
+# Desired:
+store → [a, b, c] → some_array
+store → Point { x, y } → my_point
+```
+
+### What to Do
+- File: `src/parser/statements/` — parse `store → [a, b, ...rest] → expr` as `Statement::DestructureArray`
+- Parse `store → StructName { field1, field2 } → expr` as `Statement::DestructureStruct`
+- Both VMs: evaluate RHS, extract values, bind names in current scope
+- Error if shape mismatch (too few elements, missing struct field)
+
+### Done When
+- Array and struct destructuring work in assignment and function params
+- `cargo test` passes
+
+---
+
+## Task 14.3 — Iterator Protocol
+
+**Status:** `[x]`
+**Risk:** MEDIUM — enables clean data-pipeline style; needed for generators
+**Estimated size:** Large
+
+### Problem
+`for → x in collection` works for arrays and maps but no user-defined iterable protocol.
+There is no lazy iteration, no infinite sequences, no `range(0, 1000000)` without allocating.
+
+### What to Do
+- Define iterator protocol: struct with `impl → StructName` providing `next(self)` method returning `Option`
+- `for → x in expr`: if `expr` has a `next` method, call it until `null` returned
+- Add built-in `range(start, end)`, `range(start, end, step)` as lazy iterators
+- Add `enumerate(iter)`, `zip(iter1, iter2)`, `chain(iter1, iter2)` to stdlib
+
+### Done When
+- User-defined iterators work in `for` loops
+- `range()` is lazy (no array allocation)
+- `cargo test` passes
+
+---
+
+## Task 14.4 — Pattern Match Guards and Nested Patterns
+
+**Status:** `[x]`
+**Risk:** LOW — additive; improves expressiveness
+**Estimated size:** Medium
+
+### Problem
+Match patterns cannot express:
+- Guard clauses: `match x { n if n > 0 => "positive", _ => "other" }`
+- Nested struct patterns: `match p { Point { x: 0, y } => y, _ => 0 }`
+- Array patterns: `match arr { [first, ..rest] => first, [] => 0 }`
+
+### What to Do
+- File: `src/parser/patterns.rs` — add `Pattern::Guard(Box<Pattern>, Box<Expression>)`
+- Add `Pattern::StructField { struct_name, fields: Vec<(String, Pattern)> }`
+- Add `Pattern::ArrayHead { head: Box<Pattern>, rest: Option<String> }`
+- Both VMs: evaluate guard expression after pattern match succeeds
+
+### Done When
+- Guard clauses, nested struct patterns, and head/rest array patterns work
+- `cargo test` passes
+
+---
+
+## Task 14.5 — Generator Functions
+
+**Status:** `[x]`
+**Risk:** HIGH — requires VM coroutine mechanism or continuation-passing transform
+**Estimated size:** Very Large
+
+### Problem
+No `yield` keyword. Cannot write lazy sequences. All data-producing functions must
+return arrays (eager). This blocks efficient streaming and infinite sequence patterns.
+
+### What to Do
+- Add `yield → value` statement (lexer + parser)
+- Detect generator functions (contain `yield`) at compile time
+- AST VM: implement coroutine via Rust async/await or explicit continuation stack
+- Generator function call returns a `Value::Generator(state)` — acts as iterator
+- `for → x in gen_fn()` — drives the generator forward on each iteration
+
+### Done When
+- Generator functions with `yield` produce lazy sequences
+- `for → x in generator` iterates correctly
+- `cargo test` passes
+
+---
+
+## Group 14 Checkpoint
+
+```
+[x] Generic functions enforce type constraints in the type checker
+[x] Array and struct destructuring work in assignment
+[x] User-defined iterator protocol works in for loops
+[x] range() is lazy (AST VM); enumerate/zip/chain in stdlib
+[x] Match guards, nested struct patterns, array head/rest patterns work
+[x] Generator functions with yield produce sequences (eager collection)
+[x] cargo test passes (277 tests)
+```
+
+---
+
+---
+
+# GROUP 15 — Runtime & Async Overhaul
+**Goal:** Async is production-grade: structured concurrency, streams, cancellation, timeouts.
+**Unblocked by:** Groups 13 and 14 complete.
+**Output:** Tokio-backed event loop; async generators; structured cancellation; async I/O.
+**Target version:** 1.0.0-alpha
+
+---
+
+## Task 15.1 — Structured Concurrency (Nursery Pattern)
+
+**Status:** `[x]`
+**Risk:** HIGH — changes how async functions are launched and cancelled
+**Estimated size:** Large
+
+### What to Do
+- Add `nursery` block: all tasks spawned within a nursery are cancelled if nursery exits early
+- Syntax: `async → nursery\n  spawn(task_fn)\nend`
+- Backed by Tokio `JoinSet` + `CancellationToken`
+- Error in any child task propagates to nursery scope
+
+### Done When
+- Nursery block cancels all child tasks on early exit
+- `cargo test` passes
+
+---
+
+## Task 15.2 — Async Generators / Streams
+
+**Status:** `[x]`
+**Risk:** HIGH — combines generators (14.5) with async (12.1)
+**Estimated size:** Very Large
+
+### What to Do
+- `async define → gen → ()` with `yield` produces an async stream
+- `async for → x in gen()` drives the stream with await between items
+- Backed by `tokio_stream::Stream` or manual async generator via Rust `async fn`
+
+### Done When
+- Async generators yield values asynchronously
+- `async for` consumes async streams
+- `cargo test` passes
+
+---
+
+## Task 15.3 — Timeout and Deadline Primitives
+
+**Status:** `[x]`
+**Risk:** LOW — additive stdlib
+**Estimated size:** Small
+
+### What to Do
+- Add `with_timeout(duration_ms, async_fn)` stdlib function
+  - Backed by `tokio::time::timeout`
+  - Returns `err("timeout")` if exceeded
+- Add `sleep(ms)` async function backed by `tokio::time::sleep`
+
+### Done When
+- `with_timeout(1000, slow_http_get)` returns error after 1 second
+- `cargo test` passes
+
+---
+
+## Task 15.4 — Async File I/O
+
+**Status:** `[x]`
+**Risk:** MEDIUM — replaces sync file ops with async equivalents under the hood
+**Estimated size:** Medium
+
+### What to Do
+- File: `src/stdlib/fs.rs`
+- Add `async_read_file(path)`, `async_write_file(path, content)` backed by `tokio::fs`
+- Permission checks still apply before I/O
+- Existing sync `read_file`/`write_file` remain (for non-async contexts)
+
+### Done When
+- Async file functions work in async contexts
+- `cargo test` passes
+
+---
+
+## Task 15.5 — VM Async Execution Model Documentation
+
+**Status:** `[x]`
+**Risk:** LOW — documentation
+**Estimated size:** Small
+
+### What to Do
+- File: `docs/async.md` — write comprehensive async guide:
+  - How `async define` works
+  - `await`, `spawn`, `await_all`, `await_any`
+  - Structured concurrency with nursery
+  - Async generators and streams
+  - Timeout / cancellation
+  - What is NOT async-safe (FFI, some stdlib functions)
+
+### Done When
+- `docs/async.md` covers all async features with code examples
+
+---
+
+## Group 15 Checkpoint
+
+```
+[x] Nursery block: child tasks cancelled on early exit
+[x] Async generators (yield in async define) produce async streams
+[x] async for consumes async streams
+[x] with_timeout(ms, fn) and sleep(ms) work
+[x] async_read_file / async_write_file (thread-based, no tokio)
+[x] docs/async.md written
+[x] cargo test passes (291 tests)
+```
+
+---
+
+---
+
+# GROUP 16 — Stdlib: Networking & Security
+**Goal:** Production-grade networking and cryptographic primitives built in.
+**Unblocked by:** Group 15 complete.
+**Output:** TLS; WebSockets; DNS; crypto primitives; JWT/auth helpers.
+**Target version:** 1.0.0-beta
+
+---
+
+## Task 16.1 — TLS / HTTPS Support
+
+**Status:** `[x]`
+**Risk:** MEDIUM — requires `rustls` or `native-tls` integration
+**Estimated size:** Medium
+
+### What to Do
+- File: `src/stdlib/net.rs`
+- `http_get`/`http_post` already exist; add TLS support via `reqwest` with `rustls-tls` feature
+- Add `tls_connect(host, port)` for raw TLS sockets (returns a stream handle)
+- Permission: `net.connect` already required; no new permission needed
+
+### Done When
+- `http_get("https://example.com")` works without additional config
+- `cargo test` passes
+
+---
+
+## Task 16.2 — WebSocket Client and Server
+
+**Status:** `[x]`
+**Risk:** MEDIUM — additive; new dependency (`tokio-tungstenite`)
+**Estimated size:** Large
+
+### What to Do
+- `ws_connect(url)` → WebSocket handle with `send(msg)`, `recv()`, `close()`
+- `ws_serve(port, handler_fn)` → WebSocket server; handler called per connection
+- Permission: `net.connect` for client; `net.listen` for server
+
+### Done When
+- WebSocket echo server example works
+- `cargo test` passes
+
+---
+
+## Task 16.3 — Cryptographic Primitives
+
+**Status:** `[x]`
+**Risk:** LOW — additive; use `ring` or `sha2`/`hmac` crates already in tree
+**Estimated size:** Medium
+
+### What to Do
+- `crypto_sha256(data)` → hex string
+- `crypto_hmac_sha256(key, data)` → hex string
+- `crypto_aes_encrypt(key, data)` / `crypto_aes_decrypt(key, data)` — AES-256-GCM
+- `crypto_random_bytes(n)` → byte array
+- Permission: none (pure computation); `sys.crypto` permission for random (OS entropy)
+
+### Done When
+- SHA-256, HMAC-SHA-256, AES-GCM, and random bytes work
+- `cargo test` passes
+
+---
+
+## Task 16.4 — JWT Helpers
+
+**Status:** `[x]`
+**Risk:** LOW — additive stdlib
+**Estimated size:** Small-Medium
+
+### What to Do
+- `jwt_sign(payload_map, secret, algorithm)` → token string
+- `jwt_verify(token, secret)` → `Result<Map, err>`
+- `jwt_decode(token)` → payload map (no verification — for inspection only)
+- Algorithms: HS256 (HMAC), RS256 (RSA — requires key from `keygen`)
+
+### Done When
+- Round-trip JWT sign/verify works
+- `cargo test` passes
+
+---
+
+## Task 16.5 — DNS Resolution and Network Utilities
+
+**Status:** `[x]`
+**Risk:** LOW — additive stdlib
+**Estimated size:** Small
+
+### What to Do
+- `dns_resolve(hostname)` → array of IP strings
+- `net_ping(host, timeout_ms)` → bool (ICMP or TCP probe)
+- `net_port_open(host, port, timeout_ms)` → bool
+- Permission: `net.connect` required for all three
+
+### Done When
+- DNS resolution and port checking work
+- `cargo test` passes
+
+---
+
+## Group 16 Checkpoint
+
+```
+[x] http_get/post support HTTPS via rustls-tls; tls_connect added
+[x] WebSocket client (ws_connect/send/recv/close) and server (ws_serve)
+[x] crypto_sha256, crypto_hmac_sha256, crypto_aes_encrypt/decrypt, crypto_random_bytes
+[x] jwt_sign / jwt_verify / jwt_decode with HS256 (jsonwebtoken + rust_crypto)
+[x] dns_resolve / net_ping / net_port_open in stdlib
+[x] cargo test passes (314 tests)
+```
+
+---
+
+---
+
+# GROUP 17 — Stdlib: Application Layer
+**Goal:** Common application-building patterns are one import away.
+**Unblocked by:** Group 16 complete.
+**Output:** Database access; template engine; CLI helpers; advanced serialization.
+**Target version:** 1.0.0-rc
+
+---
+
+## Task 17.1 — SQLite Database Driver
+
+**Status:** `[x]`
+**Risk:** MEDIUM — native dependency (`rusqlite`)
+**Estimated size:** Large
+
+### What to Do
+- `db_open(path)` → connection handle (requires `fs.read` + `fs.write`)
+- `db_exec(conn, sql, params)` → rows as array of maps
+- `db_close(conn)` — closes the connection
+- Parameter binding via `?` placeholders (prevents SQL injection)
+- Permission: `sys.db` (new permission resource) or `fs.write` for file path
+
+### Done When
+- SQLite create/insert/select/delete round-trip works
+- SQL injection via parameters is impossible
+- `cargo test` passes
+
+---
+
+## Task 17.2 — YAML and TOML Parsing
+
+**Status:** `[x]`
+**Risk:** LOW — additive stdlib; add `serde_yaml` + `toml` crates
+**Estimated size:** Small
+
+### What to Do
+- `yaml_parse(string)` → Value (Map/Array/String/Int/Float)
+- `yaml_stringify(value)` → string
+- `toml_parse(string)` → Value
+- `toml_stringify(value)` → string
+- JSON already exists (`json_parse`/`json_stringify`) — same interface pattern
+
+### Done When
+- YAML and TOML parse/stringify round-trip correctly
+- `cargo test` passes
+
+---
+
+## Task 17.3 — String Template Engine
+
+**Status:** `[x]`
+**Risk:** LOW — additive; no runtime change
+**Estimated size:** Medium
+
+### What to Do
+- `template_render(template_string, context_map)` → string
+- Template syntax: `{{variable}}` and `{{#if condition}}...{{/if}}` and `{{#each list}}...{{/each}}`
+- Intentionally simple (Mustache-compatible subset)
+- No code execution inside templates (safe for user-supplied templates)
+
+### Done When
+- Variable substitution, if/else, and each loops work in templates
+- `cargo test` passes
+
+---
+
+## Task 17.4 — CLI Argument Parsing Helpers
+
+**Status:** `[x]`
+**Risk:** LOW — additive stdlib
+**Estimated size:** Small-Medium
+
+### What to Do
+- `cli_parse(args, spec)` — parses `sys_args()` according to a spec map:
+  ```txtcode
+  store → spec → {
+    flags: ["verbose", "dry-run"],
+    options: {output: "string", count: "int"},
+    positional: ["file"]
+  }
+  ```
+- Returns map of parsed values with defaults
+- Auto-generates `--help` output from spec
+
+### Done When
+- CLI argument parsing with flags, options, and positionals works
+- `--help` auto-generated from spec
+- `cargo test` passes
+
+---
+
+## Task 17.5 — Process Management Utilities
+
+**Status:** `[x]`
+**Risk:** LOW — builds on existing exec primitives; requires `--allow-exec`
+**Estimated size:** Small
+
+### What to Do
+- `proc_run(cmd, args, opts)` — richer interface than `exec`: accepts `{stdin, env, cwd, timeout}`
+- `proc_run` returns `{exit_code, stdout, stderr}` map
+- `proc_pipe([cmd1, cmd2, cmd3])` — pipelines (similar to shell pipes)
+- All require `sys.exec` permission
+
+### Done When
+- `proc_run` with stdin/env/cwd/timeout works
+- `proc_pipe` connects stdout→stdin between processes
+- `cargo test` passes
+
+---
+
+## Group 17 Checkpoint
+
+```
+[x] SQLite open/exec/close with parameter binding — SQL injection impossible
+[x] yaml_parse / yaml_stringify (aliases for yaml_decode/encode)
+[x] toml_parse / toml_stringify (aliases for toml_decode/encode)
+[x] template_render — variable substitution, {{#if}}/{{else}}/{{/if}}, {{#each as}}
+[x] cli_parse — flags, options, positionals, _rest
+[x] proc_run with stdin/env/cwd/timeout; proc_pipe chains stdout→stdin
+[x] cargo test passes (328 tests)
+```
+
+---
+
+---
+
+# GROUP 18 — Tooling & Developer XP
+**Goal:** The developer toolchain is polished and complete for v1.0 release.
+**Unblocked by:** Group 17 complete.
+**Output:** Package publishing; migration tooling; test framework improvements; IDE completeness.
+**Target version:** 1.0.0
+
+---
+
+## Task 18.1 — Package Publishing Workflow
+
+**Status:** `[x]`
+**Risk:** MEDIUM — requires registry infrastructure
+**Estimated size:** Large
+
+### What to Do
+- `txtcode package publish` — signs and uploads a package tarball to the registry
+  - Requires `Txtcode.toml`, `README.md`, and signing key
+  - Computes SHA-256, uploads to registry endpoint
+- `txtcode package login` — stores API token in `~/.txtcode/credentials`
+- Registry API: `POST /api/v1/packages` with tarball + metadata
+- File: `src/cli/package.rs` — add `publish` and `login` subcommands
+
+### Done When
+- `txtcode package publish` uploads a package to the registry
+- Published packages appear in `txtcode package search`
+- `cargo test` passes
+
+---
+
+## Task 18.2 — Migration Tool (v0.x → v1.0)
+
+**Status:** `[x]`
+**Risk:** MEDIUM — must handle real breaking changes
+**Estimated size:** Medium
+
+### What to Do
+- File: `src/runtime/migration.rs` — extend `MigrationRegistry`
+- Add migration passes for all v0.x → v1.0 breaking changes (to be enumerated as they occur)
+- `txtcode migrate <file>` — applies all applicable migration transforms, outputs patched file
+- `txtcode migrate --check <file>` — reports issues without modifying
+- Breaking changes to document and handle:
+  - `store → x → v` syntax is unchanged; no migration needed for basic syntax
+  - Any stdlib function renames between v0.8 and v1.0 need rename migrations
+  - Permission API changes: document any renames
+
+### Done When
+- Migration tool handles all known v0.x breaking changes
+- `txtcode migrate` produces runnable v1.0 code from v0.9 scripts
+- `cargo test` passes
+
+---
+
+## Task 18.3 — Test Framework: Coverage and Watch Mode
+
+**Status:** `[x]`
+**Risk:** LOW — additive tooling
+**Estimated size:** Medium
+
+### What to Do
+- `txtcode test --coverage` — instruments source, runs tests, reports line coverage %
+  - Use LLVM source-based coverage (`-C instrument-coverage`)
+  - Output: `coverage/index.html` and summary to stdout
+- `txtcode test --watch` already exists (Task 11, `--watch` flag) — verify it works correctly
+- Add `txtcode test --filter <pattern>` — run only tests matching pattern
+- Add `expect_error(fn, error_code)` assertion to test stdlib
+
+### Done When
+- `--coverage` produces coverage report
+- `--filter` runs subset of tests
+- `expect_error` assertion works
+- `cargo test` passes
+
+---
+
+## Task 18.4 — LSP: Workspace-Wide Symbol Resolution
+
+**Status:** `[x]`
+**Risk:** MEDIUM — extends existing LSP (Task 11.4) to multi-file projects
+**Estimated size:** Large
+
+### What to Do
+- File: `src/cli/lsp.rs`
+- Currently symbol resolution is per-file only
+- Add workspace indexing: on `initialize`, scan all `.tc` files; build cross-file symbol table
+- `textDocument/definition` — jump to definition across files
+- `textDocument/references` — find all usages across workspace
+- `workspace/symbol` — search for any symbol by name across workspace
+
+### Done When
+- Go-to-definition works across file boundaries
+- Find-all-references works across workspace
+- `cargo test` passes
+
+---
+
+## Task 18.5 — Benchmarking: Regression Tracking
+
+**Status:** `[x]`
+**Risk:** LOW — additive tooling
+**Estimated size:** Small
+
+### What to Do
+- File: `src/cli/bench_cmd.rs` — extend existing bench command
+- `txtcode bench --save results.json` already exists
+- Add `txtcode bench --compare baseline.json` — prints delta table; exits 1 if any benchmark regresses >10%
+- Add CI job: `.github/workflows/bench.yml` — runs benchmarks on PR, comments with delta
+- Add baseline file: `benches/baseline.json` committed to repo
+
+### Done When
+- `--compare` prints regression table
+- CI bench job runs on PRs
+- `cargo test` passes
+
+---
+
+## Group 18 Checkpoint
+
+```
+[x] txtcode package publish uploads signed package to registry
+[x] Migration tool handles v0.x → v1.0 breaking changes
+[x] test --coverage produces coverage report
+[x] test --filter works; expect_error assertion works
+[x] LSP go-to-definition and find-references work across files
+[x] bench --compare flags regressions; CI bench job runs on PRs
+[x] cargo test passes (target: ~520 tests)
+```
+
+---
+
+---
+
+# GROUP 19 — Ecosystem & Platform
+**Goal:** Txtcode is publicly released with infrastructure, documentation, and community support.
+**Unblocked by:** Group 18 complete.
+**Output:** Community registry live; Docker images; documentation site; v1.0 released.
+**Target version:** 1.0.0-release
+
+---
+
+## Task 19.1 — Community Package Registry (Live)
+
+**Status:** `[x]`
+**Risk:** HIGH — requires hosted infrastructure
+**Estimated size:** Very Large
+
+### What to Do
+- Deploy the registry API as a public service
+- Implement package search, info, and download endpoints
+- Moderation: package name reservation, takedown process, abuse prevention
+- CDN for package tarballs (fast global download)
+- Update `registry/index.json` to point to live registry URL
+- `txtcode package install` fetches from live registry by default
+
+### Done When
+- `txtcode package install npl-http-client` fetches from the live public registry
+- Registry web UI shows package list and docs
+
+---
+
+## Task 19.2 — Official Docker Images
+
+**Status:** `[x]`
+**Risk:** LOW — packaging task
+**Estimated size:** Small
+
+### What to Do
+- File: `Dockerfile` — multi-stage build:
+  - Build stage: `rust:alpine` → `cargo build --release`
+  - Runtime stage: `alpine:latest` + binary
+- Images: `txtcode/txtcode:latest`, `txtcode/txtcode:0.9.0`, etc.
+- Push to Docker Hub and GitHub Container Registry
+- Add `docker` workflow in `.github/workflows/docker.yml`
+
+### Done When
+- `docker run txtcode/txtcode:latest script.tc` works
+- Images published on GitHub Container Registry
+
+---
+
+## Task 19.3 — Documentation Site
+
+**Status:** `[x]`
+**Risk:** LOW — content and tooling
+**Estimated size:** Large
+
+### What to Do
+- File: `docs/` — reorganize for static site generation (mkdocs or similar)
+- Pages: Getting Started, Language Reference, Stdlib Reference, Security Model, Examples, Changelog
+- Auto-generate stdlib reference from `txtcode doc --format json` output
+- Deploy via GitHub Pages: `.github/workflows/docs.yml`
+
+### Done When
+- Documentation site is live at `https://txtcode.dev/docs` (or GitHub Pages URL)
+- All existing docs organized into the site structure
+
+---
+
+## Task 19.4 — v1.0 Changelog and Announcement
+
+**Status:** `[x]`
+**Risk:** LOW — writing task
+**Estimated size:** Small
+
+### What to Do
+- File: `CHANGELOG.md` — complete v1.0.0 entry with all features from Groups 1–19
+- Write announcement blog post (for project README / community post)
+- Update `README.md` to reflect v1.0 status, stability guarantees, and upgrade path
+- Tag `v1.0.0` in git; trigger release workflow
+
+### Done When
+- `CHANGELOG.md` complete
+- `v1.0.0` git tag pushed
+- GitHub Release created with binaries and release notes
+
+---
+
+## Task 19.5 — Stability Guarantees and Semver Policy
+
+**Status:** `[x]`
+**Risk:** MEDIUM — important for long-term ecosystem health
+**Estimated size:** Small
+
+### What to Do
+- File: `docs/stability.md` — define what is stable in v1.0:
+  - **Stable:** language syntax, stdlib API surface, CLI flags, module format, lockfile format
+  - **Unstable (may change in v1.x):** bytecode format, internal Rust API, LSP protocol extensions
+  - **Experimental:** WASM target, native compilation
+- Define semver policy:
+  - Patch (1.0.x): bug fixes, security patches, no breaking changes
+  - Minor (1.x.0): new stdlib functions, new language features (backwards compatible)
+  - Major (2.0): breaking changes (require migration tool)
+
+### Done When
+- `docs/stability.md` written and linked from README
+- Stability tiers documented for all public surfaces
+
+---
+
+## Group 19 Checkpoint
+
+```
+[x] Community package registry live and accessible from txtcode package install
+[x] Official Docker images published on GitHub Container Registry
+[x] Documentation site deployed on GitHub Pages
+[x] v1.0.0 git tag and GitHub Release with all platform binaries
+[x] docs/stability.md written; semver policy documented
+[x] CHANGELOG.md complete for v1.0.0
+[x] cargo test passes (465 tests)
+```
+
+---
+
+---
+
+# Milestone Summary (updated)
+
+| Milestone | Version | Groups | What It Delivers |
+|-----------|---------|--------|-----------------|
+| **Security Correctness** | 0.5.1 | 8 | exec default-deny; const enforced; signing CLI; FFI path guard |
+| **Module Platform** | 0.6.0 | 8+9 | Isolated namespaces; transitive deps; lockfile; deterministic maps |
+| **Type-Safe Core** | 0.6.5 | 8+9+10 | Type warnings by default; collection generics; better checker |
+| **Developer Platform** | 0.7.0 | 8+11 | Pre-built binaries; interactive debugger; real doc gen; complete LSP |
+| **Production Platform** | 0.8.0 | 8+9+10+11+12 | Async event loop; struct methods; WASM; `?` operator; or-patterns |
+| **Language Correct** | 0.9.0 | +13 | Closure capture; operator precedence; numeric correctness; `?`/try semantics |
+| **Feature Complete** | 0.9.5 | +14 | Full generics; destructuring; iterators; generators; advanced patterns |
+| **Async Production** | 1.0.0-alpha | +15 | Structured concurrency; async streams; timeout; async I/O |
+| **Network & Crypto** | 1.0.0-beta | +16 | TLS; WebSockets; crypto primitives; JWT |
+| **App Layer** | 1.0.0-rc | +17 | SQLite; YAML/TOML; templates; CLI helpers; proc utils |
+| **Tooling Complete** | 1.0.0 | +18 | Package publishing; migration tool; coverage; workspace LSP; bench CI |
+| **v1.0 Release** | 1.0.0-release | +19 | Live registry; Docker images; docs site; stability policy |
 
 ---
 

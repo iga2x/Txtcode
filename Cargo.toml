@@ -31,7 +31,11 @@ rsa   = { version = "0.9", features = ["sha2"], optional = true }
 
 # Networking — HTTP client + async TCP/UDP (opt-in)
 tokio   = { version = "1.0", features = ["rt", "rt-multi-thread", "net"], optional = true }
-reqwest = { version = "0.11", features = ["json", "blocking"], optional = true }
+reqwest    = { version = "0.11", features = ["json", "blocking", "rustls-tls"], default-features = false, optional = true }
+native-tls      = { version = "0.2", optional = true }
+tungstenite     = { version = "0.29", features = ["native-tls"], optional = true }
+jsonwebtoken    = { version = "10", default-features = false, features = ["rust_crypto"] }
+rusqlite        = { version = "0.33", features = ["bundled"], optional = true }
 
 # File I/O — archive + structured formats (opt-in)
 zip       = { version = "2.1", optional = true }
@@ -86,9 +90,10 @@ libc = "0.2"
 # cargo build --features crypto-advanced → add bcrypt + RSA
 # cargo build --features ai-metadata   → add AI execution context
 [features]
-default = ["stdlib-full", "net"]
+default = ["stdlib-full", "net", "db"]
 stdlib-full     = ["dep:zip", "dep:quick-xml", "dep:serde_yaml"]
-net             = ["dep:tokio", "dep:reqwest"]
+db              = ["dep:rusqlite"]
+net             = ["dep:tokio", "dep:reqwest", "dep:native-tls", "dep:tungstenite"]
 bytecode        = ["dep:bincode"]
 crypto-advanced = ["dep:bcrypt", "dep:rsa"]
 ffi             = ["dep:libloading"] # Native shared-library FFI (experimental, opt-in)

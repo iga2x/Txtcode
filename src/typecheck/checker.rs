@@ -1,6 +1,7 @@
 use crate::parser::ast::*;
 use crate::typecheck::inference::TypeInference;
-use crate::typecheck::types::{FunctionType, Type, TypeContext};
+use crate::typecheck::types::{constraint_allowed_types, type_constraint_name, FunctionType, Type, TypeContext};
+use std::collections::HashMap;
 
 /// Type checker for Txt-code programs
 pub struct TypeChecker {
@@ -45,6 +46,7 @@ impl TypeChecker {
         match stmt {
             Statement::FunctionDef {
                 name,
+                type_params,
                 params,
                 return_type,
                 ..
@@ -58,9 +60,17 @@ impl TypeChecker {
 
                 let return_ty = return_type.clone().unwrap_or(Type::Int);
 
+                let generic_params: Vec<String> = type_params.iter().map(|tp| tp.name.clone()).collect();
+                let generic_constraints: std::collections::HashMap<String, String> = type_params
+                    .iter()
+                    .filter_map(|tp| tp.constraint.as_ref().map(|c| (tp.name.clone(), c.clone())))
+                    .collect();
+
                 let func_type = FunctionType {
                     params: param_types,
                     return_type: Box::new(return_ty),
+                    generic_params,
+                    generic_constraints,
                 };
 
                 self.context.define_function(name.clone(), func_type);
@@ -359,7 +369,7 @@ impl TypeChecker {
     fn check_expression_stmt(&mut self, expr: &Expression) {
         match expr {
             Expression::FunctionCall { name, arguments, .. } => {
-                // Arity check: only when function is known (defined in same file)
+                // Arity check + generic type consistency
                 if let Some(func_type) = self.context.get_function(name).cloned() {
                     let expected = func_type.params.len();
                     let got = arguments.len();
@@ -368,6 +378,10 @@ impl TypeChecker {
                             "Arity mismatch calling '{}': expected {} argument(s), got {}",
                             name, expected, got
                         ));
+                    }
+                    // Generic call-site type consistency check (Task 14.1)
+                    if !func_type.generic_params.is_empty() {
+                        self.check_generic_call(name, &func_type, arguments);
                     }
                 }
 
@@ -439,6 +453,55 @@ impl TypeChecker {
                 self.check_expression_stmt(right);
             }
             _ => {}
+        }
+    }
+
+    // ── Task 14.1: Generic call-site type consistency ────────────────────────
+
+    /// Verify that all uses of the same type variable at a call site resolve to
+    /// the same concrete type, and that any constraint bounds are satisfied.
+    fn check_generic_call(&mut self, fn_name: &str, func_type: &FunctionType, arguments: &[Expression]) {
+        let mut bindings: HashMap<String, Type> = HashMap::new();
+        let mut inference = TypeInference::new();
+        inference.context = self.context.clone();
+
+        for (i, param_ty) in func_type.params.iter().enumerate() {
+            if i >= arguments.len() { break; }
+            if let Type::Generic(tvar) = param_ty {
+                let arg_type = match inference.infer_expression(&arguments[i]) {
+                    crate::typecheck::types::InferenceResult::Known(t) => t,
+                    _ => continue, // unknown arg — skip
+                };
+                if let Some(prev) = bindings.get(tvar) {
+                    if !prev.is_compatible_with(&arg_type) {
+                        self.errors.push(format!(
+                            "Generic type mismatch in call to '{}': type variable '{}' bound to '{}' but argument {} has type '{}'",
+                            fn_name, tvar,
+                            self.type_to_string(prev),
+                            i + 1,
+                            self.type_to_string(&arg_type),
+                        ));
+                    }
+                } else {
+                    // Check constraint
+                    if let Some(constraint) = func_type.generic_constraints.get(tvar) {
+                        let allowed = constraint_allowed_types(constraint);
+                        let canonical = type_constraint_name(&arg_type);
+                        if allowed.is_empty() {
+                            self.errors.push(format!(
+                                "Unknown type constraint '{}' on type variable '{}' in '{}'",
+                                constraint, tvar, fn_name,
+                            ));
+                        } else if canonical.map_or(true, |c| !allowed.contains(c)) {
+                            self.errors.push(format!(
+                                "Type '{}' does not satisfy constraint '{}' on type variable '{}' in '{}'",
+                                self.type_to_string(&arg_type), constraint, tvar, fn_name,
+                            ));
+                        }
+                    }
+                    bindings.insert(tvar.clone(), arg_type);
+                }
+            }
         }
     }
 

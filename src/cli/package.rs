@@ -1316,6 +1316,230 @@ pub fn list_dependencies() -> Result<(), Box<dyn std::error::Error>> {
 // Tests
 // ---------------------------------------------------------------------------
 
+// ── Task 18.1: Package publishing and registry login ─────────────────────────
+
+const DEFAULT_REGISTRY: &str = "https://registry.txtcode.dev";
+const CREDENTIALS_FILE: &str = ".txtcode/credentials";
+
+/// Store a registry API token in `~/.txtcode/credentials`.
+pub fn login(
+    token: Option<&str>,
+    registry: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let registry_url = registry
+        .map(str::to_string)
+        .or_else(|| std::env::var("TXTCODE_REGISTRY").ok())
+        .unwrap_or_else(|| DEFAULT_REGISTRY.to_string());
+
+    let api_token = if let Some(t) = token {
+        t.to_string()
+    } else {
+        // Read from stdin
+        eprint!("Enter registry token for {}: ", registry_url);
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        input.trim().to_string()
+    };
+
+    if api_token.is_empty() {
+        return Err("Token cannot be empty".into());
+    }
+
+    let creds_path = dirs_home()?.join(CREDENTIALS_FILE);
+    if let Some(parent) = creds_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Simple TOML-like credentials file: registry = "url"\ntoken = "value"
+    let content = format!(
+        "[registry.{}]\ntoken = \"{}\"\n",
+        registry_url.trim_start_matches("https://").trim_start_matches("http://"),
+        api_token
+    );
+    fs::write(&creds_path, &content)?;
+    // Restrict permissions on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&creds_path, fs::Permissions::from_mode(0o600))?;
+    }
+    println!("✓ Credentials saved to {}", creds_path.display());
+    Ok(())
+}
+
+/// Read the stored API token for a registry URL.
+fn read_token(registry_url: &str) -> Option<String> {
+    let creds_path = dirs_home().ok()?.join(CREDENTIALS_FILE);
+    let content = fs::read_to_string(creds_path).ok()?;
+    let host = registry_url.trim_start_matches("https://").trim_start_matches("http://");
+    let section = format!("[registry.{}]", host);
+    let mut in_section = false;
+    for line in content.lines() {
+        if line.trim() == section { in_section = true; continue; }
+        if in_section {
+            if line.starts_with('[') { break; }
+            if let Some(rest) = line.strip_prefix("token = ") {
+                return Some(rest.trim_matches('"').to_string());
+            }
+        }
+    }
+    None
+}
+
+fn dirs_home() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map(PathBuf::from)
+        .map_err(|_| "Cannot determine home directory".into())
+}
+
+/// Publish the current package directory to the registry.
+///
+/// Steps:
+/// 1. Load `Txtcode.toml` — validates name, version, description.
+/// 2. Check that `README.md` exists (unless `--no-readme`).
+/// 3. Create a gzipped tarball of the package directory.
+/// 4. Compute SHA-256 of the tarball.
+/// 5. Optionally sign with the provided key (ScriptAuth).
+/// 6. POST to `{registry}/api/v1/packages` with the tarball + metadata.
+pub fn publish_package(
+    key_path: Option<&str>,
+    registry: Option<&str>,
+    no_readme: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let registry_url = registry
+        .map(str::to_string)
+        .or_else(|| std::env::var("TXTCODE_REGISTRY").ok())
+        .unwrap_or_else(|| DEFAULT_REGISTRY.to_string());
+
+    // 1. Load Txtcode.toml
+    let manifest_path = PathBuf::from("Txtcode.toml");
+    if !manifest_path.exists() {
+        return Err("Txtcode.toml not found in current directory. Run `txtcode package init` first.".into());
+    }
+    let manifest = PackageConfig::load(&manifest_path)?;
+    println!("Publishing {} v{} to {}", manifest.name, manifest.version, registry_url);
+
+    // 2. README check
+    if !no_readme && !PathBuf::from("README.md").exists() {
+        return Err("README.md not found. Add a README or pass --no-readme to skip this check.".into());
+    }
+
+    // 3. Build tarball in a temp file
+    let tmp_dir = std::env::temp_dir();
+    let tarball_name = format!("{}-{}.tar.gz", manifest.name, manifest.version);
+    let tarball_path = tmp_dir.join(&tarball_name);
+    {
+        use flate2::{write::GzEncoder, Compression};
+        let tar_file = fs::File::create(&tarball_path)?;
+        let enc = GzEncoder::new(tar_file, Compression::default());
+        let mut tar = tar::Builder::new(enc);
+        tar.append_dir_all(".", ".")?;
+        tar.finish()?;
+    }
+    println!("  → Packed: {}", tarball_path.display());
+
+    // 4. SHA-256 of tarball
+    let tarball_bytes = fs::read(&tarball_path)?;
+    let mut hasher = Sha256::new();
+    hasher.update(&tarball_bytes);
+    let sha256 = hex::encode(hasher.finalize());
+    println!("  → SHA-256: {}", sha256);
+
+    // 5. Optional signing
+    let signature: Option<String> = if let Some(kp) = key_path
+        .map(str::to_string)
+        .or_else(|| {
+            dirs_home().ok().map(|h| h.join(".txtcode/signing.key").to_string_lossy().to_string())
+        })
+        .filter(|p| PathBuf::from(p).exists())
+    {
+        let signer_id = manifest.name.clone();
+        match fs::read(&kp) {
+            Err(e) => {
+                eprintln!("  [warning] Could not read signing key {}: {} — publishing without signature.", kp, e);
+                None
+            }
+            Ok(key_bytes) => match crate::security::auth::ScriptAuth::sign(&tarball_bytes, &signer_id, &key_bytes) {
+                Ok(sig) => {
+                    println!("  → Signed by: {}", signer_id);
+                    // Encode as hex: signer_id|signed_at|content_hash|signature|public_key
+                    let sig_hex = format!(
+                        "{}|{}|{}|{}|{}",
+                        sig.signer_id,
+                        sig.signed_at,
+                        hex::encode(&sig.content_hash),
+                        hex::encode(&sig.signature),
+                        hex::encode(&sig.public_key),
+                    );
+                    Some(sig_hex)
+                }
+                Err(e) => {
+                    eprintln!("  [warning] Signing failed: {} — publishing without signature.", e);
+                    None
+                }
+            }
+        }
+    } else {
+        println!("  [info] No signing key — publishing without signature.");
+        None
+    };
+
+    // 6. POST to registry
+    let token = read_token(&registry_url)
+        .ok_or_else(|| format!("Not logged in to {}. Run `txtcode package login` first.", registry_url))?;
+
+    let endpoint = format!("{}/api/v1/packages", registry_url.trim_end_matches('/'));
+    println!("  → Uploading to {} ...", endpoint);
+
+    let metadata = serde_json::json!({
+        "name": manifest.name,
+        "version": manifest.version,
+        "sha256": sha256,
+        "signature": signature,
+    });
+
+    // Use reqwest (if net feature enabled) or fall back to curl subprocess.
+    #[cfg(feature = "net")]
+    {
+        let client = reqwest::blocking::Client::builder()
+            .use_rustls_tls()
+            .build()?;
+        let response = client
+            .post(&endpoint)
+            .bearer_auth(&token)
+            .header("X-Package-Metadata", metadata.to_string())
+            .body(tarball_bytes)
+            .send();
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                println!("✓ Published {} v{} successfully!", manifest.name, manifest.version);
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().unwrap_or_default();
+                return Err(format!("Registry returned {}: {}", status, body).into());
+            }
+            Err(e) => {
+                eprintln!("  [warning] HTTP upload failed: {}. Package tarball saved at: {}", e, tarball_path.display());
+                println!("  You can manually upload the tarball to the registry.");
+            }
+        }
+    }
+    #[cfg(not(feature = "net"))]
+    {
+        let _ = token;
+        let _ = metadata;
+        println!(
+            "  [info] Built tarball at {}. HTTP upload requires the 'net' feature.\n  \
+             Rebuild with: cargo build --features net",
+            tarball_path.display()
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

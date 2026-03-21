@@ -81,7 +81,7 @@ impl TypeInference {
             }
             Statement::FunctionDef {
                 name,
-                type_params: _,
+                type_params,
                 params,
                 return_type,
                 ..
@@ -98,16 +98,19 @@ impl TypeInference {
 
                 let func_return = return_type.clone().unwrap_or(Type::Int);
 
-                // Store function type (with generic parameters)
-                // Note: Generic parameters are stored but substitution happens at call site
+                // Store function type (generic params tracked for call-site checking)
+                let generic_params: Vec<String> = type_params.iter().map(|tp| tp.name.clone()).collect();
+                let generic_constraints: std::collections::HashMap<String, String> = type_params
+                    .iter()
+                    .filter_map(|tp| tp.constraint.as_ref().map(|c| (tp.name.clone(), c.clone())))
+                    .collect();
                 let func_type = crate::typecheck::types::FunctionType {
                     params: param_types,
                     return_type: Box::new(func_return),
+                    generic_params,
+                    generic_constraints,
                 };
                 self.context.define_function(name.clone(), func_type);
-
-                // Store generic type parameters for this function
-                // (In a full implementation, we'd track these in the context)
             }
             _ => {
                 // Other statements don't directly contribute to type map
@@ -504,6 +507,10 @@ impl TypeInference {
             }
             Pattern::Range(..) => {
                 // Range pattern — no variable bindings to infer
+            }
+            Pattern::Rest(name) => {
+                // Rest binds to an array of the same element type
+                types.insert(name.clone(), value_type.clone());
             }
         }
 

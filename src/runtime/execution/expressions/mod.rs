@@ -95,6 +95,27 @@ pub trait ExpressionVM {
     /// Whether `exec` is allowed in this VM context.
     fn exec_allowed_bool(&self) -> bool { true }
 
+    /// Task 15.3: Run `func` in a new thread, wait up to `ms` milliseconds.
+    /// Returns `Value::Result(true, result)` on success, or
+    /// `Value::Result(false, "timeout")` if the deadline elapses.
+    /// Default implementation returns an error (no async support).
+    fn with_timeout_function(&mut self, _ms: u64, _func: Value) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::new(
+            "with_timeout requires an async runtime".to_string(),
+        ))
+    }
+
+    /// Spawn a `Value::Function` as an async task inside the active nursery.
+    ///
+    /// Pushes the resulting `FutureHandle` into the nursery thread-local collector.
+    /// Returns an error if called outside a nursery block or if `func` is not a function.
+    /// Default implementation returns an error (no async support).
+    fn spawn_for_nursery(&mut self, _func: Value) -> Result<(), RuntimeError> {
+        Err(RuntimeError::new(
+            "nursery_spawn is only available inside an `async → nursery` block".to_string(),
+        ))
+    }
+
     /// Attempt to spawn `name` as an async task.
     ///
     /// Returns `Some(Ok(Value::Future(…)))` when the function is async and a
@@ -321,11 +342,20 @@ impl ExpressionEvaluator {
                 // Spread outside an array literal context — evaluate inner value
                 Self::evaluate(vm, value)
             }
-            // Task 12.6: `?` error propagation — if Err, early-return; if Ok, unwrap; else pass-through
+            // Task 12.6 / 13.4: `?` error propagation — if Err, early-return from current
+            // *function*; if Ok, unwrap; else pass through.  Using `?` at the top level
+            // (outside any function body) is a runtime error (E0034).
             Expression::Propagate { value, .. } => {
                 let val = Self::evaluate(vm, value)?;
                 match val {
                     Value::Result(false, err) => {
+                        // Guard: `?` is only valid inside a function body.
+                        if vm.call_stack_depth() == 0 {
+                            return Err(RuntimeError::new(
+                                "? operator used outside of a function body".to_string(),
+                            )
+                            .with_code(crate::runtime::errors::ErrorCode::E0034));
+                        }
                         // Propagate the error as an early return from the current function.
                         // This reuses the same ControlFlowSignal mechanism as `return →`.
                         Err(RuntimeError::return_value(Value::Result(false, err)))

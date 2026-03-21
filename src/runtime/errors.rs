@@ -11,7 +11,7 @@ use crate::runtime::core::Value;
 /// TODO (Group 7): convert AST VM to iterative execution, then raise to 500+.
 /// The value is configurable via `RuntimeConfig::max_call_depth` for release
 /// builds where frame sizes are much smaller.
-pub const MAX_CALL_DEPTH: usize = 50;
+pub const MAX_CALL_DEPTH: usize = 25;
 
 /// Control-flow signals — non-error exits that must pierce block boundaries.
 /// These are not runtime errors; they ride the `Result<_, RuntimeError>` channel
@@ -25,6 +25,8 @@ pub enum ControlFlowSignal {
     Break,
     /// `continue` — skip the rest of the current loop iteration.
     Continue,
+    /// `yield → value` — produce a value from a generator function.
+    Yield(Value),
 }
 
 /// Stable machine-readable error codes for IDE and CI consumers.
@@ -71,6 +73,10 @@ pub enum ErrorCode {
     E0052,
     /// Cryptographic operation failed.
     E0050,
+    /// Integer arithmetic overflow.
+    E0033,
+    /// `?` operator used outside of a function body.
+    E0034,
 }
 
 impl ErrorCode {
@@ -96,6 +102,8 @@ impl ErrorCode {
             Self::E0051 => "E0051",
             Self::E0052 => "E0052",
             Self::E0050 => "E0050",
+            Self::E0033 => "E0033",
+            Self::E0034 => "E0034",
         }
     }
 
@@ -134,6 +142,10 @@ impl ErrorCode {
             Self::E0030
         } else if lower.contains("network") || lower.contains("connect") || lower.contains("http") {
             Self::E0031
+        } else if lower.contains("integer overflow") || lower.contains("arithmetic overflow") {
+            Self::E0033
+        } else if lower.contains("? operator") && lower.contains("outside") {
+            Self::E0034
         } else if lower.contains("process") || lower.contains("exec") || lower.contains("spawn") {
             Self::E0032
         } else if lower.contains("import") || lower.contains("module") {
@@ -217,6 +229,18 @@ impl RuntimeError {
         }
     }
 
+    /// Wrap a `yield →` value as a propagation signal.
+    pub fn yield_value(v: Value) -> Self {
+        Self {
+            code: None,
+            message: String::new(),
+            hint: None,
+            stack_trace: Vec::new(),
+            signal: Some(ControlFlowSignal::Yield(v)),
+            span: None,
+        }
+    }
+
     /// Create a `continue` signal.
     pub fn continue_signal() -> Self {
         Self {
@@ -243,6 +267,18 @@ impl RuntimeError {
 
     pub fn is_continue_signal(&self) -> bool {
         matches!(self.signal, Some(ControlFlowSignal::Continue))
+    }
+
+    pub fn is_yield_signal(&self) -> bool {
+        matches!(self.signal, Some(ControlFlowSignal::Yield(_)))
+    }
+
+    /// If this is a Yield signal, extract the yielded value.
+    pub fn extract_yield_value(self) -> Option<Value> {
+        match self.signal {
+            Some(ControlFlowSignal::Yield(v)) => Some(v),
+            _ => None,
+        }
     }
 
     /// If this is a ReturnValue signal, extract the value and return Ok(v).

@@ -691,17 +691,25 @@ impl Lexer {
                         Some(c) => c,
                         None => break,
                     };
-                    value.push(match escaped {
+                    let escaped_char = match escaped {
                         'n' => '\n',
                         't' => '\t',
                         'r' => '\r',
                         '\\' => '\\',
                         '"' => '"',
                         '\'' => '\'',
-                        '{' => '{', // Allow escaping {
-                        '}' => '}', // Allow escaping }
+                        // In f-strings, use sentinels so the parser can distinguish
+                        // \{ (literal brace) from { (interpolation start).
+                        '{' => if is_f_string { '\x01' } else { '{' },
+                        '}' => if is_f_string { '\x02' } else { '}' },
                         _ => escaped,
-                    });
+                    };
+                    // Mark as interpolated so parse_interpolated_string processes
+                    // the sentinels back into literal braces.
+                    if is_f_string && (escaped == '{' || escaped == '}') {
+                        has_interpolation = true;
+                    }
+                    value.push(escaped_char);
                     self.advance();
                 }
             } else {

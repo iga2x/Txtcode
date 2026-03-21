@@ -39,10 +39,29 @@ pub fn parse_interpolated_string(
     let mut chars = value.chars().peekable();
     let mut in_expression = false;
     let mut expr_chars = String::new();
+    // Track nested brace depth inside an interpolated expression so that
+    // `f"{fn({k: v})}"` doesn't close on the inner `}`.
+    let mut brace_depth: usize = 0;
 
     while let Some(ch) = chars.next() {
-        if ch == '\\' {
-            // Handle escape sequences
+        if ch == '\x01' {
+            // Sentinel for \{ (escaped literal brace) — always a literal {, never
+            // an interpolation start.
+            if in_expression {
+                expr_chars.push('{');
+            } else {
+                current_text.push('{');
+            }
+        } else if ch == '\x02' {
+            // Sentinel for \} (escaped literal brace) — always a literal }, never
+            // an interpolation end.
+            if in_expression {
+                expr_chars.push('}');
+            } else {
+                current_text.push('}');
+            }
+        } else if ch == '\\' {
+            // Handle remaining escape sequences (non-brace)
             if let Some(next) = chars.next() {
                 if in_expression {
                     expr_chars.push('\\');
@@ -55,8 +74,6 @@ pub fn parse_interpolated_string(
                         '\\' => '\\',
                         '"' => '"',
                         '\'' => '\'',
-                        '{' => '{',
-                        '}' => '}',
                         _ => next,
                     });
                 }
@@ -68,17 +85,27 @@ pub fn parse_interpolated_string(
                 current_text.clear();
             }
             in_expression = true;
+            brace_depth = 0;
             expr_chars.clear();
+        } else if ch == '{' && in_expression {
+            // Nested brace inside an expression (e.g. map literal or struct)
+            brace_depth += 1;
+            expr_chars.push(ch);
         } else if ch == '}' && in_expression {
-            // End of interpolation - parse expression
-            let expr_str = expr_chars.trim();
-            if !expr_str.is_empty() {
-                // Parse the expression string using the full lexer + parser
-                let parsed_expr = parse_interpolated_expr(expr_str);
-                segments.push(InterpolatedSegment::Expression(parsed_expr));
+            if brace_depth > 0 {
+                // Still inside a nested brace group — not the end of interpolation
+                brace_depth -= 1;
+                expr_chars.push(ch);
+            } else {
+                // End of interpolation - parse expression
+                let expr_str = expr_chars.trim();
+                if !expr_str.is_empty() {
+                    let parsed_expr = parse_interpolated_expr(expr_str);
+                    segments.push(InterpolatedSegment::Expression(parsed_expr));
+                }
+                in_expression = false;
+                expr_chars.clear();
             }
-            in_expression = false;
-            expr_chars.clear();
         } else if in_expression {
             expr_chars.push(ch);
         } else {

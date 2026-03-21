@@ -88,13 +88,24 @@ fn parse_single_pattern(parser: &mut Parser) -> Result<Pattern, String> {
         return Ok(Pattern::Identifier(format!("__literal_{}", value)));
     }
 
-    // Check for array pattern: [a, b, c]
+    // Check for array pattern: [a, b, c] or [head, ...rest]
     if parser.check(crate::lexer::token::TokenKind::LeftBracket) {
         parser.advance();
         let mut patterns = Vec::new();
 
         if !parser.check(crate::lexer::token::TokenKind::RightBracket) {
             loop {
+                // Check for rest pattern: ...name (must be last element)
+                if parser.check(crate::lexer::token::TokenKind::Spread) {
+                    parser.advance(); // consume `...`
+                    let rest_name = parser.expect_identifier()?;
+                    patterns.push(Pattern::Rest(rest_name));
+                    // rest must be the last element — skip optional trailing comma then stop
+                    if parser.check(crate::lexer::token::TokenKind::Comma) {
+                        parser.advance();
+                    }
+                    break;
+                }
                 patterns.push(parse_pattern(parser)?);
                 if parser.check(crate::lexer::token::TokenKind::Comma) {
                     parser.advance();

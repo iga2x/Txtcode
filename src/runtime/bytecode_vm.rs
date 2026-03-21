@@ -1548,6 +1548,22 @@ impl BytecodeVM {
                 let items: Vec<Value> = match iterable {
                     Value::Array(arr) => arr,
                     Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+                    // Materialize built-in iterator structs (lazy in AST VM, eager here)
+                    Value::Struct(ref name, ref fields) if name == "__Range__" => {
+                        let current = match fields.get("current") { Some(Value::Integer(i)) => *i, _ => 0 };
+                        let end = match fields.get("end") { Some(Value::Integer(i)) => *i, _ => 0 };
+                        let step = match fields.get("step") { Some(Value::Integer(i)) => *i, _ => 1 };
+                        if step == 0 { return Err(RuntimeError::new("range: step cannot be zero".to_string())); }
+                        let mut v = Vec::new();
+                        let mut i = current;
+                        loop {
+                            if step > 0 && i >= end { break; }
+                            if step < 0 && i <= end { break; }
+                            v.push(Value::Integer(i));
+                            i = match i.checked_add(step) { Some(x) => x, None => break };
+                        }
+                        v
+                    }
                     _ => {
                         return Err(RuntimeError::new(
                             "for … in requires an array or string iterable".to_string(),
@@ -1748,9 +1764,11 @@ impl BytecodeVM {
                             self.ip = return_ip;
                             self.function_name_stack.pop();
                         } else {
-                            // Top-level propagate: push Err value and end execution
-                            self.stack.push(err_val);
-                            self.ip = usize::MAX;
+                            // Top-level propagate: `?` used outside any function body.
+                            return Err(RuntimeError::new(
+                                "? operator used outside of a function body".to_string(),
+                            )
+                            .with_code(crate::runtime::errors::ErrorCode::E0034));
                         }
                     }
                     Value::Result(true, inner) => {

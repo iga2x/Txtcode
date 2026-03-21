@@ -4,7 +4,22 @@ use crate::runtime::errors::RuntimeError;
 use crate::runtime::operators::OperatorRegistry;
 use crate::tools::logger::log_debug;
 use crate::typecheck::types::Type;
+use std::cell::RefCell;
 use std::collections::HashMap;
+
+// Task 14.5: Thread-local yield collector for generator functions.
+// When Some(vec), yield statements push to the vec instead of raising a signal.
+// This allows `yield` inside nested for/if/while to work correctly.
+thread_local! {
+    pub(crate) static GENERATOR_COLLECTOR: RefCell<Option<Vec<Value>>> = RefCell::new(None);
+}
+
+// Task 15.1: Thread-local nursery handle collector for structured concurrency.
+// When Some(vec), `nursery_spawn` pushes FutureHandles here instead of returning them.
+// The nursery block awaits all collected handles on exit.
+thread_local! {
+    pub(crate) static NURSERY_HANDLES: RefCell<Option<Vec<crate::runtime::core::value::FutureHandle>>> = RefCell::new(None);
+}
 
 fn type_matches_value(value: &Value, expected: &Type) -> bool {
     match (value, expected) {
@@ -142,6 +157,21 @@ impl StatementExecutor {
                     Value::Null
                 };
                 Err(RuntimeError::return_value(val))
+            }
+            Statement::Yield { value, .. } => {
+                let val = vm.evaluate_expression(value)?;
+                // If we're inside a generator (thread-local collector is active), push directly.
+                // Otherwise raise a signal (fallback for non-generator usage).
+                if GENERATOR_COLLECTOR.with(|c| c.borrow().is_some()) {
+                    GENERATOR_COLLECTOR.with(|c| {
+                        if let Some(ref mut collector) = *c.borrow_mut() {
+                            collector.push(val);
+                        }
+                    });
+                    Ok(Value::Null)
+                } else {
+                    Err(RuntimeError::yield_value(val))
+                }
             }
             Statement::Break { .. } => Err(RuntimeError::break_signal()),
             Statement::Continue { .. } => Err(RuntimeError::continue_signal()),
@@ -312,7 +342,8 @@ impl StatementExecutor {
             | Statement::For { .. }
             | Statement::Match { .. }
             | Statement::Try { .. }
-            | Statement::Repeat { .. } => {
+            | Statement::Repeat { .. }
+            | Statement::Nursery { .. } => {
                 unreachable!("Control flow statements should be handled by ControlFlowExecutor")
             }
         }

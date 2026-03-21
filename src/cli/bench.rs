@@ -83,38 +83,51 @@ pub fn benchmark_file(
     println!("  Std dev: {}", fmt_us(stddev));
     println!("  Runs:    {}", runs);
 
+    let mut regression = false;
     if let Some((prev_mean, prev_min, prev_max, prev_stddev)) = prev {
-        println!("\n  Comparison vs baseline:");
-        let delta = |cur: f64, old: f64| {
-            if old == 0.0 {
-                return "n/a".to_string();
-            }
-            let pct = (cur - old) / old * 100.0;
-            if pct > 0.0 {
+        const REGRESSION_THRESHOLD: f64 = 10.0; // percent
+
+        let delta_pct = |cur: f64, old: f64| -> f64 {
+            if old == 0.0 { 0.0 } else { (cur - old) / old * 100.0 }
+        };
+        let fmt_delta = |cur: f64, old: f64| -> String {
+            if old == 0.0 { return "n/a".to_string(); }
+            let pct = delta_pct(cur, old);
+            if pct > REGRESSION_THRESHOLD {
+                format!("+{:.1}% slower ⚠ REGRESSION", pct)
+            } else if pct > 0.0 {
                 format!("+{:.1}% slower", pct)
             } else {
                 format!("{:.1}% faster", -pct)
             }
         };
-        println!(
-            "  Mean:    {} → {} ({})",
-            fmt_us(prev_mean),
-            fmt_us(mean),
-            delta(mean, prev_mean)
-        );
-        println!(
-            "  Min:     {} → {} ({})",
-            fmt_us(prev_min),
-            fmt_us(min),
-            delta(min, prev_min)
-        );
-        println!(
-            "  Max:     {} → {} ({})",
-            fmt_us(prev_max),
-            fmt_us(max),
-            delta(max, prev_max)
-        );
-        println!("  Std dev: {} → {}", fmt_us(prev_stddev), fmt_us(stddev));
+
+        let mean_pct = delta_pct(mean, prev_mean);
+        if mean_pct > REGRESSION_THRESHOLD {
+            regression = true;
+        }
+
+        println!("\n  ┌─────────────────────────────────────────────────┐");
+        println!("  │ Regression Check (threshold: {}%)               │", REGRESSION_THRESHOLD as u32);
+        println!("  ├──────────┬──────────────┬──────────────┬────────┤");
+        println!("  │ Metric   │ Baseline     │ Current      │ Delta  │");
+        println!("  ├──────────┼──────────────┼──────────────┼────────┤");
+        println!("  │ Mean     │ {:>12} │ {:>12} │ {}",
+            fmt_us(prev_mean), fmt_us(mean), fmt_delta(mean, prev_mean));
+        println!("  │ Min      │ {:>12} │ {:>12} │ {}",
+            fmt_us(prev_min), fmt_us(min), fmt_delta(min, prev_min));
+        println!("  │ Max      │ {:>12} │ {:>12} │ {}",
+            fmt_us(prev_max), fmt_us(max), fmt_delta(max, prev_max));
+        println!("  │ Std dev  │ {:>12} │ {:>12} │",
+            fmt_us(prev_stddev), fmt_us(stddev));
+        println!("  └──────────┴──────────────┴──────────────┘");
+
+        if regression {
+            eprintln!("\n  ✗ REGRESSION DETECTED: mean regressed {:.1}% (threshold: {}%)",
+                mean_pct, REGRESSION_THRESHOLD as u32);
+        } else {
+            println!("\n  ✓ No regression (mean within {}% threshold)", REGRESSION_THRESHOLD as u32);
+        }
     }
 
     if let Some(save_path) = save {
@@ -126,7 +139,25 @@ pub fn benchmark_file(
         println!("\n  Results saved to {}", save_path.display());
     }
 
+    if regression {
+        std::process::exit(1);
+    }
     Ok(())
+}
+
+/// Compute the regression delta % between current and baseline mean.
+/// Positive = slower (regression), negative = faster.
+pub fn regression_delta_pct(current_mean_us: f64, baseline_mean_us: f64) -> f64 {
+    if baseline_mean_us == 0.0 {
+        0.0
+    } else {
+        (current_mean_us - baseline_mean_us) / baseline_mean_us * 100.0
+    }
+}
+
+/// Returns true if the regression exceeds the threshold (default 10%).
+pub fn is_regression(current_mean_us: f64, baseline_mean_us: f64) -> bool {
+    regression_delta_pct(current_mean_us, baseline_mean_us) > 10.0
 }
 
 /// Parse a minimal bench JSON: returns (mean, min, max, stddev) in microseconds.
@@ -144,4 +175,75 @@ fn parse_bench_json(data: &str) -> Option<(f64, f64, f64, f64)> {
         get("max_us")?,
         get("stddev_us")?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_bench_json_valid() {
+        let json = r#"{"mean_us":850.0,"min_us":820.0,"max_us":950.0,"stddev_us":35.0,"runs":20}"#;
+        let result = parse_bench_json(json);
+        assert!(result.is_some());
+        let (mean, min, max, stddev) = result.unwrap();
+        assert!((mean - 850.0).abs() < 0.1);
+        assert!((min - 820.0).abs() < 0.1);
+        assert!((max - 950.0).abs() < 0.1);
+        assert!((stddev - 35.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_parse_bench_json_invalid_returns_none() {
+        assert!(parse_bench_json("{}").is_none());
+        assert!(parse_bench_json("not json").is_none());
+    }
+
+    #[test]
+    fn test_regression_delta_pct_slower() {
+        // 10% slower
+        let delta = regression_delta_pct(110.0, 100.0);
+        assert!((delta - 10.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_regression_delta_pct_faster() {
+        // 5% faster
+        let delta = regression_delta_pct(95.0, 100.0);
+        assert!((delta - (-5.0)).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_regression_delta_zero_baseline() {
+        assert_eq!(regression_delta_pct(100.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn test_is_regression_above_threshold() {
+        assert!(is_regression(115.0, 100.0), "15% slower should be a regression");
+    }
+
+    #[test]
+    fn test_is_regression_below_threshold() {
+        assert!(!is_regression(108.0, 100.0), "8% slower should not be a regression");
+    }
+
+    #[test]
+    fn test_is_regression_at_boundary() {
+        // Exactly 10% — NOT a regression (threshold is strictly >10%)
+        assert!(!is_regression(110.0, 100.0), "Exactly 10% should not be a regression");
+        // Just above
+        assert!(is_regression(110.1, 100.0), "10.1% should be a regression");
+    }
+
+    #[test]
+    fn test_baseline_json_parses() {
+        // Verify the committed baseline.json is valid
+        let baseline_path = std::path::PathBuf::from("benches/baseline.json");
+        if baseline_path.exists() {
+            let content = std::fs::read_to_string(&baseline_path).unwrap();
+            assert!(content.contains("mean_us"), "baseline.json should contain mean_us entries");
+            assert!(content.contains("fib"), "baseline.json should contain fib benchmark");
+        }
+    }
 }

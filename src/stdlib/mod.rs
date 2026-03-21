@@ -1,5 +1,6 @@
 pub mod bytes;
 pub mod capabilities;
+pub mod db;
 pub mod core;
 pub mod crypto;
 pub mod ffi;
@@ -13,6 +14,7 @@ pub mod path;
 pub mod permission_checker;
 pub mod regex;
 pub mod sys;
+pub mod template;
 pub mod test;
 pub mod time;
 pub mod tools;
@@ -20,6 +22,7 @@ pub mod url;
 
 pub use bytes::BytesLib;
 pub use capabilities::{CapabilityExecutor, CapabilityLib};
+pub use db::DbLib;
 pub use core::CoreLib;
 pub use crypto::CryptoLib;
 pub use ffi::FfiLib;
@@ -33,6 +36,7 @@ pub use path::PathLib;
 pub use permission_checker::PermissionChecker;
 pub use regex::RegexLib;
 pub use sys::SysLib;
+pub use template::TemplateLib;
 pub use test::TestLib;
 pub use time::TimeLib;
 pub use tools::ToolLib;
@@ -162,6 +166,10 @@ impl StdLib {
             || name == "filter"
             || name == "reduce"
             || name == "find"
+            || name == "range"
+            || name == "enumerate"
+            || name == "zip"
+            || name == "chain"
             || name == "sin"
             || name == "cos"
             || name == "tan"
@@ -205,7 +213,7 @@ impl StdLib {
         {
             CoreLib::call_function(name, args, executor)
         } else if name.starts_with("sha")
-            || name.starts_with("crypto_random")
+            || name.starts_with("crypto_")
             || name == "encrypt"
             || name == "decrypt"
             || name == "md5"
@@ -222,6 +230,9 @@ impl StdLib {
             || name == "rsa_generate"
             || name == "rsa_sign"
             || name == "rsa_verify"
+            || name == "jwt_sign"
+            || name == "jwt_verify"
+            || name == "jwt_decode"
         {
             CryptoLib::call_function(name, args, seed_override)
         } else if name == "http_serve" {
@@ -240,10 +251,32 @@ impl StdLib {
             return Err(crate::runtime::RuntimeError::new(
                 "http_serve requires the 'net' feature. Rebuild with: cargo build --features net".to_string(),
             ))
+        } else if name == "ws_serve" {
+            #[cfg(feature = "net")]
+            {
+                if let Some(exec) = executor {
+                    return crate::stdlib::net::NetLib::serve_ws_with_executor(
+                        args, exec, effective_permission_checker,
+                    );
+                }
+                return Err(crate::runtime::RuntimeError::new(
+                    "ws_serve: requires an executor context (call from within VM)".to_string(),
+                ));
+            }
+            #[cfg(not(feature = "net"))]
+            return Err(crate::runtime::RuntimeError::new(
+                "ws_serve requires the 'net' feature. Rebuild with: cargo build --features net".to_string(),
+            ))
         } else if name.starts_with("http")
             || name.starts_with("tcp")
             || name == "udp_send"
             || name == "resolve"
+            || name == "tls_connect"
+            || name.starts_with("ws_")
+            || name == "websocket_connect"
+            || name == "dns_resolve"
+            || name == "net_ping"
+            || name == "net_port_open"
         {
             #[cfg(feature = "net")]
             return NetLib::call_function(name, args, effective_permission_checker);
@@ -272,6 +305,8 @@ impl StdLib {
             || name == "zip_create"
             || name == "zip_extract"
             || name == "csv_write"
+            || name == "async_read_file"
+            || name == "async_write_file"
         {
             IOLib::call_function(name, args, effective_permission_checker)
         } else if name == "getenv"
@@ -325,6 +360,8 @@ impl StdLib {
             || name == "datetime_diff"
         {
             TimeLib::call_function(name, args, time_override)
+        } else if name == "cli_parse" || name == "proc_run" || name == "proc_pipe" {
+            SysLib::call_function(name, args, exec_allowed, effective_permission_checker)
         } else if name == "chdir"
             || name == "pid"
             || name == "user"
@@ -336,7 +373,7 @@ impl StdLib {
             || name == "wait"
         {
             SysLib::call_function(name, args, exec_allowed, effective_permission_checker)
-        } else if name.starts_with("assert") || name.starts_with("test_") {
+        } else if name.starts_with("assert") || name.starts_with("test_") || name == "expect_error" {
             TestLib::call_function(name, args)
         } else if name == "tool_exec" || name == "tool_list" || name == "tool_info" {
             // Tool execution functions.
@@ -393,6 +430,10 @@ impl StdLib {
             }
         } else if name.starts_with("bytes_") {
             BytesLib::call_function(name, args)
+        } else if name == "template_render" {
+            TemplateLib::call_function(name, args)
+        } else if name == "db_open" || name == "db_exec" || name == "db_close" {
+            DbLib::call_function(name, args, effective_permission_checker)
         } else if name == "ffi_load" || name == "ffi_call" || name == "ffi_close" {
             #[cfg(feature = "ffi")]
             return FfiLib::call_function(name, args, effective_permission_checker);

@@ -137,46 +137,63 @@ impl VirtualMachine {
             }
             Pattern::Array(patterns) => {
                 if let Value::Array(arr) = value {
-                    // Count non-ignore patterns to determine minimum required elements
-                    let required_count = patterns
+                    // Check if the last pattern is a rest pattern (...name).
+                    let rest_name = patterns.last().and_then(|p| {
+                        if let Pattern::Rest(name) = p { Some(name.clone()) } else { None }
+                    });
+                    // Positional patterns are everything before the optional rest.
+                    let positional = if rest_name.is_some() {
+                        &patterns[..patterns.len() - 1]
+                    } else {
+                        &patterns[..]
+                    };
+
+                    // Count non-ignore positional patterns for minimum length check.
+                    let required_count = positional
                         .iter()
                         .filter(|p| !matches!(p, Pattern::Ignore))
                         .count();
 
-                    // Check if we have enough elements (at least as many as non-ignore patterns)
                     if arr.len() < required_count {
                         return Err(self.create_error(format!(
-                            "Array destructuring: expected at least {} elements (ignoring _ patterns), got {}",
+                            "Array pattern: expected at least {} elements, got {}",
                             required_count,
                             arr.len()
                         )));
                     }
 
-                    // Bind patterns, skipping ignore patterns but still consuming array elements
+                    // Bind positional patterns.
                     let mut arr_index = 0;
-                    for pattern in patterns.iter() {
+                    for pattern in positional.iter() {
                         if matches!(pattern, Pattern::Ignore) {
-                            // Skip this element if it's an ignore pattern
                             if arr_index < arr.len() {
                                 arr_index += 1;
                             }
+                        } else if arr_index < arr.len() {
+                            self.bind_pattern(pattern, &arr[arr_index])?;
+                            arr_index += 1;
                         } else {
-                            // Bind the pattern to the current array element
-                            if arr_index < arr.len() {
-                                self.bind_pattern(pattern, &arr[arr_index])?;
-                                arr_index += 1;
-                            } else {
-                                return Err(self.create_error(
-                                    "Array destructuring: not enough elements for pattern"
-                                        .to_string(),
-                                ));
-                            }
+                            return Err(self.create_error(
+                                "Array pattern: not enough elements".to_string(),
+                            ));
                         }
+                    }
+
+                    // Bind rest pattern to the remaining elements.
+                    if let Some(name) = rest_name {
+                        let tail: Vec<Value> = arr[arr_index..].to_vec();
+                        self.set_variable(name, Value::Array(tail))?;
                     }
                 } else {
                     return Err(self
                         .create_error(format!("Cannot destructure non-array value: {:?}", value)));
                 }
+            }
+            Pattern::Rest(_) => {
+                // Should never be evaluated outside of an array pattern context.
+                return Err(self.create_error(
+                    "Rest pattern (...name) is only valid inside an array pattern".to_string(),
+                ));
             }
             Pattern::Struct { fields, rest } => {
                 match value {

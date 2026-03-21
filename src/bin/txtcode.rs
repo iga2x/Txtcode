@@ -212,21 +212,27 @@ pub enum Commands {
     },
     /// Migrate code between versions
     Migrate {
-        /// Files to migrate
+        /// File to migrate (positional shorthand)
+        #[arg(value_name = "FILE")]
+        file: Option<String>,
+        /// Additional files to migrate
         #[arg(short, long)]
         files: Vec<String>,
         /// Directory to migrate (all .tc files)
         #[arg(short, long)]
         directory: Option<String>,
-        /// Source version (e.g., "0.1.0")
+        /// Source version (e.g., "0.5.0")
         #[arg(long)]
         from: Option<String>,
-        /// Target version (e.g., "0.4.0")
+        /// Target version (e.g., "1.0.0")
         #[arg(long)]
         to: Option<String>,
         /// Dry run: preview changes without modifying files
         #[arg(long)]
         dry_run: bool,
+        /// Check mode: report issues without modifying files (alias for --dry-run)
+        #[arg(long)]
+        check: bool,
         /// Strict mode (errors on deprecated features)
         #[arg(long)]
         strict: bool,
@@ -245,7 +251,7 @@ pub enum Commands {
         /// Path to test directory or file (default: tests/)
         #[arg(default_value = "tests")]
         path: PathBuf,
-        /// Only run tests whose filename contains this string
+        /// Only run tests whose filename or test name contains this pattern
         #[arg(short, long)]
         filter: Option<String>,
         /// Watch mode: re-run tests automatically when source files change
@@ -254,6 +260,9 @@ pub enum Commands {
         /// Output results as JSON
         #[arg(long)]
         json: bool,
+        /// Collect and report line coverage; outputs coverage/index.html
+        #[arg(long)]
+        coverage: bool,
     },
     /// Lint and type-check file(s) without executing
     Check {
@@ -401,6 +410,26 @@ pub enum PackageCommands {
     InstallLocal {
         /// Path to the package directory (must contain Txtcode.toml)
         path: String,
+    },
+    /// Publish this package to the registry (requires login and signing key)
+    Publish {
+        /// Path to signing key (PEM or binary); uses ~/.txtcode/signing.key if omitted
+        #[arg(long)]
+        key: Option<String>,
+        /// Registry endpoint (defaults to TXTCODE_REGISTRY env var or built-in default)
+        #[arg(long)]
+        registry: Option<String>,
+        /// Allow publish without README.md
+        #[arg(long)]
+        no_readme: bool,
+    },
+    /// Store a registry API token in ~/.txtcode/credentials
+    Login {
+        /// Registry token (reads from stdin if omitted)
+        token: Option<String>,
+        /// Registry endpoint
+        #[arg(long)]
+        registry: Option<String>,
     },
 }
 
@@ -705,19 +734,25 @@ pub fn main() {
                     }
                 }
                 Commands::Migrate {
+                    file,
                     files,
                     directory,
                     from,
                     to,
                     dry_run,
+                    check,
                     strict,
                 } => {
                     use txtcode::cli::migrate::migrate_command;
+                    let mut all_files = files.clone();
+                    if let Some(f) = file {
+                        all_files.insert(0, f.clone());
+                    }
                     if let Err(e) = migrate_command(
-                        files.clone(),
+                        all_files,
                         from.clone(),
                         to.clone(),
-                        *dry_run,
+                        *dry_run || *check,
                         *strict,
                         directory.clone(),
                     ) {
@@ -745,9 +780,15 @@ pub fn main() {
                     filter,
                     watch,
                     json,
+                    coverage,
                 } => {
                     if *watch {
                         if let Err(e) = test_cmd::run_tests_watch(path, filter.as_deref()) {
+                            eprintln!("Error: {}", e);
+                            std::process::exit(1);
+                        }
+                    } else if *coverage {
+                        if let Err(e) = test_cmd::run_tests_with_coverage(path, filter.as_deref()) {
                             eprintln!("Error: {}", e);
                             std::process::exit(1);
                         }
@@ -860,6 +901,12 @@ fn handle_package_command(command: &PackageCommands) -> Result<(), Box<dyn std::
         }
         PackageCommands::InstallLocal { path } => {
             package::install_local_package(path)?;
+        }
+        PackageCommands::Publish { key, registry, no_readme } => {
+            package::publish_package(key.as_deref(), registry.as_deref(), *no_readme)?;
+        }
+        PackageCommands::Login { token, registry } => {
+            package::login(token.as_deref(), registry.as_deref())?;
         }
     }
     Ok(())

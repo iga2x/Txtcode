@@ -66,6 +66,10 @@ pub struct VirtualMachine {
     /// When one of these is called (without `await`), a thread is spawned and
     /// a `Value::Future` is returned to the caller instead of blocking.
     async_functions: HashSet<String>,
+    /// Coverage: set of source line numbers executed when coverage_enabled = true.
+    pub covered_lines: HashSet<u32>,
+    /// Whether line coverage tracking is active.
+    coverage_enabled: bool,
 }
 
 impl VirtualMachine {
@@ -227,6 +231,10 @@ impl VirtualMachine {
     }
 
     fn execute_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError> {
+        // Coverage tracking: record the source line before executing each statement.
+        if let Some((line, _)) = stmt.source_location() {
+            self.record_line(line);
+        }
         // Route control flow statements to ControlFlowExecutor
         match stmt {
             Statement::If {
@@ -261,6 +269,40 @@ impl VirtualMachine {
             } => ControlFlowExecutor::execute_try(self, body, catch, finally),
             Statement::Repeat { count, body, .. } => {
                 ControlFlowExecutor::execute_repeat(self, count, body)
+            }
+            // Task 15.1: Structured concurrency nursery block
+            Statement::Nursery { body, .. } => {
+                use crate::runtime::execution::statements::NURSERY_HANDLES;
+                // Activate the nursery handle collector
+                NURSERY_HANDLES.with(|h| *h.borrow_mut() = Some(Vec::new()));
+                self.push_scope();
+                let body_result = (|| -> Result<Value, RuntimeError> {
+                    for stmt in body {
+                        self.execute_statement(stmt)?;
+                    }
+                    Ok(Value::Null)
+                })();
+                self.pop_scope();
+                // Collect all spawned task handles
+                let handles = NURSERY_HANDLES.with(|h| h.borrow_mut().take().unwrap_or_default());
+                // Await all child tasks; track first child error
+                let mut first_child_err: Option<RuntimeError> = None;
+                for handle in handles {
+                    match handle.resolve() {
+                        Ok(_) => {}
+                        Err(e) => {
+                            if first_child_err.is_none() {
+                                first_child_err = Some(RuntimeError::new(e));
+                            }
+                        }
+                    }
+                }
+                // Body error takes priority (e.g. break/return signals), then child errors
+                body_result?;
+                if let Some(e) = first_child_err {
+                    return Err(e);
+                }
+                Ok(Value::Null)
             }
             // All other statements go to StatementExecutor
             _ => StatementExecutor::execute(self, stmt),
@@ -412,6 +454,21 @@ impl ControlFlowVM for VirtualMachine {
         // Methods from impl VirtualMachine blocks in submodules are merged
         VirtualMachine::bind_pattern(self, pattern, value)
     }
+
+    fn call_struct_method(&mut self, obj: Value, method: &str) -> Option<Result<Value, RuntimeError>> {
+        use crate::runtime::execution::expressions::ExpressionVM;
+        if let Value::Struct(ref type_name, _) = obj {
+            if let Some(func_val) = ExpressionVM::lookup_struct_method(self, type_name, method) {
+                use crate::runtime::execution::expressions::call_user_function;
+                if let Value::Function(_, params, body, captured_env) = func_val {
+                    let self_arg = vec![obj.clone()];
+                    let dummy = crate::parser::ast::Expression::Identifier(method.to_string());
+                    return Some(call_user_function(self, method, &params, &body, &captured_env, &self_arg, &dummy));
+                }
+            }
+        }
+        None
+    }
 }
 
 impl crate::stdlib::capabilities::CapabilityExecutor for VirtualMachine {
@@ -493,11 +550,13 @@ impl FunctionExecutor for VirtualMachine {
                     column: 0,
                 });
 
-                // Push captured environment as a scope (for closures) - BEFORE parameters
+                // Push captured environment as a scope (for closures) - BEFORE parameters.
+                // Use define_local so values land in the new scope rather than updating
+                // any outer-scope variable with the same name (mutation isolation).
                 if !captured_env.is_empty() {
                     self.push_scope();
                     for (var_name, var_value) in &captured_env {
-                        self.set_variable(var_name.clone(), var_value.clone())?;
+                        self.scope_manager.define_local(var_name.clone(), var_value.clone());
                     }
                 }
 
@@ -760,6 +819,112 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
 
     fn exec_allowed_bool(&self) -> bool {
         self.exec_allowed
+    }
+
+    /// Task 15.3: Run `func` in a new thread, wait up to `ms` milliseconds.
+    fn with_timeout_function(&mut self, ms: u64, func: Value) -> Result<Value, RuntimeError> {
+        let (name, params, body, captured_env) = match func {
+            Value::Function(n, p, b, e) => (n, p, b, e),
+            _ => return Err(RuntimeError::new(
+                "with_timeout: second argument must be a function".to_string(),
+            )),
+        };
+
+        let globals = self.scope_manager.globals().clone();
+        let exec_allowed = self.exec_allowed;
+
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+
+        std::thread::spawn(move || {
+            use crate::runtime::execution::expressions::call_user_function;
+            use crate::parser::ast::{Expression, Literal};
+
+            let mut child_vm = VirtualMachine::new();
+            child_vm.set_exec_allowed(exec_allowed);
+            for (k, v) in globals {
+                child_vm.define_global(k, v);
+            }
+
+            let dummy_expr = Expression::Literal(Literal::Null);
+            let result = call_user_function(
+                &mut child_vm,
+                &name,
+                &params,
+                &body,
+                &captured_env,
+                &[],
+                &dummy_expr,
+            )
+            .map_err(|e: RuntimeError| e.to_string());
+
+            sender.send(result);
+        });
+
+        let timeout = std::time::Duration::from_millis(ms);
+        match handle.resolve_with_timeout(timeout) {
+            None => Ok(Value::Result(
+                false,
+                Box::new(Value::String("timeout".to_string())),
+            )),
+            Some(Ok(v)) => Ok(Value::Result(true, Box::new(v))),
+            Some(Err(e)) => Ok(Value::Result(false, Box::new(Value::String(e)))),
+        }
+    }
+
+    /// Task 15.1: Spawn a function as an async nursery task.
+    /// Pushes the resulting FutureHandle into the active NURSERY_HANDLES collector.
+    fn spawn_for_nursery(&mut self, func: Value) -> Result<(), RuntimeError> {
+        use crate::runtime::execution::statements::NURSERY_HANDLES;
+        // Verify we are inside a nursery block
+        if NURSERY_HANDLES.with(|h| h.borrow().is_none()) {
+            return Err(RuntimeError::new(
+                "nursery_spawn called outside an `async → nursery` block".to_string(),
+            ));
+        }
+        let (name, params, body, captured_env) = match func {
+            Value::Function(n, p, b, e) => (n, p, b, e),
+            _ => return Err(RuntimeError::new(
+                "nursery_spawn expects a function argument".to_string(),
+            )),
+        };
+
+        let globals = self.scope_manager.globals().clone();
+        let exec_allowed = self.exec_allowed;
+
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+
+        std::thread::spawn(move || {
+            use crate::runtime::execution::expressions::call_user_function;
+            use crate::parser::ast::{Expression, Literal};
+
+            let mut child_vm = VirtualMachine::new();
+            child_vm.set_exec_allowed(exec_allowed);
+            for (k, v) in globals {
+                child_vm.define_global(k, v);
+            }
+
+            let dummy_expr = Expression::Literal(Literal::Null);
+            let result = call_user_function(
+                &mut child_vm,
+                &name,
+                &params,
+                &body,
+                &captured_env,
+                &[],
+                &dummy_expr,
+            )
+            .map_err(|e: RuntimeError| e.to_string());
+
+            sender.send(result);
+        });
+
+        NURSERY_HANDLES.with(|h| {
+            if let Some(ref mut handles) = *h.borrow_mut() {
+                handles.push(handle);
+            }
+        });
+
+        Ok(())
     }
 
     /// Spawn an async user function in a new OS thread and return a `Value::Future`.

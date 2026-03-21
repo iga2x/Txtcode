@@ -31,6 +31,33 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         vm.check_permission_with_audit(&resource, scope.as_deref())?;
     }
 
+    // Task 15.3: Handle with_timeout before stdlib — needs VM access to spawn threads
+    if name == "with_timeout" {
+        if args.len() < 2 {
+            return Err(vm.create_error(
+                "with_timeout requires 2 arguments (duration_ms, fn)".to_string(),
+            ));
+        }
+        let ms = match &args[0] {
+            Value::Integer(n) => *n as u64,
+            Value::Float(f) => *f as u64,
+            _ => return Err(vm.create_error(
+                "with_timeout: first argument must be a number (milliseconds)".to_string(),
+            )),
+        };
+        let func = args.into_iter().nth(1).unwrap();
+        return vm.with_timeout_function(ms, func);
+    }
+
+    // Task 15.1: Handle nursery_spawn before stdlib — needs VM access to spawn threads
+    if name == "nursery_spawn" {
+        let func = args.into_iter().next().ok_or_else(|| {
+            vm.create_error("nursery_spawn requires 1 argument (a function)".to_string())
+        })?;
+        vm.spawn_for_nursery(func)?;
+        return Ok(Value::Null);
+    }
+
     // Handle capability functions directly (before stdlib)
     if name == "grant_capability"
         || name == "use_capability"
@@ -665,11 +692,14 @@ pub fn call_user_function<VM: ExpressionVM>(
         column: span.column,
     });
 
-    // Push captured environment as a scope (for closures) - BEFORE parameters
+    // Push captured environment as a scope (for closures) - BEFORE parameters.
+    // Use define_local_variable (not set_variable) so captured values land in the
+    // newly-pushed scope rather than updating a same-named variable in an outer scope.
+    // This ensures mutations inside the closure body are isolated from the caller's scope.
     if !captured_env.is_empty() {
         vm.push_scope();
         for (var_name, var_value) in &captured_env {
-            vm.set_variable(var_name.clone(), var_value.clone())?;
+            vm.define_local_variable(var_name.clone(), var_value.clone())?;
         }
     }
 
@@ -718,6 +748,33 @@ pub fn call_user_function<VM: ExpressionVM>(
             ));
         }
 
+        // ── Generator function detection (Task 14.5) ─────────────────────
+        // If the body contains any `yield →` statements, run in generator mode.
+        // Yields are collected via a thread-local, allowing nested yields in loops.
+        let is_generator = body.iter().any(stmt_contains_yield);
+        if is_generator {
+            use crate::runtime::execution::statements::GENERATOR_COLLECTOR;
+            // Install the collector
+            GENERATOR_COLLECTOR.with(|c| *c.borrow_mut() = Some(Vec::new()));
+            for stmt in &body {
+                match vm.execute_statement(stmt) {
+                    Ok(_) => {}
+                    Err(e) => match e.take_return_value() {
+                        Ok(_) => break, // `return` ends the generator
+                        Err(other) => {
+                            // Cleanup collector before returning error
+                            GENERATOR_COLLECTOR.with(|c| *c.borrow_mut() = None);
+                            return Err(other);
+                        }
+                    },
+                }
+            }
+            // Collect and remove
+            let yielded = GENERATOR_COLLECTOR.with(|c| c.borrow_mut().take().unwrap_or_default());
+            return Ok(Value::Array(yielded));
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         let mut result = Value::Null;
         for stmt in &body {
             // Fast path: direct top-level return (avoids extra stack frames per recursion level)
@@ -754,4 +811,26 @@ pub fn call_user_function<VM: ExpressionVM>(
     vm.call_stack_pop();
 
     result
+}
+
+/// Task 14.5: Return true if a statement is or contains a `yield →` statement.
+/// Used to detect generator functions at call time.
+fn stmt_contains_yield(stmt: &Statement) -> bool {
+    match stmt {
+        Statement::Yield { .. } => true,
+        Statement::If { then_branch, else_if_branches, else_branch, .. } => {
+            then_branch.iter().any(stmt_contains_yield)
+                || else_if_branches.iter().any(|(_, stmts)| stmts.iter().any(stmt_contains_yield))
+                || else_branch.as_ref().map_or(false, |b| b.iter().any(stmt_contains_yield))
+        }
+        Statement::While { body, .. }
+        | Statement::For { body, .. }
+        | Statement::DoWhile { body, .. }
+        | Statement::Repeat { body, .. } => body.iter().any(stmt_contains_yield),
+        Statement::Match { cases, default, .. } => {
+            cases.iter().any(|(_, _, stmts)| stmts.iter().any(stmt_contains_yield))
+                || default.as_ref().map_or(false, |b| b.iter().any(stmt_contains_yield))
+        }
+        _ => false,
+    }
 }

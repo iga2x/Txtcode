@@ -191,3 +191,47 @@ fn test_strict_types_clean_program_passes() {
     let result = check_source("define → add → (a: int, b: int) → int\n  return → 42\nend\nadd(1, 2)");
     assert!(result.is_ok(), "correct typed program should pass strict-types check: {:?}", result);
 }
+
+// ── Group 14 Task 14.1 — Generic Function Type Checking ──────────────────
+
+// Two params with same type var T, called with matching types — OK
+#[test]
+fn test_generic_consistent_types_ok() {
+    let src = "define → pair → <T>(a: T, b: T)\n  return → a\nend\npair(1, 2)";
+    let result = check_source(src);
+    assert!(result.is_ok(), "pair(1,2) should pass: same T=int for both args: {:?}", result);
+}
+
+// Two params with same type var T, called with conflicting types — Error
+#[test]
+fn test_generic_conflicting_types_error() {
+    let src = "define → pair → <T>(a: T, b: T)\n  return → a\nend\npair(1, \"hello\")";
+    let result = check_source(src);
+    assert!(result.is_err(), "pair(1, \"hello\") should fail: T bound to int then string");
+    let msgs = result.unwrap_err();
+    assert!(
+        msgs.iter().any(|m| m.contains("Generic type mismatch") && m.contains("pair")),
+        "expected generic type mismatch error, got: {:?}", msgs
+    );
+}
+
+// Constraint: <T: Numeric> with array arg — Error
+#[test]
+fn test_generic_constraint_violated() {
+    let src = "define → double → <T: Numeric>(x: T)\n  return → x\nend\ndouble([1, 2, 3])";
+    let result = check_source(src);
+    assert!(result.is_err(), "double([1,2,3]) should fail: array does not satisfy Numeric");
+    let msgs = result.unwrap_err();
+    assert!(
+        msgs.iter().any(|m| m.contains("Numeric")),
+        "expected Numeric constraint error, got: {:?}", msgs
+    );
+}
+
+// Constraint: <T: Comparable> with int arg — OK
+#[test]
+fn test_generic_constraint_satisfied() {
+    let src = "define → cmp → <T: Comparable>(x: T, y: T)\n  return → x\nend\ncmp(3, 5)";
+    let result = check_source(src);
+    assert!(result.is_ok(), "cmp(3, 5) with T: Comparable should pass: {:?}", result);
+}

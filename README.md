@@ -1,6 +1,10 @@
-# Txt-code Programming Language v0.8.0
+# Txtcode Programming Language v1.0.0
 
-**Txt-code** © 2026 MD POOR — A security-first scripting language for safe automation, cyber orchestration, and AI-assisted operations.
+**Txtcode** © 2026 — A multipurpose, security-native programming language for automation, networking, and system scripting.
+
+[![CI](https://github.com/txtcode/txtcode/actions/workflows/ci.yml/badge.svg)](https://github.com/txtcode/txtcode/actions/workflows/ci.yml)
+[![Docker](https://ghcr.io/txtcode/txtcode)](https://github.com/txtcode/txtcode/pkgs/container/txtcode)
+[![Docs](https://img.shields.io/badge/docs-txtcode.dev-blue)](https://txtcode.dev/docs)
 
 Txtcode is a **permission-transparent cyber orchestration DSL** — a policy-enforced execution engine designed for security-sensitive automation and experimentation. It provides a safe bridge between AI planning and real-world actions, with built-in audit trails and permission systems.
 

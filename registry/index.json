@@ -1,6 +1,8 @@
 {
   "version": "1",
-  "updated": "2026-03-19",
+  "updated": "2026-03-20",
+  "registry_url": "https://registry.txtcode.dev",
+  "api_base": "https://registry.txtcode.dev/api/v1",
   "packages": {
     "npl-math": {
       "description": "Essential math utilities: GCD, LCM, primes, factorial, Fibonacci, clamp, lerp, and more.",

@@ -26,7 +26,7 @@ impl ArithmeticOps {
             (Value::Integer(a), Value::Integer(b)) => a
                 .checked_add(*b)
                 .map(Value::Integer)
-                .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} + {}", a, b))),
+                .ok_or_else(|| RuntimeError::new(format!("Integer arithmetic overflow: {} + {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + *b as f64)),
@@ -49,7 +49,7 @@ impl ArithmeticOps {
             (Value::Integer(a), Value::Integer(b)) => a
                 .checked_sub(*b)
                 .map(Value::Integer)
-                .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} - {}", a, b))),
+                .ok_or_else(|| RuntimeError::new(format!("Integer arithmetic overflow: {} - {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - *b as f64)),
@@ -64,7 +64,7 @@ impl ArithmeticOps {
             (Value::Integer(a), Value::Integer(b)) => a
                 .checked_mul(*b)
                 .map(Value::Integer)
-                .ok_or_else(|| RuntimeError::new(format!("Integer overflow: {} * {}", a, b))),
+                .ok_or_else(|| RuntimeError::new(format!("Integer arithmetic overflow: {} * {}", a, b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * *b as f64)),
@@ -80,9 +80,14 @@ impl ArithmeticOps {
                 if *b == 0 {
                     Err(RuntimeError::new("Division by zero".to_string()))
                 } else {
-                    // Integer division should return float if result would be fractional
-                    // For now, return integer division result (Python-style //)
-                    Ok(Value::Integer(a / b))
+                    // Floor division (Python-style //): rounds toward negative infinity.
+                    // Rust's `/` truncates toward zero; we adjust when signs differ.
+                    let d = a / b;
+                    let r = a % b;
+                    // If the remainder is non-zero and the signs of a and b differ,
+                    // the true quotient is between d and d-1 — floor takes d-1.
+                    let floor_d = if r != 0 && (*a < 0) != (*b < 0) { d - 1 } else { d };
+                    Ok(Value::Integer(floor_d))
                 }
             }
             (Value::Float(a), Value::Float(b)) => {
@@ -118,7 +123,33 @@ impl ArithmeticOps {
                 if *b == 0 {
                     Err(RuntimeError::new("Modulo by zero".to_string()))
                 } else {
-                    Ok(Value::Integer(a % b))
+                    // Floor modulo: result has the same sign as the divisor.
+                    // Rust's `%` is truncating; rem_euclid always returns a non-negative
+                    // result when divisor > 0, matching floor semantics for positive divisors.
+                    let r = a % b;
+                    let floor_r = if r != 0 && (*a < 0) != (*b < 0) { r + b } else { r };
+                    Ok(Value::Integer(floor_r))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => {
+                if *b == 0.0 {
+                    Err(RuntimeError::new("Modulo by zero".to_string()))
+                } else {
+                    Ok(Value::Float(a % b))
+                }
+            }
+            (Value::Integer(a), Value::Float(b)) => {
+                if *b == 0.0 {
+                    Err(RuntimeError::new("Modulo by zero".to_string()))
+                } else {
+                    Ok(Value::Float(*a as f64 % b))
+                }
+            }
+            (Value::Float(a), Value::Integer(b)) => {
+                if *b == 0 {
+                    Err(RuntimeError::new("Modulo by zero".to_string()))
+                } else {
+                    Ok(Value::Float(a % *b as f64))
                 }
             }
             _ => Err(RuntimeError::new("Invalid operands for modulo".to_string())),
@@ -132,15 +163,10 @@ impl ArithmeticOps {
                     Err(RuntimeError::new(
                         "Negative exponent not supported for integers".to_string(),
                     ))
-                } else if *b > 62 {
-                    // Exponents > 62 will almost certainly overflow i64
-                    Err(RuntimeError::new(format!(
-                        "Integer overflow: {} ** {}",
-                        a, b
-                    )))
                 } else {
                     a.checked_pow(*b as u32).map(Value::Integer).ok_or_else(|| {
-                        RuntimeError::new(format!("Integer overflow: {} ** {}", a, b))
+                        RuntimeError::new(format!("Integer arithmetic overflow: {} ** {}", a, b))
+                            .with_code(crate::runtime::errors::ErrorCode::E0033)
                     })
                 }
             }

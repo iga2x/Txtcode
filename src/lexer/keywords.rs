@@ -29,7 +29,11 @@ pub fn is_keyword(word: &str) -> bool {
         // Loop keywords
         "in" | "to" | "step" | "then" |
         // Async/await
-        "async" | "await"
+        "async" | "await" |
+        // Generators
+        "yield" |
+        // Structured concurrency
+        "nursery"
     )
 }
 

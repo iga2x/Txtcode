@@ -180,6 +180,10 @@ impl Obfuscator {
             Statement::Return { value, .. } => {
                 if let Some(v) = value { self.collect_expr(v); }
             }
+            Statement::Yield { value, .. } => { self.collect_expr(value); }
+            Statement::Nursery { body, .. } => {
+                for s in body { self.collect_stmt(s); }
+            }
             Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
                 self.collect_expr(condition);
                 for s in then_branch { self.collect_stmt(s); }
@@ -256,6 +260,7 @@ impl Obfuscator {
             Pattern::Constructor { args, .. } => {
                 for p in args { self.collect_pattern(p); }
             }
+            Pattern::Rest(name) => self.register(name),
             _ => {}
         }
     }
@@ -388,6 +393,11 @@ impl Obfuscator {
             }
             Statement::Break { span } => Statement::Break { span: span.clone() },
             Statement::Continue { span } => Statement::Continue { span: span.clone() },
+            Statement::Yield { value, span } => Statement::Yield { value: self.sub_expr(value), span: span.clone() },
+            Statement::Nursery { body, span } => Statement::Nursery {
+                body: body.iter().map(|s| self.sub_stmt(s)).collect(),
+                span: span.clone(),
+            },
             Statement::If { condition, then_branch, else_if_branches, else_branch, span } => {
                 Statement::If {
                     condition: self.sub_expr(condition),
@@ -484,6 +494,7 @@ impl Obfuscator {
                 type_name: type_name.clone(), // struct name, not a variable
                 args: args.iter().map(|p| self.sub_pattern(p)).collect(),
             },
+            Pattern::Rest(name) => Pattern::Rest(self.sub_name(name)),
             other => other.clone(),
         }
     }

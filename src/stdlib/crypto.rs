@@ -558,10 +558,285 @@ impl CryptoLib {
                     }
                 }
             }
+            // ── Task 16.3: Named crypto aliases & AES-256-GCM ────────────────
+
+            // crypto_sha256(data) — explicit-namespace alias for sha256
+            "crypto_sha256" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("crypto_sha256 requires 1 argument".to_string()));
+                }
+                match &args[0] {
+                    Value::String(s) => {
+                        let mut hasher = Sha256::new();
+                        hasher.update(s.as_bytes());
+                        Ok(Value::String(hex::encode(hasher.finalize())))
+                    }
+                    _ => Err(RuntimeError::new("crypto_sha256 requires a string".to_string())),
+                }
+            }
+
+            // crypto_hmac_sha256(key, data) — explicit-namespace alias for hmac_sha256
+            "crypto_hmac_sha256" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "crypto_hmac_sha256 requires 2 arguments (key, data)".to_string(),
+                    ));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(key), Value::String(data)) => {
+                        use ring::hmac;
+                        let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, key.as_bytes());
+                        let tag = hmac::sign(&hmac_key, data.as_bytes());
+                        Ok(Value::String(hex::encode(tag.as_ref())))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "crypto_hmac_sha256 requires string arguments".to_string(),
+                    )),
+                }
+            }
+
+            // crypto_aes_encrypt(key, plaintext) → base64-encoded ciphertext (nonce prepended)
+            // key: 32-byte hex string (64 hex chars) or 32-char UTF-8 passphrase
+            "crypto_aes_encrypt" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "crypto_aes_encrypt requires 2 arguments (key, plaintext)".to_string(),
+                    ));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(key_str), Value::String(plaintext)) => {
+                        use aes_gcm::{
+                            aead::{Aead, AeadCore, KeyInit, OsRng},
+                            Aes256Gcm, Key, Nonce,
+                        };
+                        // Derive 32-byte key: try hex-decode first, otherwise SHA-256 the string.
+                        let key_bytes = Self::derive_aes_key(key_str);
+                        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+                        let cipher = Aes256Gcm::new(key);
+                        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+                        let ciphertext = cipher
+                            .encrypt(&nonce, plaintext.as_bytes())
+                            .map_err(|e| RuntimeError::new(format!("AES encrypt failed: {}", e)))?;
+                        // Encode as nonce (12 bytes) || ciphertext, base64-encoded.
+                        let mut combined = nonce.to_vec();
+                        combined.extend_from_slice(&ciphertext);
+                        Ok(Value::String(general_purpose::STANDARD.encode(&combined)))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "crypto_aes_encrypt requires string arguments".to_string(),
+                    )),
+                }
+            }
+
+            // crypto_aes_decrypt(key, ciphertext_b64) → plaintext string
+            "crypto_aes_decrypt" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "crypto_aes_decrypt requires 2 arguments (key, ciphertext)".to_string(),
+                    ));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(key_str), Value::String(ciphertext_b64)) => {
+                        use aes_gcm::{
+                            aead::{Aead, KeyInit},
+                            Aes256Gcm, Key, Nonce,
+                        };
+                        let key_bytes = Self::derive_aes_key(key_str);
+                        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+                        let cipher = Aes256Gcm::new(key);
+                        let combined = general_purpose::STANDARD
+                            .decode(ciphertext_b64.as_bytes())
+                            .map_err(|e| RuntimeError::new(format!("Base64 decode failed: {}", e)))?;
+                        if combined.len() < 12 {
+                            return Err(RuntimeError::new(
+                                "crypto_aes_decrypt: ciphertext too short".to_string(),
+                            ));
+                        }
+                        let nonce = Nonce::from_slice(&combined[..12]);
+                        let plaintext = cipher
+                            .decrypt(nonce, &combined[12..])
+                            .map_err(|e| RuntimeError::new(format!("AES decrypt failed: {}", e)))?;
+                        Ok(Value::String(
+                            String::from_utf8(plaintext).map_err(|_| {
+                                RuntimeError::new("Decrypted data is not valid UTF-8".to_string())
+                            })?,
+                        ))
+                    }
+                    _ => Err(RuntimeError::new(
+                        "crypto_aes_decrypt requires string arguments".to_string(),
+                    )),
+                }
+            }
+
+            // ── Task 16.4: JWT helpers ────────────────────────────────────────
+
+            // jwt_sign(payload_map, secret, algorithm) → token string
+            // algorithm: "HS256" (default) or "RS256"
+            "jwt_sign" => {
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(RuntimeError::new(
+                        "jwt_sign requires 2-3 arguments (payload, secret, algorithm?)".to_string(),
+                    ));
+                }
+                let algorithm = if args.len() == 3 {
+                    match &args[2] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err(RuntimeError::new("jwt_sign: algorithm must be a string".to_string())),
+                    }
+                } else {
+                    "HS256".to_string()
+                };
+                let secret = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err(RuntimeError::new("jwt_sign: secret must be a string".to_string())),
+                };
+                let payload_json = Self::value_to_json(&args[0]);
+                Self::jwt_sign_impl(&payload_json, &secret, &algorithm)
+            }
+
+            // jwt_verify(token, secret) → ok(payload_map) | err(reason)
+            "jwt_verify" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "jwt_verify requires 2 arguments (token, secret)".to_string(),
+                    ));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(token), Value::String(secret)) => {
+                        Self::jwt_verify_impl(token, secret)
+                    }
+                    _ => Err(RuntimeError::new("jwt_verify requires string arguments".to_string())),
+                }
+            }
+
+            // jwt_decode(token) → payload map (no verification — inspection only)
+            "jwt_decode" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("jwt_decode requires 1 argument (token)".to_string()));
+                }
+                match &args[0] {
+                    Value::String(token) => Self::jwt_decode_impl(token),
+                    _ => Err(RuntimeError::new("jwt_decode requires a string token".to_string())),
+                }
+            }
+
             _ => Err(RuntimeError::new(format!(
                 "Unknown crypto function: {}",
                 name
             ))),
         }
+    }
+
+    // ── JWT implementation helpers ────────────────────────────────────────────
+
+    fn jwt_sign_impl(payload_json: &serde_json::Value, secret: &str, algorithm: &str) -> Result<Value, RuntimeError> {
+        use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+        let alg = match algorithm.to_uppercase().as_str() {
+            "HS256" => Algorithm::HS256,
+            "HS384" => Algorithm::HS384,
+            "HS512" => Algorithm::HS512,
+            other => return Err(RuntimeError::new(format!("jwt_sign: unsupported algorithm '{}'", other))),
+        };
+        let header = Header::new(alg);
+        let key = EncodingKey::from_secret(secret.as_bytes());
+        let token = encode(&header, payload_json, &key)
+            .map_err(|e| RuntimeError::new(format!("jwt_sign: {}", e)))?;
+        Ok(Value::String(token))
+    }
+
+    fn jwt_verify_impl(token: &str, secret: &str) -> Result<Value, RuntimeError> {
+        use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+        use std::collections::HashSet;
+        let key = DecodingKey::from_secret(secret.as_bytes());
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.validate_exp = false;
+        validation.required_spec_claims = HashSet::new(); // no required claims
+        match decode::<serde_json::Value>(token, &key, &validation) {
+            Ok(token_data) => {
+                let payload = Self::json_to_value(&token_data.claims);
+                Ok(Value::Result(true, Box::new(payload)))
+            }
+            Err(e) => Ok(Value::Result(
+                false,
+                Box::new(Value::String(e.to_string())),
+            )),
+        }
+    }
+
+    fn jwt_decode_impl(token: &str) -> Result<Value, RuntimeError> {
+        use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+        use std::collections::HashSet;
+        let key = DecodingKey::from_secret(b"");
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.insecure_disable_signature_validation();
+        validation.validate_exp = false;
+        validation.required_spec_claims = HashSet::new();
+        match decode::<serde_json::Value>(token, &key, &validation) {
+            Ok(token_data) => Ok(Self::json_to_value(&token_data.claims)),
+            Err(e) => Err(RuntimeError::new(format!("jwt_decode: {}", e))),
+        }
+    }
+
+    /// Convert a `Value` to a `serde_json::Value` for JWT payload encoding.
+    fn value_to_json(value: &Value) -> serde_json::Value {
+        match value {
+            Value::Null => serde_json::Value::Null,
+            Value::Boolean(b) => serde_json::Value::Bool(*b),
+            Value::Integer(n) => serde_json::Value::Number((*n).into()),
+            Value::Float(f) => serde_json::json!(*f),
+            Value::String(s) => serde_json::Value::String(s.clone()),
+            Value::Array(arr) => serde_json::Value::Array(arr.iter().map(Self::value_to_json).collect()),
+            Value::Map(m) => {
+                let obj: serde_json::Map<String, serde_json::Value> =
+                    m.iter().map(|(k, v)| (k.clone(), Self::value_to_json(v))).collect();
+                serde_json::Value::Object(obj)
+            }
+            other => serde_json::Value::String(other.to_string()),
+        }
+    }
+
+    /// Convert a `serde_json::Value` back to a `Value`.
+    fn json_to_value(json: &serde_json::Value) -> Value {
+        match json {
+            serde_json::Value::Null => Value::Null,
+            serde_json::Value::Bool(b) => Value::Boolean(*b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Integer(i)
+                } else {
+                    Value::Float(n.as_f64().unwrap_or(0.0))
+                }
+            }
+            serde_json::Value::String(s) => Value::String(s.clone()),
+            serde_json::Value::Array(arr) => Value::Array(arr.iter().map(Self::json_to_value).collect()),
+            serde_json::Value::Object(obj) => {
+                let mut map = indexmap::IndexMap::new();
+                for (k, v) in obj {
+                    map.insert(k.clone(), Self::json_to_value(v));
+                }
+                Value::Map(map)
+            }
+        }
+    }
+
+    /// Derive a 32-byte AES key from a string.
+    /// If the string is 64 hex characters, decode it directly.
+    /// Otherwise, SHA-256 hash the string to produce 32 bytes.
+    fn derive_aes_key(key_str: &str) -> [u8; 32] {
+        if key_str.len() == 64 {
+            if let Ok(bytes) = hex::decode(key_str) {
+                if bytes.len() == 32 {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&bytes);
+                    return arr;
+                }
+            }
+        }
+        let mut hasher = Sha256::new();
+        hasher.update(key_str.as_bytes());
+        let result = hasher.finalize();
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&result);
+        arr
     }
 }

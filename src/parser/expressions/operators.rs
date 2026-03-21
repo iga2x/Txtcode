@@ -275,23 +275,11 @@ pub fn parse_term(parser: &mut Parser) -> Result<Expression, String> {
     Ok(expr)
 }
 
+/// Parse multiplication, division, modulo (left-associative).
+/// Calls parse_power for the higher-precedence ** operator.
 pub fn parse_factor(parser: &mut Parser) -> Result<Expression, String> {
-    // Power operator has higher precedence and is right-associative
-    let mut expr = parse_unary(parser)?;
+    let mut expr = parse_power(parser)?;
 
-    // Parse power operator (right-associative: 2 ** 3 ** 4 = 2 ** (3 ** 4))
-    if parser.check(crate::lexer::token::TokenKind::Power) {
-        parser.advance();
-        let right = parse_factor(parser)?; // Right-associative: recurse
-        expr = Expression::BinaryOp {
-            left: Box::new(expr),
-            op: BinaryOperator::Power,
-            right: Box::new(right),
-            span: Span::default(),
-        };
-    }
-
-    // Parse multiplication, division, modulo (left-associative)
     while parser.check(crate::lexer::token::TokenKind::Star)
         || parser.check(crate::lexer::token::TokenKind::Slash)
         || parser.check(crate::lexer::token::TokenKind::Percent)
@@ -311,13 +299,34 @@ pub fn parse_factor(parser: &mut Parser) -> Result<Expression, String> {
             }
             _ => break,
         };
-        let right = parse_unary(parser)?;
+        let right = parse_power(parser)?;
         expr = Expression::BinaryOp {
             left: Box::new(expr),
             op,
             right: Box::new(right),
             span: Span::default(),
         };
+    }
+
+    Ok(expr)
+}
+
+/// Parse power operator `**` (right-associative, higher precedence than * / %).
+/// 2 ** 3 ** 4  =>  2 ** (3 ** 4)   (right-associative)
+/// 2 ** 3 * 4   =>  (2 ** 3) * 4    (** binds tighter than *)
+fn parse_power(parser: &mut Parser) -> Result<Expression, String> {
+    let expr = parse_unary(parser)?;
+
+    if parser.check(crate::lexer::token::TokenKind::Power) {
+        parser.advance();
+        // Recurse into parse_power (not parse_factor) for right-associativity.
+        let right = parse_power(parser)?;
+        return Ok(Expression::BinaryOp {
+            left: Box::new(expr),
+            op: BinaryOperator::Power,
+            right: Box::new(right),
+            span: Span::default(),
+        });
     }
 
     Ok(expr)

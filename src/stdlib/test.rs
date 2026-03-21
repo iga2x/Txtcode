@@ -159,6 +159,57 @@ impl TestLib {
                 }
                 Ok(Value::Boolean(false))
             }
+            "expect_error" => {
+                // expect_error(result, expected_pattern)
+                // Passes when `result` is a Value::Result(false, msg) and msg contains expected_pattern.
+                // Also accepts Value::String (raw error message) for compatibility.
+                //
+                // Usage:
+                //   store → r → divide(10, 0)   # returns err("E0001: division by zero")
+                //   expect_error(r, "E0001")      # passes
+                if args.len() < 1 || args.len() > 2 {
+                    return Err(RuntimeError::new(
+                        "expect_error requires 1 or 2 arguments (result, expected_pattern?)".to_string(),
+                    ));
+                }
+                let expected_pattern = if args.len() == 2 {
+                    match &args[1] {
+                        Value::String(s) => s.clone(),
+                        v => v.to_string(),
+                    }
+                } else {
+                    String::new() // any error
+                };
+
+                let (is_error, error_msg) = match &args[0] {
+                    Value::Result(false, inner) => (true, inner.to_string()),
+                    Value::Result(true, _) => (false, String::new()),
+                    Value::String(s) => (true, s.clone()), // raw error string
+                    Value::Null => (false, String::new()),
+                    other => (false, other.to_string()),
+                };
+
+                if !is_error {
+                    let msg = if expected_pattern.is_empty() {
+                        "expect_error: expected an error result but got success".to_string()
+                    } else {
+                        format!("expect_error: expected error '{}' but got success", expected_pattern)
+                    };
+                    eprintln!("❌ ASSERTION FAILED: {}", msg);
+                    return Err(RuntimeError::new(format!("Assertion failed: {}", msg)));
+                }
+
+                if !expected_pattern.is_empty() && !error_msg.contains(&expected_pattern) {
+                    let msg = format!(
+                        "expect_error: expected error containing '{}' but got '{}'",
+                        expected_pattern, error_msg
+                    );
+                    eprintln!("❌ ASSERTION FAILED: {}", msg);
+                    return Err(RuntimeError::new(format!("Assertion failed: {}", msg)));
+                }
+
+                Ok(Value::Null)
+            }
             _ => Err(RuntimeError::new(format!(
                 "Unknown test function: {}",
                 name

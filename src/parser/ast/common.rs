@@ -99,6 +99,18 @@ pub enum Pattern {
         Box<crate::parser::ast::Expression>,
         Box<crate::parser::ast::Expression>,
     ),
+    /// Rest/spread pattern: `...name` — captures remaining array elements
+    /// Only valid as the final element in an array pattern: `[a, b, ...rest]`
+    Rest(String),
+}
+
+/// A generic type parameter with an optional constraint bound.
+/// Examples: `T` (unconstrained), `T: Comparable`, `T: Numeric`
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeParam {
+    pub name: String,
+    /// Optional bound name, e.g. "Comparable" or "Numeric"
+    pub constraint: Option<String>,
 }
 
 /// Segment of an interpolated string

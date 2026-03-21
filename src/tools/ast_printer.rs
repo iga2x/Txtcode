@@ -113,6 +113,15 @@ impl AstPrinter {
             }
             Statement::Break { .. } => format!("{}break", ind),
             Statement::Continue { .. } => format!("{}continue", ind),
+            Statement::Yield { value, .. } => format!("{}yield → {}", ind, self.print_expr(value)),
+            Statement::Nursery { body, .. } => {
+                self.indent += 1;
+                let body_strs: Vec<String> = body.iter()
+                    .map(|s| self.print_statement(s))
+                    .collect();
+                self.indent -= 1;
+                format!("{}async → nursery\n{}\n{}end", ind, body_strs.join("\n"), ind)
+            }
             Statement::If {
                 condition,
                 then_branch,
@@ -601,6 +610,7 @@ impl AstPrinter {
             }
             Pattern::Or(pats) => pats.iter().map(|p| self.print_pattern(p)).collect::<Vec<_>>().join(" | "),
             Pattern::Range(start, end) => format!("{:?}..={:?}", start, end),
+            Pattern::Rest(name) => format!("...{}", name),
         }
     }
 }

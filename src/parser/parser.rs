@@ -177,6 +177,7 @@ impl Parser {
                     "print" => crate::parser::statements::assignment::parse_print(self),
                     "define" | "async" => crate::parser::statements::functions::parse_define(self),
                     "return" => crate::parser::statements::functions::parse_return(self),
+                    "yield" => crate::parser::statements::functions::parse_yield(self),
                     "if" => crate::parser::statements::control::parse_if(self),
                     "while" => crate::parser::statements::control::parse_while(self),
                     "do" => crate::parser::statements::control::parse_do_while(self),

@@ -27,7 +27,7 @@ pub enum Statement {
     },
     FunctionDef {
         name: String,
-        type_params: Vec<String>, // Generic type parameters (e.g., <T, U>)
+        type_params: Vec<super::common::TypeParam>, // Generic type parameters (e.g., <T>, <T: Comparable>)
         params: Vec<super::common::Parameter>,
         return_type: Option<crate::typecheck::types::Type>,
         body: Vec<Statement>,
@@ -40,6 +40,11 @@ pub enum Statement {
     },
     Return {
         value: Option<Expression>,
+        span: Span,
+    },
+    /// `yield → value` — produce a value from a generator function
+    Yield {
+        value: Expression,
         span: Span,
     },
     Break {
@@ -143,6 +148,14 @@ pub enum Statement {
         methods: Vec<Statement>, // Each element is Statement::FunctionDef
         span: Span,
     },
+    /// `async → nursery\n  body\nend` — structured concurrency block.
+    /// All tasks spawned with `nursery_spawn(fn)` inside this block are
+    /// awaited when the block exits. Any error from a child task propagates
+    /// to the nursery scope.
+    Nursery {
+        body: Vec<Statement>,
+        span: Span,
+    },
 }
 
 impl Statement {
@@ -173,7 +186,9 @@ impl Statement {
             | Statement::Permission { span, .. }
             | Statement::TypeAlias { span, .. }
             | Statement::NamedError { span, .. }
-            | Statement::Impl { span, .. } => Some(span),
+            | Statement::Impl { span, .. }
+            | Statement::Yield { span, .. }
+            | Statement::Nursery { span, .. } => Some(span),
             Statement::Expression(_) => None,
         };
         span.map(|s| (s.line, s.column))

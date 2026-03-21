@@ -220,6 +220,7 @@ fn collect_pattern_names(pattern: &Pattern) -> Vec<String> {
         Pattern::Ignore => vec![],
         Pattern::Or(pats) => pats.iter().flat_map(collect_pattern_names).collect(),
         Pattern::Range(..) => vec![],
+        Pattern::Rest(name) => vec![name.clone()],
     }
 }
 
@@ -373,6 +374,10 @@ fn collect_stmt_used(stmt: &Statement, used: &mut HashSet<String>) {
         | Statement::Continue { .. }
         | Statement::TypeAlias { .. }
         | Statement::Impl { .. } => {}
+        Statement::Yield { value, .. } => collect_expr_idents(value, used),
+        Statement::Nursery { body, .. } => {
+            for s in body { collect_stmt_used(s, used); }
+        }
         Statement::NamedError { message, .. } => collect_expr_idents(message, used),
     }
 }
@@ -604,7 +609,9 @@ fn stmt_line(stmt: &Statement) -> usize {
         | Statement::Permission { span, .. }
         | Statement::TypeAlias { span, .. }
         | Statement::NamedError { span, .. }
-        | Statement::Impl { span, .. } => span.line,
+        | Statement::Impl { span, .. }
+        | Statement::Yield { span, .. }
+        | Statement::Nursery { span, .. } => span.line,
         Statement::Expression(e) => expr_span_line(e),
     }
 }

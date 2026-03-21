@@ -35,6 +35,8 @@ impl VirtualMachine {
             cancel_flag: None,
             async_functions: std::collections::HashSet::new(),
             struct_methods: std::collections::HashMap::new(),
+            covered_lines: std::collections::HashSet::new(),
+            coverage_enabled: false,
         }
     }
 
@@ -71,6 +73,8 @@ impl VirtualMachine {
             cancel_flag: None,
             async_functions: std::collections::HashSet::new(),
             struct_methods: std::collections::HashMap::new(),
+            covered_lines: std::collections::HashSet::new(),
+            coverage_enabled: false,
         };
 
         // If safe_mode is enabled, deny exec by default
@@ -161,6 +165,22 @@ impl VirtualMachine {
             self.grant_permission(PermissionResource::System("exec".to_string()), None);
         } else {
             self.deny_permission(PermissionResource::System("exec".to_string()), None);
+        }
+    }
+}
+
+impl super::VirtualMachine {
+    /// Enable line-coverage tracking. Call before running a program.
+    pub fn enable_coverage(&mut self) {
+        self.coverage_enabled = true;
+        self.covered_lines.clear();
+    }
+
+    /// Record that the given source line was executed (no-op when disabled).
+    #[inline]
+    pub fn record_line(&mut self, line: usize) {
+        if self.coverage_enabled {
+            self.covered_lines.insert(line as u32);
         }
     }
 }

@@ -1407,6 +1407,12 @@ impl CoreLib {
                 }
             }
 
+            // Task 17.2: parse/stringify aliases for consistency with json_parse/json_stringify
+            "toml_parse"      => Self::call_function("toml_decode", args, executor),
+            "toml_stringify"  => Self::call_function("toml_encode", args, executor),
+            "yaml_parse"      => Self::call_function("yaml_decode", args, executor),
+            "yaml_stringify"  => Self::call_function("yaml_encode", args, executor),
+
             // CSV encode/decode
             "csv_to_string" | "csv_encode" => {
                 if args.len() != 1 {
@@ -2119,6 +2125,53 @@ impl CoreLib {
                         "array_tail requires an array argument".to_string(),
                     )),
                 }
+            }
+
+            // ── Task 14.3: Iterator constructors ─────────────────────────────
+
+            // range(start, end) or range(start, end, step) — lazy integer range
+            "range" => {
+                if args.len() < 2 || args.len() > 3 {
+                    return Err(RuntimeError::new("range requires 2 or 3 arguments: range(start, end) or range(start, end, step)".to_string()));
+                }
+                let start = match &args[0] { Value::Integer(i) => *i, _ => return Err(RuntimeError::new("range: start must be integer".to_string())) };
+                let end   = match &args[1] { Value::Integer(i) => *i, _ => return Err(RuntimeError::new("range: end must be integer".to_string())) };
+                let step  = if args.len() == 3 {
+                    match &args[2] { Value::Integer(i) if *i != 0 => *i, Value::Integer(_) => return Err(RuntimeError::new("range: step cannot be zero".to_string())), _ => return Err(RuntimeError::new("range: step must be integer".to_string())) }
+                } else if start <= end { 1_i64 } else { -1_i64 };
+                let mut fields = std::collections::HashMap::new();
+                fields.insert("current".to_string(), Value::Integer(start));
+                fields.insert("end".to_string(),     Value::Integer(end));
+                fields.insert("step".to_string(),    Value::Integer(step));
+                Ok(Value::Struct("__Range__".to_string(), fields))
+            }
+
+            // enumerate(iter) — wraps any iterable, yields [index, value] on each step
+            "enumerate" => {
+                if args.len() != 1 { return Err(RuntimeError::new("enumerate requires 1 argument".to_string())); }
+                let mut fields = std::collections::HashMap::new();
+                fields.insert("iter".to_string(),  args[0].clone());
+                fields.insert("index".to_string(), Value::Integer(0));
+                Ok(Value::Struct("__Enumerate__".to_string(), fields))
+            }
+
+            // zip(iter1, iter2) — pairs elements from two iterables
+            "zip" => {
+                if args.len() != 2 { return Err(RuntimeError::new("zip requires 2 arguments".to_string())); }
+                let mut fields = std::collections::HashMap::new();
+                fields.insert("iter1".to_string(), args[0].clone());
+                fields.insert("iter2".to_string(), args[1].clone());
+                Ok(Value::Struct("__Zip__".to_string(), fields))
+            }
+
+            // chain(iter1, iter2) — all of iter1, then all of iter2
+            "chain" => {
+                if args.len() != 2 { return Err(RuntimeError::new("chain requires 2 arguments".to_string())); }
+                let mut fields = std::collections::HashMap::new();
+                fields.insert("iter1".to_string(),      args[0].clone());
+                fields.insert("iter2".to_string(),      args[1].clone());
+                fields.insert("first_done".to_string(), Value::Boolean(false));
+                Ok(Value::Struct("__Chain__".to_string(), fields))
             }
 
             _ => Err(RuntimeError::new(format!(

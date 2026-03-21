@@ -1252,6 +1252,69 @@ impl IOLib {
                     Ok(Value::Integer(count as i64))
                 }
             }
+            // ── Task 15.4: Async File I/O ────────────────────────────────────────
+            // Runs synchronous file I/O on a background OS thread and returns
+            // a Value::Future. Permission checks happen synchronously before spawn.
+            "async_read_file" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new(
+                        "async_read_file requires 1 argument (path)".to_string(),
+                    ));
+                }
+                let path = match &args[0] {
+                    Value::String(p) => p.clone(),
+                    _ => return Err(RuntimeError::new(
+                        "async_read_file requires a string path".to_string(),
+                    )),
+                };
+                // Permission check on calling thread
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(
+                        &PermissionResource::FileSystem("read".to_string()),
+                        Some(path.as_str()),
+                    )?;
+                }
+                let validated = Self::validate_path(&path)?;
+                let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+                std::thread::spawn(move || {
+                    let result = fs::read_to_string(&validated)
+                        .map(Value::String)
+                        .map_err(|e| format!("Failed to read file: {}", e));
+                    sender.send(result);
+                });
+                Ok(Value::Future(handle))
+            }
+            "async_write_file" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "async_write_file requires 2 arguments (path, content)".to_string(),
+                    ));
+                }
+                let (path, content) = match (&args[0], &args[1]) {
+                    (Value::String(p), Value::String(c)) => (p.clone(), c.clone()),
+                    _ => return Err(RuntimeError::new(
+                        "async_write_file requires string path and content".to_string(),
+                    )),
+                };
+                // Permission check on calling thread
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(
+                        &PermissionResource::FileSystem("write".to_string()),
+                        Some(path.as_str()),
+                    )?;
+                }
+                let validated = Self::validate_path(&path)?;
+                let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+                std::thread::spawn(move || {
+                    let result = fs::write(&validated, &content)
+                        .map(|_| Value::Null)
+                        .map_err(|e| format!("Failed to write file: {}", e));
+                    sender.send(result);
+                });
+                Ok(Value::Future(handle))
+            }
             _ => Err(RuntimeError::new(format!("Unknown I/O function: {}", name))),
         }
     }

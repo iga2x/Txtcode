@@ -7,10 +7,52 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.0.0] — 2026-03-20
 
-### Added
-- **`str_format(template, args...)` / `format(template, args...)`**
+**v1.0.0 — Production Release.** 465 tests passing.
+
+### Added — Group 19 (Ecosystem & Platform)
+- Community package registry server (`src/bin/registry_server.rs`) — HTTP API for package publish, search, download, and listing
+- `registry/index.json` updated with live registry URL (`https://registry.txtcode.dev`)
+- Official `Dockerfile` — multi-stage Alpine build; `docker run txtcode/txtcode:latest script.tc`
+- `.github/workflows/docker.yml` — automated Docker image publishing to GHCR + Docker Hub on tag push
+- `mkdocs.yml` updated with full v1.0 navigation structure for documentation site
+- `docs/stability.md` — stability guarantees and semver policy for v1.0
+- `CHANGELOG.md` — complete v1.0.0 entry
+
+### Added — Group 18 (Production Readiness)
+- `txtcode package publish` — validates, tarballs, signs, and POSTs packages to registry
+- `txtcode package login` — stores API token to `~/.txtcode/credentials`
+- Migration tool: `txtcode migrate [--check] <file>` — three source-level migration passes (string interpolation, assert syntax, yield arrow)
+- `txtcode test --coverage` — line coverage tracking with `coverage/index.html` report
+- `expect_error(result, pattern)` — new test assertion for error-path testing
+- LSP workspace-wide symbol resolution — `textDocument/references`, `workspace/symbol`, cross-file `textDocument/definition`
+- `txtcode bench --compare` — regression detection with 10% threshold, exits 1 on regression; `benches/baseline.json` committed
+- `.github/workflows/bench.yml` — CI benchmark regression job on PRs
+
+### Added — Group 17 (Stdlib Application Layer)
+- SQLite integration: `db_open`, `db_exec`, `db_close` (bundled rusqlite)
+- YAML/TOML aliases: `yaml_parse`, `yaml_stringify`, `toml_parse`, `toml_stringify`
+- Template engine: `template_render` — Mustache-compatible `{{var}}`, `{{#if}}`, `{{#each}}`
+- `cli_parse(args, spec)` — structured CLI argument parsing in scripts
+- `proc_run(cmd, opts)` / `proc_pipe([cmds])` — process control with stdin/env/cwd/timeout
+
+### Added — Group 16 (Networking & Security)
+- TLS/HTTPS: `tls_connect(host, port)`, all HTTP clients use rustls-tls
+- WebSocket: `ws_connect`, `ws_send`, `ws_recv`, `ws_close`, `ws_serve`
+- Crypto: `crypto_sha256`, `crypto_hmac_sha256`, `crypto_aes_encrypt`, `crypto_aes_decrypt`
+- JWT: `jwt_sign`, `jwt_verify`, `jwt_decode`
+- DNS/Network: `dns_resolve`, `net_port_open`, `net_ping`
+
+### Added — Group 15 (Runtime & Async Overhaul)
+- Structured concurrency: `async → nursery { nursery_spawn(fn) }` pattern
+- Async generators: `async define` + `yield →` → `Future<Array>`
+- `with_timeout(ms, fn)` — async timeout primitive
+- `async_read_file`, `async_write_file` — thread-based async file I/O
+- `docs/async.md` — comprehensive async guide
+
+### Added — Groups 1–14
+See prior changelog entries for Groups 1–14 features.
 
 ---
 

@@ -39,6 +39,23 @@ impl FutureHandle {
         let guard = cvar.wait_while(guard, |r| r.is_none()).unwrap();
         guard.as_ref().unwrap().clone()
     }
+
+    /// Block until the async task completes or the timeout elapses.
+    /// Returns `Some(result)` on completion, `None` if the timeout was reached.
+    pub fn resolve_with_timeout(
+        self,
+        timeout: std::time::Duration,
+    ) -> Option<Result<Value, String>> {
+        let (lock, cvar) = &*self.inner;
+        let guard = lock.lock().unwrap();
+        let (guard, wait_result) =
+            cvar.wait_timeout_while(guard, timeout, |r| r.is_none()).unwrap();
+        if wait_result.timed_out() {
+            None
+        } else {
+            guard.clone()
+        }
+    }
 }
 
 impl Clone for FutureHandle {

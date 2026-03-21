@@ -1,8 +1,8 @@
-site_name: Txt-code Documentation
-site_description: A simple, memorable, security-focused programming language
-site_url: https://iga2x.github.io/txtcode
-repo_url: https://github.com/iga2x/txtcode
-repo_name: iga2x/txtcode
+site_name: Txtcode Documentation
+site_description: "Txtcode — multipurpose, security-native programming language"
+site_url: https://txtcode.dev/docs
+repo_url: https://github.com/txtcode/txtcode
+repo_name: txtcode/txtcode
 edit_uri: edit/main/docs/
 
 theme:
@@ -12,30 +12,43 @@ theme:
     - navigation.sections
     - navigation.top
     - search.suggest
+    - search.highlight
     - content.code.copy
   palette:
     - scheme: default
       primary: indigo
-      accent: indigo
+      accent: blue
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
       primary: indigo
-      accent: indigo
+      accent: blue
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
 
 docs_dir: docs
 
 nav:
   - Home: index.md
-  - Quick Start: quick-start.md
-  - Language Spec: language-spec.md
-  - Syntax Reference: syntax-reference.md
-  - Permissions: permissions.md
-  - Security Features: security-features.md
+  - Getting Started:
+    - Installation: getting-started.md
+    - Quick Start: quick-start.md
+  - Language Reference:
+    - Language Spec: language-spec.md
+    - Async & Concurrency: async.md
+  - Security:
+    - Permissions: permissions.md
+    - Security Features: security-features.md
+  - Tools:
+    - CLI Reference: cli.md
+    - Package Manager: packages.md
+    - Benchmarking: performance.md
+  - Changelog: CHANGELOG.md
+  - Stability Policy: stability.md
   - Contributing: contributing.md
 
 markdown_extensions:
@@ -44,10 +57,17 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
   - admonition
   - tables
+  - toc:
+      permalink: true
 
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/iga2x/txtcode
+      link: https://github.com/txtcode/txtcode
+  version:
+    provider: mike

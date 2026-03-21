@@ -945,6 +945,295 @@ impl SysLib {
                 Ok(json_to_value(&json_val))
             }
 
+            // ── Task 17.5: Advanced process control ──────────────────────────
+
+            // proc_run(cmd, options_map?) → {stdout, stderr, status}
+            //
+            // options_map keys (all optional):
+            //   "stdin"   → String fed to the process stdin
+            //   "env"     → Map<String,String> extra environment variables
+            //   "cwd"     → String working directory
+            //   "timeout" → Integer milliseconds before kill (default: no timeout)
+            "proc_run" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(RuntimeError::new(
+                        "proc_run requires 1-2 arguments (cmd, options?)".to_string(),
+                    ));
+                }
+                // Permission check
+                let cmd_val = &args[0];
+                let cmd_str = match cmd_val {
+                    Value::String(s) => s.clone(),
+                    Value::Array(a) => a.first().and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None }).unwrap_or_default(),
+                    _ => return Err(RuntimeError::new("proc_run: cmd must be a string or array".to_string())),
+                };
+                if !exec_allowed {
+                    return Err(RuntimeError::new(
+                        "proc_run: exec is not allowed in safe mode (use --allow-exec flag)".to_string(),
+                    ));
+                }
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(
+                        &PermissionResource::System("exec".to_string()),
+                        Some(&cmd_str),
+                    )?;
+                }
+                // Parse options
+                let opts: indexmap::IndexMap<String, Value> = if args.len() == 2 {
+                    match &args[1] {
+                        Value::Map(m) => m.clone(),
+                        _ => return Err(RuntimeError::new("proc_run: options must be a map".to_string())),
+                    }
+                } else {
+                    indexmap::IndexMap::new()
+                };
+                let stdin_data = opts.get("stdin").and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
+                let cwd = opts.get("cwd").and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
+                let timeout_ms = opts.get("timeout").and_then(|v| match v {
+                    Value::Integer(n) => Some(*n as u64),
+                    Value::Float(f) => Some(*f as u64),
+                    _ => None,
+                });
+                let extra_env: Vec<(String, String)> = match opts.get("env") {
+                    Some(Value::Map(m)) => m.iter().filter_map(|(k, v)| {
+                        if let Value::String(s) = v { Some((k.clone(), s.clone())) } else { None }
+                    }).collect(),
+                    _ => vec![],
+                };
+
+                // Build command
+                let (exe, cmd_args): (String, Vec<String>) = match &args[0] {
+                    Value::String(s) => {
+                        let parts: Vec<&str> = s.split_whitespace().collect();
+                        (parts[0].to_string(), parts[1..].iter().map(|s| s.to_string()).collect())
+                    }
+                    Value::Array(a) => {
+                        let strs: Vec<String> = a.iter().map(|v| match v {
+                            Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        }).collect();
+                        (strs[0].clone(), strs[1..].to_vec())
+                    }
+                    _ => unreachable!(),
+                };
+
+                let mut child_cmd = std::process::Command::new(&exe);
+                child_cmd.args(&cmd_args);
+                for (k, v) in &extra_env { child_cmd.env(k, v); }
+                if let Some(ref dir) = cwd { child_cmd.current_dir(dir); }
+                child_cmd.stdin(std::process::Stdio::piped());
+                child_cmd.stdout(std::process::Stdio::piped());
+                child_cmd.stderr(std::process::Stdio::piped());
+
+                let mut child = child_cmd.spawn()
+                    .map_err(|e| RuntimeError::new(format!("proc_run: failed to spawn '{}': {}", exe, e)))?;
+
+                // Write stdin
+                if let Some(ref input) = stdin_data {
+                    if let Some(mut stdin_pipe) = child.stdin.take() {
+                        use std::io::Write;
+                        let _ = stdin_pipe.write_all(input.as_bytes());
+                    }
+                }
+
+                // Wait with optional timeout
+                let output = if let Some(ms) = timeout_ms {
+                    use std::time::{Duration, Instant};
+                    let deadline = Instant::now() + Duration::from_millis(ms);
+                    loop {
+                        match child.try_wait() {
+                            Ok(Some(_)) => break child.wait_with_output()
+                                .map_err(|e| RuntimeError::new(format!("proc_run: {}", e)))?,
+                            Ok(None) => {
+                                if Instant::now() >= deadline {
+                                    let _ = child.kill();
+                                    return Err(RuntimeError::new(format!("proc_run: '{}' timed out after {}ms", exe, ms)));
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(10));
+                            }
+                            Err(e) => return Err(RuntimeError::new(format!("proc_run: {}", e))),
+                        }
+                    }
+                } else {
+                    child.wait_with_output()
+                        .map_err(|e| RuntimeError::new(format!("proc_run: {}", e)))?
+                };
+
+                let mut result = indexmap::IndexMap::new();
+                result.insert("stdout".to_string(), Value::String(String::from_utf8_lossy(&output.stdout).to_string()));
+                result.insert("stderr".to_string(), Value::String(String::from_utf8_lossy(&output.stderr).to_string()));
+                result.insert("status".to_string(), Value::Integer(output.status.code().unwrap_or(-1) as i64));
+                Ok(Value::Map(result))
+            }
+
+            // proc_pipe(commands_array) → {stdout, stderr, status}
+            // Each element is either a string or an array of strings.
+            // Connects stdout of each command to stdin of the next.
+            "proc_pipe" => {
+                if args.len() != 1 {
+                    return Err(RuntimeError::new("proc_pipe requires 1 argument (commands array)".to_string()));
+                }
+                let cmds = match &args[0] {
+                    Value::Array(a) => a.clone(),
+                    _ => return Err(RuntimeError::new("proc_pipe: argument must be an array of commands".to_string())),
+                };
+                if cmds.is_empty() {
+                    return Err(RuntimeError::new("proc_pipe: commands array must not be empty".to_string()));
+                }
+                if !exec_allowed {
+                    return Err(RuntimeError::new("proc_pipe: exec is not allowed in safe mode".to_string()));
+                }
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    checker.check_permission(&PermissionResource::System("exec".to_string()), None)?;
+                }
+
+                let parse_cmd = |v: &Value| -> (String, Vec<String>) {
+                    match v {
+                        Value::String(s) => {
+                            let parts: Vec<&str> = s.split_whitespace().collect();
+                            (parts[0].to_string(), parts[1..].iter().map(|s| s.to_string()).collect())
+                        }
+                        Value::Array(a) => {
+                            let strs: Vec<String> = a.iter().map(|v| match v {
+                                Value::String(s) => s.clone(),
+                                other => other.to_string(),
+                            }).collect();
+                            (strs[0].clone(), strs[1..].to_vec())
+                        }
+                        other => (other.to_string(), vec![]),
+                    }
+                };
+
+                let mut prev_stdout: Option<std::process::ChildStdout> = None;
+                let mut children: Vec<std::process::Child> = Vec::new();
+
+                for (idx, cmd_val) in cmds.iter().enumerate() {
+                    let (exe, cmd_args) = parse_cmd(cmd_val);
+                    let mut cmd = std::process::Command::new(&exe);
+                    cmd.args(&cmd_args);
+                    if let Some(prev) = prev_stdout.take() {
+                        cmd.stdin(prev);
+                    } else {
+                        cmd.stdin(std::process::Stdio::null());
+                    }
+                    let is_last = idx == cmds.len() - 1;
+                    if is_last {
+                        cmd.stdout(std::process::Stdio::piped());
+                        cmd.stderr(std::process::Stdio::piped());
+                    } else {
+                        cmd.stdout(std::process::Stdio::piped());
+                        cmd.stderr(std::process::Stdio::null());
+                    }
+                    let mut child = cmd.spawn()
+                        .map_err(|e| RuntimeError::new(format!("proc_pipe: failed to spawn '{}': {}", exe, e)))?;
+                    if !is_last {
+                        prev_stdout = child.stdout.take();
+                    }
+                    children.push(child);
+                }
+
+                let mut last = children.pop().unwrap();
+                // Reap earlier children (they may have already exited once stdout EOF was hit)
+                for mut child in children {
+                    let _ = child.wait();
+                }
+                let output = last.wait_with_output()
+                    .map_err(|e| RuntimeError::new(format!("proc_pipe: {}", e)))?;
+
+                let mut result = indexmap::IndexMap::new();
+                result.insert("stdout".to_string(), Value::String(String::from_utf8_lossy(&output.stdout).to_string()));
+                result.insert("stderr".to_string(), Value::String(String::from_utf8_lossy(&output.stderr).to_string()));
+                result.insert("status".to_string(), Value::Integer(output.status.code().unwrap_or(-1) as i64));
+                Ok(Value::Map(result))
+            }
+
+            // ── Task 17.4: CLI argument parsing ──────────────────────────────
+            // cli_parse(args_array, spec_map) → result_map
+            //
+            // spec_map keys:
+            //   "flags"    → Array<String>  — boolean flags (--verbose, --dry-run)
+            //   "options"  → Array<String>  — value-taking options (--output FILE)
+            //   "positionals" → Array<String> — positional arg names (name only, no --)
+            //
+            // Returns a Map with:
+            //   each flag → Boolean
+            //   each option → String or Null
+            //   each positional → String or Null
+            //   "_rest" → Array<String> of unrecognised args
+            "cli_parse" => {
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "cli_parse requires 2 arguments (args_array, spec_map)".to_string(),
+                    ));
+                }
+                let raw_args = match &args[0] {
+                    Value::Array(a) => a.clone(),
+                    _ => return Err(RuntimeError::new("cli_parse: first argument must be an array".to_string())),
+                };
+                let spec = match &args[1] {
+                    Value::Map(m) => m.clone(),
+                    _ => return Err(RuntimeError::new("cli_parse: second argument must be a map".to_string())),
+                };
+                let flags: Vec<String> = match spec.get("flags") {
+                    Some(Value::Array(a)) => a.iter().filter_map(|v| {
+                        if let Value::String(s) = v { Some(s.clone()) } else { None }
+                    }).collect(),
+                    _ => vec![],
+                };
+                let options: Vec<String> = match spec.get("options") {
+                    Some(Value::Array(a)) => a.iter().filter_map(|v| {
+                        if let Value::String(s) = v { Some(s.clone()) } else { None }
+                    }).collect(),
+                    _ => vec![],
+                };
+                let positional_names: Vec<String> = match spec.get("positionals") {
+                    Some(Value::Array(a)) => a.iter().filter_map(|v| {
+                        if let Value::String(s) = v { Some(s.clone()) } else { None }
+                    }).collect(),
+                    _ => vec![],
+                };
+
+                let mut result: indexmap::IndexMap<String, Value> = indexmap::IndexMap::new();
+                // Initialise defaults
+                for f in &flags   { result.insert(f.clone(), Value::Boolean(false)); }
+                for o in &options  { result.insert(o.clone(), Value::Null); }
+                for p in &positional_names { result.insert(p.clone(), Value::Null); }
+                result.insert("_rest".to_string(), Value::Array(vec![]));
+
+                let mut positional_idx = 0;
+                let mut rest: Vec<Value> = vec![];
+                let mut iter = raw_args.iter().peekable();
+                while let Some(arg_val) = iter.next() {
+                    let arg = match arg_val {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    let key = arg.trim_start_matches('-').to_string();
+                    if arg.starts_with("--") || (arg.starts_with('-') && arg.len() == 2) {
+                        if flags.contains(&key) {
+                            result.insert(key, Value::Boolean(true));
+                        } else if options.contains(&key) {
+                            let val = iter.next().map(|v| match v {
+                                Value::String(s) => Value::String(s.clone()),
+                                other => Value::String(other.to_string()),
+                            }).unwrap_or(Value::Null);
+                            result.insert(key, val);
+                        } else {
+                            rest.push(Value::String(arg));
+                        }
+                    } else if positional_idx < positional_names.len() {
+                        result.insert(positional_names[positional_idx].clone(), Value::String(arg));
+                        positional_idx += 1;
+                    } else {
+                        rest.push(Value::String(arg));
+                    }
+                }
+                result.insert("_rest".to_string(), Value::Array(rest));
+                Ok(Value::Map(result))
+            }
+
             _ => Err(RuntimeError::new(format!("Unknown sys function: {}", name))),
         }
     }

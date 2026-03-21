@@ -142,11 +142,179 @@ impl ControlFlowExecutor {
         use crate::tools::logger::log_debug;
         use crate::tools::logger::log_warn;
 
-        let iter_val = vm.evaluate_expression(iterable)?;
+        let iter_val_raw = vm.evaluate_expression(iterable)?;
+        // Task 15.2: Auto-resolve futures so `for`/`async for` can consume async streams.
+        let iter_val = match iter_val_raw {
+            Value::Future(handle) => handle
+                .resolve()
+                .map_err(|e| RuntimeError::new(e))?,
+            other => other,
+        };
         log_debug(&format!(
             "For loop: variable='{}', iterable type={:?}, value={:?}",
             variable, iter_val, iter_val
         ));
+        // ── Iterator protocol: struct with next() method ─────────────────
+        if let Value::Struct(ref type_name, ref fields) = iter_val {
+            // Built-in lazy range iterator
+            if type_name == "__Range__" {
+                let current = match fields.get("current") { Some(Value::Integer(i)) => *i, _ => return Err(RuntimeError::new("__Range__: missing 'current' field".to_string())) };
+                let end     = match fields.get("end")     { Some(Value::Integer(i)) => *i, _ => return Err(RuntimeError::new("__Range__: missing 'end' field".to_string())) };
+                let step    = match fields.get("step")    { Some(Value::Integer(i)) => *i, _ => 1 };
+                vm.push_scope();
+                let mut i = current;
+                let mut outer_err: Option<RuntimeError> = None;
+                'range_outer: loop {
+                    if step > 0 && i >= end { break; }
+                    if step < 0 && i <= end { break; }
+                    if step == 0 { break; }
+                    if let Err(e) = vm.set_variable(variable.to_string(), Value::Integer(i)) {
+                        outer_err = Some(e); break;
+                    }
+                    for stmt in body {
+                        match vm.execute_statement(stmt) {
+                            Ok(_) => {}
+                            Err(e) if e.is_break_signal() => { break 'range_outer; }
+                            Err(e) if e.is_continue_signal() => { break; }
+                            Err(e) => { outer_err = Some(e); break 'range_outer; }
+                        }
+                    }
+                    i = match i.checked_add(step) { Some(v) => v, None => break };
+                }
+                vm.pop_scope();
+                return if let Some(e) = outer_err { Err(e) } else { Ok(Value::Null) };
+            }
+
+            // Built-in enumerate iterator: yields [index, element] pairs
+            if type_name == "__Enumerate__" {
+                let inner_iter = match fields.get("iter") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Enumerate__: missing 'iter' field".to_string())) };
+                let index_start = match fields.get("index") { Some(Value::Integer(i)) => *i, _ => 0 };
+                // Materialize inner iter to an array then wrap with index
+                let inner_items: Vec<Value> = match inner_iter {
+                    Value::Array(arr) => arr,
+                    Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+                    Value::Set(s) => s,
+                    _ => return Err(RuntimeError::new("enumerate: inner iterator must be an array, string, or set".to_string())),
+                };
+                vm.push_scope();
+                let mut outer_err: Option<RuntimeError> = None;
+                'enum_outer: for (i, item) in inner_items.into_iter().enumerate() {
+                    let pair = Value::Array(vec![Value::Integer(index_start + i as i64), item]);
+                    if let Err(e) = vm.set_variable(variable.to_string(), pair) {
+                        outer_err = Some(e); break;
+                    }
+                    for stmt in body {
+                        match vm.execute_statement(stmt) {
+                            Ok(_) => {}
+                            Err(e) if e.is_break_signal() => { break 'enum_outer; }
+                            Err(e) if e.is_continue_signal() => { break; }
+                            Err(e) => { outer_err = Some(e); break 'enum_outer; }
+                        }
+                    }
+                }
+                vm.pop_scope();
+                return if let Some(e) = outer_err { Err(e) } else { Ok(Value::Null) };
+            }
+
+            // Built-in zip iterator: yields [a, b] pairs
+            if type_name == "__Zip__" {
+                let iter1 = match fields.get("iter1") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Zip__: missing 'iter1'".to_string())) };
+                let iter2 = match fields.get("iter2") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Zip__: missing 'iter2'".to_string())) };
+                let items1: Vec<Value> = match iter1 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(), _ => return Err(RuntimeError::new("zip: iter1 must be an array or string".to_string())) };
+                let items2: Vec<Value> = match iter2 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(), _ => return Err(RuntimeError::new("zip: iter2 must be an array or string".to_string())) };
+                vm.push_scope();
+                let mut outer_err: Option<RuntimeError> = None;
+                'zip_outer: for (a, b) in items1.into_iter().zip(items2.into_iter()) {
+                    let pair = Value::Array(vec![a, b]);
+                    if let Err(e) = vm.set_variable(variable.to_string(), pair) {
+                        outer_err = Some(e); break;
+                    }
+                    for stmt in body {
+                        match vm.execute_statement(stmt) {
+                            Ok(_) => {}
+                            Err(e) if e.is_break_signal() => { break 'zip_outer; }
+                            Err(e) if e.is_continue_signal() => { break; }
+                            Err(e) => { outer_err = Some(e); break 'zip_outer; }
+                        }
+                    }
+                }
+                vm.pop_scope();
+                return if let Some(e) = outer_err { Err(e) } else { Ok(Value::Null) };
+            }
+
+            // Built-in chain iterator: iter1 then iter2
+            if type_name == "__Chain__" {
+                let iter1 = match fields.get("iter1") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Chain__: missing 'iter1'".to_string())) };
+                let iter2 = match fields.get("iter2") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Chain__: missing 'iter2'".to_string())) };
+                let arr1: Vec<Value> = match iter1 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(), _ => return Err(RuntimeError::new("chain: iter1 must be an array or string".to_string())) };
+                let arr2: Vec<Value> = match iter2 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(), _ => return Err(RuntimeError::new("chain: iter2 must be an array or string".to_string())) };
+                let chained: Vec<Value> = arr1.into_iter().chain(arr2.into_iter()).collect();
+                vm.push_scope();
+                let mut outer_err: Option<RuntimeError> = None;
+                'chain_outer: for item in chained {
+                    if let Err(e) = vm.set_variable(variable.to_string(), item) {
+                        outer_err = Some(e); break;
+                    }
+                    for stmt in body {
+                        match vm.execute_statement(stmt) {
+                            Ok(_) => {}
+                            Err(e) if e.is_break_signal() => { break 'chain_outer; }
+                            Err(e) if e.is_continue_signal() => { break; }
+                            Err(e) => { outer_err = Some(e); break 'chain_outer; }
+                        }
+                    }
+                }
+                vm.pop_scope();
+                return if let Some(e) = outer_err { Err(e) } else { Ok(Value::Null) };
+            }
+
+            // User-defined iterator: next(self) → [value, new_state] | null
+            if vm.call_struct_method(iter_val.clone(), "next").is_some() {
+                vm.push_scope();
+                let mut state = iter_val.clone();
+                let mut outer_err: Option<RuntimeError> = None;
+                'iter_outer: loop {
+                    let result = match vm.call_struct_method(state.clone(), "next") {
+                        Some(Ok(v)) => v,
+                        Some(Err(e)) => { outer_err = Some(e); break; }
+                        None => break,
+                    };
+                    match result {
+                        Value::Null => break,
+                        Value::Array(ref pair) if pair.len() == 2 => {
+                            let item = pair[0].clone();
+                            state = pair[1].clone();
+                            if let Err(e) = vm.set_variable(variable.to_string(), item) {
+                                outer_err = Some(e); break 'iter_outer;
+                            }
+                            for stmt in body {
+                                match vm.execute_statement(stmt) {
+                                    Ok(_) => {}
+                                    Err(e) if e.is_break_signal() => { break 'iter_outer; }
+                                    Err(e) if e.is_continue_signal() => { break; }
+                                    Err(e) => { outer_err = Some(e); break 'iter_outer; }
+                                }
+                            }
+                        }
+                        other => {
+                            outer_err = Some(RuntimeError::new(format!(
+                                "Iterator next() must return [value, new_state] or null, got {:?}", other
+                            )));
+                            break;
+                        }
+                    }
+                }
+                vm.pop_scope();
+                return if let Some(e) = outer_err { Err(e) } else { Ok(Value::Null) };
+            }
+
+            log_warn(&format!("For loop: struct '{}' has no next() method", type_name));
+            return Err(RuntimeError::new(format!(
+                "Struct '{}' is not iterable: no next() method found", type_name
+            )));
+        }
+        // ──────────────────────────────────────────────────────────────────
+
         let items = match iter_val {
             Value::Array(arr) => {
                 log_debug(&format!("For loop: array has {} items", arr.len()));
@@ -396,4 +564,7 @@ pub trait ControlFlowVM {
     fn pop_scope(&mut self);
     fn set_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError>;
     fn bind_pattern(&mut self, pattern: &Pattern, value: &Value) -> Result<(), RuntimeError>;
+    /// Call a user-defined method on a struct value (iterator protocol).
+    /// Returns None if the struct type has no registered method with this name.
+    fn call_struct_method(&mut self, obj: Value, method: &str) -> Option<Result<Value, RuntimeError>>;
 }

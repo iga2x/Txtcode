@@ -7,7 +7,7 @@ use crate::tools::logger::log_debug;
 pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
     let start_token = parser.peek().clone();
 
-    // Check for async keyword before define
+    // Check for async keyword before define (or nursery)
     let is_async = if parser.check_keyword("async") {
         parser.advance(); // consume "async"
                           // Skip whitespace/arrow after async
@@ -20,6 +20,22 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
         // Optional arrow after async
         if parser.check(crate::lexer::token::TokenKind::Arrow) {
             parser.advance();
+        }
+        // Check for `async → nursery` or `async → for` — consume them here
+        while !parser.is_at_end()
+            && (parser.peek().kind == crate::lexer::token::TokenKind::Whitespace
+                || parser.peek().kind == crate::lexer::token::TokenKind::Newline)
+        {
+            parser.advance();
+        }
+        if parser.check_keyword("nursery") {
+            return parse_nursery(parser);
+        }
+        // Task 15.2: `async → for → x in gen()` — drive an async stream.
+        // The `for` keyword is consumed here so we delegate directly to parse_for.
+        if parser.check_keyword("for") || parser.check_keyword("foreach") {
+            parser.advance(); // consume "for"/"foreach"
+            return crate::parser::statements::control::parse_for(parser);
         }
         true
     } else {
@@ -52,26 +68,9 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
         parser.position = saved_pos; // Restore position
     }
 
-    // Parse optional generic type parameters: <T, U, ...>
-    let mut type_params = Vec::new();
-    if parser.check(crate::lexer::token::TokenKind::Less) {
-        parser.advance();
-        loop {
-            let param_name = parser.expect_identifier()?;
-            type_params.push(param_name);
-
-            if parser.check(crate::lexer::token::TokenKind::Comma) {
-                parser.advance();
-            } else {
-                break;
-            }
-        }
-        parser.expect(crate::lexer::token::TokenKind::Greater)?;
-    }
-
     // Optional arrow before parameter list (for compatibility with both syntaxes)
     // Standard: define -> name (params) -> return_type
-    // Alternative: define -> name -> (params) -> return_type
+    // Alternative: define -> name -> <T>(params) -> return_type
     if parser.check(crate::lexer::token::TokenKind::Arrow) {
         parser.advance();
         // Skip whitespace after optional arrow
@@ -82,6 +81,34 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
             parser.advance();
         }
     }
+
+    // Parse optional generic type parameters: <T, U, ...> or <T: Comparable, U: Numeric>
+    // These may appear after the arrow: define → name → <T>(params)
+    // or directly after the name: define → name<T>(params)
+    let mut type_params: Vec<crate::parser::ast::common::TypeParam> = Vec::new();
+    if parser.check(crate::lexer::token::TokenKind::Less) {
+        parser.advance();
+        loop {
+            let param_name = parser.expect_identifier()?;
+            // Optional constraint bound: T: Constraint
+            let constraint = if parser.check(crate::lexer::token::TokenKind::Colon) {
+                parser.advance();
+                Some(parser.expect_identifier()?)
+            } else {
+                None
+            };
+            type_params.push(crate::parser::ast::common::TypeParam { name: param_name, constraint });
+
+            if parser.check(crate::lexer::token::TokenKind::Comma) {
+                parser.advance();
+            } else {
+                break;
+            }
+        }
+        parser.expect(crate::lexer::token::TokenKind::Greater)?;
+    }
+    // Build a plain list of names for parse_type() calls below
+    let type_param_names: Vec<String> = type_params.iter().map(|tp| tp.name.clone()).collect();
 
     parser.expect(crate::lexer::token::TokenKind::LeftParen)?;
 
@@ -107,6 +134,37 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
             // Check if we're at the end of parameters
             if parser.check(crate::lexer::token::TokenKind::RightParen) {
                 break;
+            }
+
+            // Destructured array parameter: [a, b, ...rest]
+            if parser.check(crate::lexer::token::TokenKind::LeftBracket) {
+                let dest_name = format!("__dest_{}__", params.len());
+                // Parse the full array pattern (handles [...rest] etc.)
+                let arr_pattern = parser.parse_pattern()?;
+                // Desugar: prepend `store → <arr_pattern> → __dest_N__` to the function body
+                dest_stmts.push(Statement::Assignment {
+                    pattern: arr_pattern,
+                    type_annotation: None,
+                    value: crate::parser::ast::Expression::Identifier(dest_name.clone()),
+                    span: crate::parser::ast::Span::default(),
+                });
+                params.push(Parameter {
+                    name: dest_name,
+                    type_annotation: None,
+                    is_variadic: false,
+                    default_value: None,
+                });
+                // Handle optional comma and whitespace
+                while !parser.is_at_end()
+                    && (parser.peek().kind == crate::lexer::token::TokenKind::Newline
+                        || parser.peek().kind == crate::lexer::token::TokenKind::Whitespace)
+                {
+                    parser.advance();
+                }
+                if parser.check(crate::lexer::token::TokenKind::Comma) {
+                    parser.advance();
+                }
+                continue;
             }
 
             // Destructured map parameter: {x, y} or {x: alias, y}
@@ -247,7 +305,7 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
             let mut type_annotation = None;
             if parser.check(crate::lexer::token::TokenKind::Colon) {
                 parser.advance();
-                type_annotation = Some(parser.parse_type(&type_params)?);
+                type_annotation = Some(parser.parse_type(&type_param_names)?);
             }
 
             // 4. Optional default value (name = expr or name: type = expr)
@@ -401,7 +459,7 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
 
             if looks_like_type && !parser.check_keyword("end") {
                 // Arrow is followed by something that looks like a type - parse it
-                match parser.parse_type(&type_params) {
+                match parser.parse_type(&type_param_names) {
                     Ok(ty) => {
                         return_type = Some(ty);
                     }
@@ -436,7 +494,7 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
             if is_type_keyword {
                 // Try to parse type directly (no arrow syntax)
                 let saved_pos = parser.position;
-                match parser.parse_type(&type_params) {
+                match parser.parse_type(&type_param_names) {
                     Ok(ty) => {
                         return_type = Some(ty);
                     }
@@ -655,6 +713,17 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
     }))
 }
 
+/// Parse `yield → expr`
+pub fn parse_yield(parser: &mut Parser) -> Result<Option<Statement>, String> {
+    use crate::parser::ast::Span;
+    let start_token = parser.peek().clone();
+    parser.expect_keyword("yield")?;
+    parser.skip_optional_arrow();
+    let value = crate::parser::expressions::operators::parse_expression(parser)?;
+    let span = token_span_to_ast_span(&start_token);
+    Ok(Some(Statement::Yield { value, span }))
+}
+
 pub fn parse_return(parser: &mut Parser) -> Result<Option<Statement>, String> {
     use crate::parser::ast::{Expression, Span};
     let start_token = parser.peek().clone();
@@ -683,4 +752,23 @@ pub fn parse_return(parser: &mut Parser) -> Result<Option<Statement>, String> {
     };
     let span = token_span_to_ast_span(&start_token);
     Ok(Some(Statement::Return { value, span }))
+}
+
+/// Parse `async → nursery\n  body\nend` — structured concurrency block.
+/// Called when `async → nursery` is detected in `parse_define`.
+pub fn parse_nursery(parser: &mut Parser) -> Result<Option<Statement>, String> {
+    let start_token = parser.peek().clone();
+    parser.expect_keyword("nursery")?;
+
+    // Parse body statements until `end`
+    let mut body = Vec::new();
+    while !parser.is_at_end() && !parser.check_keyword("end") {
+        if let Some(stmt) = parser.parse_statement()? {
+            body.push(stmt);
+        }
+    }
+    parser.expect_keyword("end")?;
+
+    let span = token_span_to_ast_span(&start_token);
+    Ok(Some(Statement::Nursery { body, span }))
 }

@@ -1,0 +1,99 @@
+name: Benchmarks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  benchmark:
+    name: Regression Check
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+
+      - name: Build release binary
+        run: cargo build --release --bin txtcode
+
+      - name: Run benchmarks and save results
+        run: |
+          mkdir -p bench-results
+          for f in benches/programs/*.txt; do
+            name=$(basename "$f" .txt)
+            ./target/release/txtcode bench "$f" --runs 20 --warmup 3 \
+              --save "bench-results/${name}.json" 2>&1 | tee "bench-results/${name}.log"
+          done
+
+      - name: Compare against baseline
+        id: compare
+        run: |
+          REGRESSION=0
+          SUMMARY="## Benchmark Results\n\n| Benchmark | Baseline (mean) | Current (mean) | Delta |\n|---|---|---|---|\n"
+          for f in benches/programs/*.txt; do
+            name=$(basename "$f" .txt)
+            result="bench-results/${name}.json"
+            baseline_key="benches/programs/${name}.txt"
+            if [ -f "$result" ]; then
+              cur_mean=$(python3 -c "import json; d=json.load(open('$result')); print(f\"{d['mean_us']:.1f}µs\")" 2>/dev/null || echo "n/a")
+              base_mean=$(python3 -c "import json; d=json.load(open('benches/baseline.json')); print(f\"{d['benchmarks']['$baseline_key']['mean_us']:.1f}µs\")" 2>/dev/null || echo "n/a")
+              # Run comparison using txtcode bench --compare
+              ./target/release/txtcode bench "$f" --runs 5 --warmup 1 \
+                --compare benches/baseline.json 2>&1 | grep -E "Mean|REGRESSION" || true
+              if ./target/release/txtcode bench "$f" --runs 5 --warmup 1 \
+                --compare benches/baseline.json > /dev/null 2>&1; then
+                status="✅"
+              else
+                status="⚠️ REGRESSION"
+                REGRESSION=1
+              fi
+              SUMMARY="${SUMMARY}| ${name} | ${base_mean} | ${cur_mean} | ${status} |\n"
+            fi
+          done
+          echo "summary<<EOF" >> "$GITHUB_OUTPUT"
+          printf "%b" "$SUMMARY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "regression=$REGRESSION" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR with benchmark results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = `${{ steps.compare.outputs.summary }}`;
+            const regression = '${{ steps.compare.outputs.regression }}' === '1';
+            const header = regression
+              ? '⚠️ **Benchmark regression detected!** Performance regressed >10% in one or more benchmarks.\n\n'
+              : '✅ **No benchmark regressions.** All benchmarks within 10% of baseline.\n\n';
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: header + summary
+            });
+
+      - name: Fail on regression
+        if: steps.compare.outputs.regression == '1'
+        run: |
+          echo "::error::Benchmark regression detected. Check the PR comment for details."
+          exit 1
