@@ -188,7 +188,7 @@ pub fn run_file(
     debug: bool,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, false, None, false)
+    run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, false, None, false, false)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -205,6 +205,7 @@ fn run_file_inner(
     strict_types: bool,
     audit_log: Option<&std::path::Path>,
     no_type_check: bool,
+    no_audit_log: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     logger::log_info(&format!("Running file: {}", file.display()));
 
@@ -276,20 +277,27 @@ fn run_file_inner(
     let mut parser = Parser::new(tokens);
     let program = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
 
-    // Static type check — runs by default on .tc source files.
-    // Suppressed with no_type_check=true.  Aborts with exit(1) when strict_types=true.
+    // Static type check on .tc source files.
+    // K.2: Two modes:
+    //   default             — advisory; emits [WARNING] type: but continues execution
+    //   --strict-types      — halts with exit code 2 on first type error
+    //   --no-type-check     — skip entirely
     if !no_type_check && file.extension().and_then(|e| e.to_str()) == Some("tc") {
         let mut checker = TypeChecker::new();
-        if let Err(type_errors) = checker.check(&program) {
-            for err in &type_errors {
-                if strict_types {
-                    eprintln!("[ERROR] type: {}", err);
-                } else {
+        if strict_types {
+            // Strict mode: halt before execution on first type error
+            if let Err(err) = checker.check_strict(&program) {
+                eprintln!("[TYPE ERROR] {}", err);
+                eprintln!("hint: Fix the type error or run without --strict-types");
+                std::process::exit(2);
+            }
+        } else {
+            // Advisory mode: warn but continue
+            if let Err(type_errors) = checker.check(&program) {
+                for err in &type_errors {
                     eprintln!("[WARNING] type: {}", err);
                 }
-            }
-            if strict_types && !type_errors.is_empty() {
-                std::process::exit(1);
+                eprintln!("hint: Use --strict-types to halt on type errors, --no-type-check to suppress");
             }
         }
     }
@@ -318,6 +326,16 @@ fn run_file_inner(
     // exec requires explicit --allow-exec or in-script grant_permission("sys.exec", null)
     let exec_allowed = allow_exec && !effective_safe_mode;
 
+    // ── OS-level sandbox (Group 25.2) ──────────────────────────────────────────
+    // Apply seccomp-BPF + prctl hardening when --sandbox is active.
+    // Must be called BEFORE the VM starts interpreting user code.
+    if effective_safe_mode {
+        if let Err(e) = crate::runtime::sandbox::apply_sandbox(true) {
+            // Non-fatal: language-level permissions still apply.
+            logger::log_warn(&format!("OS sandbox could not be applied: {}", e));
+        }
+    }
+
     let mut vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
     if exec_allowed {
         vm.set_exec_allowed(true);
@@ -339,16 +357,65 @@ fn run_file_inner(
     let result = vm.interpret(&program)
         .map_err(|e| format!("Runtime error: {}", e));
 
-    // Write audit trail to file if requested (even on error — partial logs are useful).
-    if let Some(log_path) = audit_log {
+    // Write audit trail to file.
+    // Explicit --audit-log takes priority. When safe_mode is active and no explicit
+    // path is given (and --no-audit-log is not set), auto-write to
+    // ~/.txtcode/audit/{timestamp}_{pid}.json.
+    let effective_log_path: Option<PathBuf> = if no_audit_log {
+        audit_log.map(|p| p.to_path_buf())
+    } else {
+        audit_log.map(|p| p.to_path_buf()).or_else(|| {
+            if effective_safe_mode {
+                auto_audit_log_path()
+            } else {
+                None
+            }
+        })
+    };
+
+    if let Some(log_path) = effective_log_path {
         let json = vm.export_audit_trail_json();
-        if let Err(e) = fs::write(log_path, json) {
+        if let Err(e) = fs::write(&log_path, &json) {
             eprintln!("Warning: could not write audit log to '{}': {}", log_path.display(), e);
+        } else if audit_log.is_none() {
+            // Auto-written in safe mode — print path so users can find it.
+            eprintln!("[audit] Log written to {}", log_path.display());
         }
     }
 
     result?;
     Ok(())
+}
+
+/// Build the auto-audit-log path: `~/.txtcode/audit/{timestamp}_{pid}.json`.
+/// Returns `None` if the directory cannot be created.
+fn auto_audit_log_path() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let dir = home.join(".txtcode").join("audit");
+    fs::create_dir_all(&dir).ok()?;
+
+    // Clean up audit logs older than 30 days (best-effort; ignore errors).
+    if let Ok(entries) = fs::read_dir(&dir) {
+        let cutoff = std::time::SystemTime::now()
+            .checked_sub(std::time::Duration::from_secs(30 * 24 * 3600))
+            .unwrap_or(std::time::UNIX_EPOCH);
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if let Ok(modified) = meta.modified() {
+                    if modified < cutoff {
+                        let _ = fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    Some(dir.join(format!("{}_{}.json", ts, pid)))
 }
 
 /// Run a file with optional filesystem/network/ffi path allowlists.
@@ -365,11 +432,28 @@ pub fn run_file_with_allowlists(
     audit_log: Option<&std::path::Path>,
     no_type_check: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    run_file_with_allowlists_full(file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, allow_ffi, strict_types, audit_log, no_type_check, false)
+}
+
+pub fn run_file_with_allowlists_full(
+    file: &PathBuf,
+    safe_mode: bool,
+    allow_exec: bool,
+    debug: bool,
+    verbose: bool,
+    allow_fs: &[String],
+    allow_net: &[String],
+    allow_ffi: &[String],
+    strict_types: bool,
+    audit_log: Option<&std::path::Path>,
+    no_type_check: bool,
+    no_audit_log: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     if allow_fs.is_empty() && allow_net.is_empty() && allow_ffi.is_empty() {
-        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, strict_types, audit_log, no_type_check);
+        return run_file_inner(file, safe_mode, allow_exec, debug, verbose, &[], &[], &[], None, strict_types, audit_log, no_type_check, no_audit_log);
     }
     run_file_inner(
-        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, allow_ffi, None, strict_types, audit_log, no_type_check,
+        file, safe_mode, allow_exec, debug, verbose, allow_fs, allow_net, allow_ffi, None, strict_types, audit_log, no_type_check, no_audit_log,
     )
 }
 
@@ -436,6 +520,7 @@ pub fn run_file_with_timeout(
             strict_types,
             audit_log.as_deref(),
             no_type_check,
+            false, // no_audit_log: timeout runner always allows auto-audit
         )
         .map_err(|e| e.to_string());
         let _ = tx.send(result);

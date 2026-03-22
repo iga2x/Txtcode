@@ -1,4 +1,5 @@
 use crate::parser::ast::*;
+use std::sync::Arc;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::operators::OperatorRegistry;
@@ -21,8 +22,22 @@ thread_local! {
     pub(crate) static NURSERY_HANDLES: RefCell<Option<Vec<crate::runtime::core::value::FutureHandle>>> = RefCell::new(None);
 }
 
+pub fn param_type_matches(value: &Value, expected: &Type) -> bool {
+    type_matches_value(value, expected)
+}
+
+pub fn type_annotation_display(t: &Type) -> String {
+    type_annotation_name(t)
+}
+
+pub fn value_type_display(value: &Value) -> &'static str {
+    value_type_name(value)
+}
+
 fn type_matches_value(value: &Value, expected: &Type) -> bool {
     match (value, expected) {
+        // K.1: Unknown means no annotation — always accept any value
+        (_, Type::Unknown) => true,
         (Value::Integer(_), Type::Int) => true,
         (Value::Integer(_), Type::Float) => true,
         (Value::Float(_), Type::Float) => true,
@@ -32,10 +47,52 @@ fn type_matches_value(value: &Value, expected: &Type) -> bool {
         (Value::Boolean(_), Type::Bool) => true,
         (Value::Array(_), Type::Array(_)) => true,
         (Value::Map(_), Type::Map(_)) => true,
-        (Value::Null, _) => true,
+        // Null is always allowed (nullable semantics)
+        (Value::Null, Type::Nullable(_)) | (Value::Null, Type::Null) => true,
+        // Non-null value vs Nullable<T>: check inner type
+        (v, Type::Nullable(inner)) => type_matches_value(v, inner),
+        // Struct/user-defined types and generics — no runtime struct type info, allow
         (_, Type::Identifier(_)) => true,
         (_, Type::Generic(_)) => true,
         _ => false,
+    }
+}
+
+fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Integer(_) => "int",
+        Value::Float(_) => "float",
+        Value::String(_) => "string",
+        Value::Char(_) => "char",
+        Value::Boolean(_) => "bool",
+        Value::Array(_) => "array",
+        Value::Map(_) => "map",
+        Value::Null => "null",
+        Value::Function(_, _, _, _) => "function",
+        Value::Result(true, _) => "Ok",
+        Value::Result(false, _) => "Err",
+        Value::Future(_) => "future",
+        _ => "unknown",
+    }
+}
+
+fn type_annotation_name(t: &Type) -> String {
+    match t {
+        Type::Int => "int".to_string(),
+        Type::Float => "float".to_string(),
+        Type::String => "string".to_string(),
+        Type::Char => "char".to_string(),
+        Type::Bool => "bool".to_string(),
+        Type::Array(inner) => format!("array[{}]", type_annotation_name(inner)),
+        Type::Map(inner) => format!("map[{}]", type_annotation_name(inner)),
+        Type::Set(inner) => format!("set[{}]", type_annotation_name(inner)),
+        Type::Null => "null".to_string(),
+        Type::Nullable(inner) => format!("{}?", type_annotation_name(inner)),
+        Type::Identifier(name) => name.clone(),
+        Type::Generic(name) => name.clone(),
+        Type::Future(inner) => format!("Future<{}>", type_annotation_name(inner)),
+        Type::Function { .. } => "function".to_string(),
+        Type::Unknown => "unknown".to_string(),
     }
 }
 
@@ -46,8 +103,24 @@ impl StatementExecutor {
     /// Execute a statement
     pub fn execute(vm: &mut impl StatementVM, stmt: &Statement) -> Result<Value, RuntimeError> {
         match stmt {
-            Statement::Assignment { pattern, value, .. } => {
+            Statement::Assignment { pattern, type_annotation, value, .. } => {
                 let val = vm.evaluate_expression(value)?;
+                // Runtime type enforcement: if the assignment has a type annotation,
+                // validate the actual value matches (skip for Null — always allowed)
+                if let Some(expected_type) = type_annotation {
+                    if !matches!(val, Value::Null) && !type_matches_value(&val, expected_type) {
+                        let var_name = match pattern {
+                            Pattern::Identifier(n) => n.as_str(),
+                            _ => "<pattern>",
+                        };
+                        return Err(RuntimeError::new(format!(
+                            "type mismatch: variable '{}' declared as '{}' but got '{}'",
+                            var_name,
+                            type_annotation_name(expected_type),
+                            value_type_name(&val),
+                        )).with_code(crate::runtime::errors::ErrorCode::E0011));
+                    }
+                }
                 vm.bind_pattern(pattern, &val)?;
                 Ok(Value::Null)
             }
@@ -72,7 +145,7 @@ impl StatementExecutor {
                 let obj = vm.get_variable(&obj_name).unwrap_or(Value::Null);
                 let updated = match (obj, idx) {
                     (Value::Map(mut map), Value::String(key)) => {
-                        map.insert(key, val);
+                        map.insert(key.to_string(), val);
                         Value::Map(map)
                     }
                     (Value::Array(mut arr), Value::Integer(i)) => {
@@ -91,7 +164,7 @@ impl StatementExecutor {
                     (Value::Null, Value::String(key)) => {
                         // Auto-create map if variable is null
                         let mut map = indexmap::IndexMap::new();
-                        map.insert(key, val);
+                        map.insert(key.to_string(), val);
                         Value::Map(map)
                     }
                     (Value::Struct(sname, mut fields), Value::String(key)) => {
@@ -99,7 +172,7 @@ impl StatementExecutor {
                         let struct_def = vm.struct_defs().get(&sname).cloned();
                         let strict = vm.strict_types();
                         if let Some(def) = struct_def {
-                            match def.iter().find(|(f, _)| f == &key) {
+                            match def.iter().find(|(f, _)| f.as_str() == key.as_ref()) {
                                 None => {
                                     let known: Vec<&str> = def.iter().map(|(f, _)| f.as_str()).collect();
                                     let msg = format!(
@@ -127,7 +200,7 @@ impl StatementExecutor {
                                 }
                             }
                         }
-                        fields.insert(key, val);
+                        fields.insert(key.to_string(), val);
                         Value::Struct(sname, fields)
                     }
                     (obj, idx) => {
@@ -199,18 +272,36 @@ impl StatementExecutor {
                     .iter()
                     .map(|cap| cap.to_string())
                     .collect();
-                // Regular functions don't capture environment (empty closure)
-                // Note: type_params are stored but not used at runtime (type erasure)
-                // They're used for type checking only
-                vm.set_global(
+                // W.3: Capture enclosing locals when defined inside a function scope.
+                // Top-level functions get an empty captured env (no outer locals to capture).
+                let captured_env = if vm.is_in_local_scope() {
+                    vm.snapshot_local_vars()
+                } else {
+                    HashMap::new()
+                };
+
+                let func_val = Value::Function(
                     name.clone(),
-                    Value::Function(
-                        name.clone(),
-                        params.clone(),
-                        body.clone(),
-                        HashMap::new(), // No captured environment for regular functions
-                    ),
-                )?;
+                    params.clone(),
+                    body.clone(),
+                    captured_env,
+                );
+
+                // W.4: If name is "Type.method", register as a struct method in addition
+                // to (or instead of) storing as a variable.
+                if let Some(dot_pos) = name.find('.') {
+                    let struct_name = &name[..dot_pos];
+                    let method_name = name[dot_pos + 1..].to_string();
+                    vm.register_struct_method(struct_name, method_name, func_val.clone());
+                    // Also store under the full name so direct calls still work.
+                    vm.set_global(name.clone(), func_val)?;
+                } else if vm.is_in_local_scope() {
+                    // Nested non-method function: store in local scope (closure).
+                    vm.set_variable(name.clone(), func_val)?;
+                } else {
+                    // Top-level function: store in globals.
+                    vm.set_global(name.clone(), func_val)?;
+                }
 
                 // Register intent if declared
                 if let Some(intent_str) = intent {
@@ -254,7 +345,7 @@ impl StatementExecutor {
                 vm.register_enum(name.clone(), variants.clone());
                 Ok(Value::Null)
             }
-            Statement::Struct { name, fields, .. } => {
+            Statement::Struct { name, fields, implements, .. } => {
                 // Register struct definition
                 log_debug(&format!(
                     "Registering struct '{}' with {} fields",
@@ -262,6 +353,29 @@ impl StatementExecutor {
                     fields.len()
                 ));
                 vm.register_struct(name.clone(), fields.clone());
+                // Store implements list as __implements_<Name> in scope
+                if !implements.is_empty() {
+                    let list = Value::Array(
+                        implements.iter().map(|p| Value::String(Arc::from(p.clone()))).collect()
+                    );
+                    let _ = vm.set_variable(format!("__implements_{}", name), list);
+                }
+                Ok(Value::Null)
+            }
+            Statement::Protocol { name, methods, .. } => {
+                // Store protocol as __protocol_<Name> = [[method_name, [param_types], return]]
+                let method_list: Vec<Value> = methods.iter().map(|(mname, params, ret)| {
+                    let mut m = indexmap::IndexMap::new();
+                    m.insert("name".to_string(), Value::String(Arc::from(mname.clone())));
+                    m.insert("params".to_string(), Value::Array(
+                        params.iter().map(|p| Value::String(Arc::from(p.clone()))).collect()
+                    ));
+                    m.insert("return_type".to_string(), ret.as_ref()
+                        .map(|r| Value::String(Arc::from(r.clone())))
+                        .unwrap_or(Value::Null));
+                    Value::Map(m)
+                }).collect();
+                let _ = vm.set_variable(format!("__protocol_{}", name), Value::Array(method_list));
                 Ok(Value::Null)
             }
             Statement::Import {
@@ -310,7 +424,7 @@ impl StatementExecutor {
                 // Type aliases are primarily for static analysis; at runtime we register the name
                 vm.set_variable(
                     format!("__type_alias_{}", name),
-                    Value::String(target.clone()),
+                    Value::String(Arc::from(target.clone())),
                 )?;
                 Ok(Value::Null)
             }
@@ -345,6 +459,12 @@ impl StatementExecutor {
             | Statement::Repeat { .. }
             | Statement::Nursery { .. } => {
                 unreachable!("Control flow statements should be handled by ControlFlowExecutor")
+            }
+            Statement::Error { message, .. } => {
+                // Task E.4: Error recovery nodes are silently skipped at runtime.
+                // They should never reach execution (the CLI stops on parse errors),
+                // but the LSP runs programs with partial ASTs.
+                Err(RuntimeError::new(format!("[parse error] {}", message)))
             }
         }
     }
@@ -386,4 +506,8 @@ pub trait StatementVM {
     fn register_struct_method(&mut self, struct_name: &str, method_name: String, func: Value);
     /// Execute a nested statement (used by impl block to define methods in scope).
     fn execute_nested_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError>;
+    /// W.3: Returns true when currently inside at least one local scope.
+    fn is_in_local_scope(&self) -> bool;
+    /// W.3: Snapshot all locally-visible variables for closure capture.
+    fn snapshot_local_vars(&self) -> HashMap<String, Value>;
 }

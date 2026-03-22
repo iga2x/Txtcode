@@ -407,17 +407,10 @@ impl MigrationPass for NoOpPass {
 
 /// Build a `MigrationRegistry` pre-populated with all known passes.
 pub fn default_registry() -> MigrationRegistry {
+    // M.3: Removed v0.2→v0.3 and v0.3→v0.4 passes — no user data from those
+    // versions exists in the wild. Only keep passes for versions that were
+    // actually shipped with users.
     let mut r = MigrationRegistry::new();
-    r.register(
-        Version::new(0, 2, 0),
-        Version::new(0, 3, 0),
-        NoOpPass("v0.2→v0.3: no structural AST changes"),
-    );
-    r.register(
-        Version::new(0, 3, 0),
-        Version::new(0, 4, 0),
-        NoOpPass("v0.3→v0.4: no structural AST changes"),
-    );
     r.register(
         Version::new(0, 4, 0),
         Version::new(0, 5, 0),
@@ -529,7 +522,6 @@ impl SourceMigrationPass for StringInterpolationMigration {
                 let already_prefixed = matches!(prev, 'f' | 'r' | 'b');
 
                 // Collect the string literal
-                let start = i;
                 let mut s = String::new();
                 i += 1; // skip opening `"`
                 let mut has_interpolation = false;
@@ -568,7 +560,6 @@ impl SourceMigrationPass for StringInterpolationMigration {
                 out.push('"');
                 out.push_str(&s);
                 out.push('"');
-                let _ = start;
                 continue;
             }
 
@@ -788,6 +779,7 @@ mod tests {
     #[test]
     fn test_migration_registry_default_passes() {
         let reg = default_registry();
-        assert!(reg.len() >= 4, "Should have at least 4 registered passes");
+        // M.3: v0.2→v0.3 and v0.3→v0.4 removed; 2 passes remain
+        assert!(reg.len() >= 2, "Should have at least 2 registered passes");
     }
 }

@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use std::sync::Arc;
 
 /// URL encoding/decoding library
 pub struct UrlLib;
@@ -14,7 +15,7 @@ impl UrlLib {
                     ));
                 }
                 match &args[0] {
-                    Value::String(s) => Ok(Value::String(Self::url_encode(s))),
+                    Value::String(s) => Ok(Value::String(Arc::from(Self::url_encode(s)))),
                     _ => Err(RuntimeError::new(
                         "url_encode requires a string argument".to_string(),
                     )),
@@ -28,7 +29,7 @@ impl UrlLib {
                 }
                 match &args[0] {
                     Value::String(s) => Self::url_decode(s)
-                        .map(Value::String)
+                        .map(|s| Value::String(Arc::from(s)))
                         .map_err(|e| RuntimeError::new(format!("Invalid URL encoding: {}", e))),
                     _ => Err(RuntimeError::new(
                         "url_decode requires a string argument".to_string(),
@@ -42,7 +43,7 @@ impl UrlLib {
                     ));
                 }
                 match &args[0] {
-                    Value::String(s) => Ok(Value::String(Self::url_encode_component(s))),
+                    Value::String(s) => Ok(Value::String(Arc::from(Self::url_encode_component(s)))),
                     _ => Err(RuntimeError::new(
                         "url_encode_component requires a string argument".to_string(),
                     )),
@@ -56,7 +57,7 @@ impl UrlLib {
                 }
                 match &args[0] {
                     Value::String(s) => Self::url_decode(s)
-                        .map(Value::String)
+                        .map(|s| Value::String(Arc::from(s)))
                         .map_err(|e| RuntimeError::new(format!("Invalid URL encoding: {}", e))),
                     _ => Err(RuntimeError::new(
                         "url_decode_component requires a string argument".to_string(),

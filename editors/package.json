@@ -1,0 +1,82 @@
+{
+  "name": "txtcode",
+  "displayName": "Txtcode Language Support",
+  "description": "Syntax highlighting, diagnostics, go-to-definition, hover, and rename for the Txtcode programming language",
+  "version": "0.1.0",
+  "publisher": "txtcode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/txtcode/txtcode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages", "Linters", "Snippets"],
+  "keywords": ["txtcode", "npl", "txtcode-lang"],
+  "icon": "assets/icon-128.png",
+  "activationEvents": [
+    "onLanguage:txtcode"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "txtcode",
+        "aliases": ["Txtcode", "txtcode"],
+        "extensions": [".tc", ".txtcode"],
+        "configuration": "./txtcode-language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "txtcode",
+        "scopeName": "source.txtcode",
+        "path": "./syntaxes/txtcode.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "txtcode",
+        "path": "./snippets/txtcode.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Txtcode",
+      "properties": {
+        "txtcode.serverPath": {
+          "type": "string",
+          "default": "txtcode",
+          "description": "Path to the txtcode executable (used as language server)"
+        },
+        "txtcode.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace LSP communication between VS Code and the language server"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "txtcode.restartServer",
+        "title": "Txtcode: Restart Language Server"
+      },
+      {
+        "command": "txtcode.runFile",
+        "title": "Txtcode: Run Current File"
+      }
+    ]
+  },
+  "main": "./client/extension.js",
+  "scripts": {
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

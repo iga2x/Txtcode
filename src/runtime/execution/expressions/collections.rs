@@ -1,6 +1,7 @@
 // Array, Map, Set, and Slice evaluation
 
 use super::ExpressionVM;
+use std::sync::Arc;
 use crate::parser::ast::Expression;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
@@ -45,7 +46,7 @@ pub fn evaluate_map<VM: ExpressionVM>(
         let key_val = super::ExpressionEvaluator::evaluate(vm, key_expr)?;
         let value_val = super::ExpressionEvaluator::evaluate(vm, value_expr)?;
         let key = match key_val {
-            Value::String(s) => s,
+            Value::String(s) => s.to_string(),
             _ => return Err(vm.create_error("Map keys must be strings".to_string())),
         };
         map.insert(key, value_val);
@@ -263,7 +264,7 @@ pub fn evaluate_slice<VM: ExpressionVM>(
 
             if step_raw < 0 {
                 if char_count == 0 {
-                    return Ok(Value::String(String::new()));
+                    return Ok(Value::String(Arc::from(String::new())));
                 }
                 let abs_step = (-step_raw) as usize;
                 let start_idx = resolve_str_idx!(start, char_count - 1);
@@ -285,7 +286,7 @@ pub fn evaluate_slice<VM: ExpressionVM>(
                 if idx == end_idx {
                     result.push(chars[idx]);
                 }
-                return Ok(Value::String(result.into_iter().collect()));
+                return Ok(Value::String(Arc::from(result.into_iter().collect::<String>())));
             }
 
             // Positive step (forward).
@@ -298,7 +299,7 @@ pub fn evaluate_slice<VM: ExpressionVM>(
                 ));
             }
             let result: String = chars[start_idx..end_idx].iter().step_by(abs_step).collect();
-            Ok(Value::String(result))
+            Ok(Value::String(Arc::from(result)))
         }
         _ => Err(RuntimeError::new(
             "Slice only works on arrays and strings".to_string(),

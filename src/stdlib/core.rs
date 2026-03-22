@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use std::sync::Arc;
 use crate::stdlib::FunctionExecutor;
 
 /// Core standard library functions
@@ -52,7 +53,7 @@ impl CoreLib {
                         Value::FunctionRef(_) => "function_ref",
                         Value::Bytes(_) => "bytes",
                     };
-                    Ok(Value::String(type_name.to_string()))
+                    Ok(Value::String(Arc::from(type_name.to_string())))
                 } else {
                     Err(RuntimeError::new(
                         "type() requires one argument".to_string(),
@@ -69,7 +70,7 @@ impl CoreLib {
                 io::stdin()
                     .read_line(&mut input)
                     .map_err(|e| RuntimeError::new(format!("input: read failed: {}", e)))?;
-                Ok(Value::String(input.trim().to_string()))
+                Ok(Value::String(Arc::from(input.trim().to_string())))
             }
             // Math functions
             "math_sin" | "sin" => {
@@ -216,7 +217,7 @@ impl CoreLib {
                 };
                 let delimiter = if args.len() == 2 {
                     match args.get(1).unwrap() {
-                        Value::String(d) => d.as_str(),
+                        Value::String(d) => d.as_ref(),
                         _ => {
                             return Err(RuntimeError::new(
                                 "split() delimiter must be a string".to_string(),
@@ -228,7 +229,7 @@ impl CoreLib {
                 };
                 let parts: Vec<Value> = s
                     .split(delimiter)
-                    .map(|p| Value::String(p.to_string()))
+                    .map(|p| Value::String(Arc::from(p.to_string())))
                     .collect();
                 Ok(Value::Array(parts))
             }
@@ -257,11 +258,30 @@ impl CoreLib {
                 let strings: Vec<String> = arr
                     .iter()
                     .map(|v| match v {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         _ => v.to_string(),
                     })
                     .collect();
-                Ok(Value::String(strings.join(sep)))
+                Ok(Value::String(Arc::from(strings.join(sep))))
+            }
+            // R.4: str_build(parts) — O(n) string concatenation from an array of parts.
+            // Avoids the O(n²) cost of `+` in a loop by pre-allocating the total capacity.
+            "str_build" => {
+                let arr = match args.first() {
+                    Some(Value::Array(a)) => a.clone(),
+                    Some(other) => {
+                        // Scalar: just convert to string
+                        return Ok(Value::String(Arc::from(other.to_string())));
+                    }
+                    None => return Ok(Value::String(Arc::from(String::new()))),
+                };
+                let parts: Vec<String> = arr.iter().map(|v| v.to_string()).collect();
+                let total_len: usize = parts.iter().map(|s| s.len()).sum();
+                let mut result = String::with_capacity(total_len);
+                for part in &parts {
+                    result.push_str(part);
+                }
+                Ok(Value::String(Arc::from(result)))
             }
             "str_replace" | "replace" => {
                 if args.len() != 3 {
@@ -293,11 +313,11 @@ impl CoreLib {
                         ))
                     }
                 };
-                Ok(Value::String(s.replace(old, new)))
+                Ok(Value::String(Arc::from(s.replace(old.as_ref(), new.as_ref()))))
             }
             "str_trim" | "trim" => {
                 if let Some(Value::String(s)) = args.first() {
-                    Ok(Value::String(s.trim().to_string()))
+                    Ok(Value::String(Arc::from(s.trim().to_string())))
                 } else {
                     Err(RuntimeError::new("trim() requires a string".to_string()))
                 }
@@ -350,7 +370,7 @@ impl CoreLib {
                     ));
                 }
                 let result: String = s.chars().skip(start).take(end - start).collect();
-                Ok(Value::String(result))
+                Ok(Value::String(Arc::from(result)))
             }
             "str_indexOf" | "indexOf" => {
                 if args.len() != 2 {
@@ -374,7 +394,7 @@ impl CoreLib {
                         ))
                     }
                 };
-                match s.find(search) {
+                match s.find(search.as_ref()) {
                     Some(idx) => Ok(Value::Integer(idx as i64)),
                     None => Ok(Value::Integer(-1)),
                 }
@@ -401,7 +421,7 @@ impl CoreLib {
                         ))
                     }
                 };
-                Ok(Value::Boolean(s.starts_with(prefix)))
+                Ok(Value::Boolean(s.starts_with(prefix.as_ref())))
             }
             "str_endsWith" | "endsWith" => {
                 if args.len() != 2 {
@@ -425,18 +445,18 @@ impl CoreLib {
                         ))
                     }
                 };
-                Ok(Value::Boolean(s.ends_with(suffix)))
+                Ok(Value::Boolean(s.ends_with(suffix.as_ref())))
             }
             "str_toUpper" | "toUpper" => {
                 if let Some(Value::String(s)) = args.first() {
-                    Ok(Value::String(s.to_uppercase()))
+                    Ok(Value::String(Arc::from(s.to_uppercase())))
                 } else {
                     Err(RuntimeError::new("toUpper() requires a string".to_string()))
                 }
             }
             "str_toLower" | "toLower" => {
                 if let Some(Value::String(s)) = args.first() {
-                    Ok(Value::String(s.to_lowercase()))
+                    Ok(Value::String(Arc::from(s.to_lowercase())))
                 } else {
                     Err(RuntimeError::new("toLower() requires a string".to_string()))
                 }
@@ -989,7 +1009,7 @@ impl CoreLib {
                     ));
                 }
                 let s = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => {
                         return Err(RuntimeError::new(
                             "str_pad_left requires string as first argument".to_string(),
@@ -1021,10 +1041,10 @@ impl CoreLib {
                 };
                 let s_len = s.chars().count();
                 if s_len >= width {
-                    return Ok(Value::String(s));
+                    return Ok(Value::String(Arc::from(s)));
                 }
                 let padding: String = std::iter::repeat_n(pad_char, width - s_len).collect();
-                Ok(Value::String(format!("{}{}", padding, s)))
+                Ok(Value::String(Arc::from(format!("{}{}", padding, s))))
             }
 
             "str_pad_right" => {
@@ -1034,7 +1054,7 @@ impl CoreLib {
                     ));
                 }
                 let s = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => {
                         return Err(RuntimeError::new(
                             "str_pad_right requires string as first argument".to_string(),
@@ -1066,10 +1086,10 @@ impl CoreLib {
                 };
                 let s_len = s.chars().count();
                 if s_len >= width {
-                    return Ok(Value::String(s));
+                    return Ok(Value::String(Arc::from(s)));
                 }
                 let padding: String = std::iter::repeat_n(pad_char, width - s_len).collect();
-                Ok(Value::String(format!("{}{}", s, padding)))
+                Ok(Value::String(Arc::from(format!("{}{}", s, padding))))
             }
 
             "str_wrap" => {
@@ -1079,7 +1099,7 @@ impl CoreLib {
                     ));
                 }
                 let text = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => return Err(RuntimeError::new("str_wrap requires a string".to_string())),
                 };
                 let width = match &args[1] {
@@ -1114,7 +1134,7 @@ impl CoreLib {
                 if !current_line.is_empty() {
                     lines.push(current_line);
                 }
-                Ok(Value::String(lines.join("\n")))
+                Ok(Value::String(Arc::from(lines.join("\n"))))
             }
 
             "str_dedent" => {
@@ -1124,7 +1144,7 @@ impl CoreLib {
                     ));
                 }
                 let text = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => {
                         return Err(RuntimeError::new(
                             "str_dedent requires a string".to_string(),
@@ -1148,7 +1168,7 @@ impl CoreLib {
                         }
                     })
                     .collect();
-                Ok(Value::String(dedented.join("\n")))
+                Ok(Value::String(Arc::from(dedented.join("\n"))))
             }
 
             "str_count" => {
@@ -1162,7 +1182,7 @@ impl CoreLib {
                         if sub.is_empty() {
                             return Ok(Value::Integer(0));
                         }
-                        let count = s.matches(sub.as_str()).count();
+                        let count = s.matches(sub.as_ref()).count();
                         Ok(Value::Integer(count as i64))
                     }
                     _ => Err(RuntimeError::new(
@@ -1247,7 +1267,7 @@ impl CoreLib {
                             }
                             i += 5;
                         }
-                        Ok(Value::String(output))
+                        Ok(Value::String(Arc::from(output)))
                     }
                     _ => Err(RuntimeError::new(
                         "base32_encode requires a string".to_string(),
@@ -1300,7 +1320,7 @@ impl CoreLib {
                             i += 8;
                         }
                         match String::from_utf8(output) {
-                            Ok(s) => Ok(Value::String(s)),
+                            Ok(s) => Ok(Value::String(Arc::from(s))),
                             Err(_) => Err(RuntimeError::new(
                                 "base32_decode produced invalid UTF-8".to_string(),
                             )),
@@ -1327,7 +1347,7 @@ impl CoreLib {
                             .replace('>', "&gt;")
                             .replace('"', "&quot;")
                             .replace('\'', "&#39;");
-                        Ok(Value::String(escaped))
+                        Ok(Value::String(Arc::from(escaped)))
                     }
                     _ => Err(RuntimeError::new(
                         "html_escape requires a string".to_string(),
@@ -1348,7 +1368,7 @@ impl CoreLib {
                         Value::Boolean(b) => Ok(toml::Value::Boolean(*b)),
                         Value::Integer(i) => Ok(toml::Value::Integer(*i)),
                         Value::Float(f) => Ok(toml::Value::Float(*f)),
-                        Value::String(s) => Ok(toml::Value::String(s.clone())),
+                        Value::String(s) => Ok(toml::Value::String(s.to_string())),
                         Value::Array(arr) => {
                             let items: Result<Vec<_>, _> = arr.iter().map(to_toml_value).collect();
                             Ok(toml::Value::Array(items?))
@@ -1367,7 +1387,7 @@ impl CoreLib {
                 }
                 let toml_val = to_toml_value(&args[0])?;
                 match toml::to_string(&toml_val) {
-                    Ok(s) => Ok(Value::String(s)),
+                    Ok(s) => Ok(Value::String(Arc::from(s))),
                     Err(e) => Err(RuntimeError::new(format!("toml_encode failed: {}", e))),
                 }
             }
@@ -1387,7 +1407,7 @@ impl CoreLib {
                                 toml::Value::Boolean(b) => Value::Boolean(b),
                                 toml::Value::Integer(i) => Value::Integer(i),
                                 toml::Value::Float(f) => Value::Float(f),
-                                toml::Value::String(s) => Value::String(s),
+                                toml::Value::String(s) => Value::String(Arc::from(s)),
                                 toml::Value::Array(arr) => {
                                     Value::Array(arr.into_iter().map(from_toml_value).collect())
                                 }
@@ -1396,7 +1416,7 @@ impl CoreLib {
                                         .map(|(k, v)| (k, from_toml_value(v)))
                                         .collect::<indexmap::IndexMap<_, _>>(),
                                 ),
-                                toml::Value::Datetime(dt) => Value::String(dt.to_string()),
+                                toml::Value::Datetime(dt) => Value::String(Arc::from(dt.to_string())),
                             }
                         }
                         Ok(from_toml_value(toml_val))
@@ -1429,8 +1449,8 @@ impl CoreLib {
                                     let line: Vec<String> = fields
                                         .iter()
                                         .map(|f| {
-                                            let s = match f {
-                                                Value::String(s) => s.clone(),
+                                            let s: String = match f {
+                                                Value::String(s) => s.to_string(),
                                                 Value::Integer(i) => i.to_string(),
                                                 Value::Float(fl) => fl.to_string(),
                                                 Value::Boolean(b) => b.to_string(),
@@ -1457,7 +1477,7 @@ impl CoreLib {
                                 }
                             }
                         }
-                        Ok(Value::String(output))
+                        Ok(Value::String(Arc::from(output)))
                     }
                     _ => Err(RuntimeError::new(
                         "csv_encode requires an array of arrays".to_string(),
@@ -1496,7 +1516,7 @@ impl CoreLib {
                                         }
                                     }
                                     ',' if !in_quotes => {
-                                        fields.push(Value::String(field.clone()));
+                                        fields.push(Value::String(Arc::from(field.clone())));
                                         field.clear();
                                     }
                                     _ => {
@@ -1504,7 +1524,7 @@ impl CoreLib {
                                     }
                                 }
                             }
-                            fields.push(Value::String(field));
+                            fields.push(Value::String(Arc::from(field)));
                             rows.push(Value::Array(fields));
                         }
                         Ok(Value::Array(rows))
@@ -1548,7 +1568,7 @@ impl CoreLib {
                                         .to_string();
                                     let mut node: indexmap::IndexMap<String, Value> =
                                         indexmap::IndexMap::new();
-                                    node.insert("_tag".to_string(), Value::String(tag.clone()));
+                                    node.insert("_tag".to_string(), Value::String(Arc::from(tag.clone())));
                                     for attr in e.attributes().flatten() {
                                         let key = std::str::from_utf8(attr.key.as_ref())
                                             .unwrap_or("")
@@ -1556,7 +1576,7 @@ impl CoreLib {
                                         let val = std::str::from_utf8(&attr.value)
                                             .unwrap_or("")
                                             .to_string();
-                                        node.insert(key, Value::String(val));
+                                        node.insert(key, Value::String(Arc::from(val)));
                                     }
                                     stack.push((tag, node));
                                 }
@@ -1564,7 +1584,7 @@ impl CoreLib {
                                     let text = e.unescape().unwrap_or_default().to_string();
                                     if !text.trim().is_empty() {
                                         if let Some((_, node)) = stack.last_mut() {
-                                            node.insert("_text".to_string(), Value::String(text));
+                                            node.insert("_text".to_string(), Value::String(Arc::from(text)));
                                         }
                                     }
                                 }
@@ -1576,12 +1596,12 @@ impl CoreLib {
                                                 m.get("_tag")
                                                     .and_then(|v| {
                                                         if let Value::String(s) = v {
-                                                            Some(s.clone())
+                                                            Some(s.to_string())
                                                         } else {
                                                             None
                                                         }
                                                     })
-                                                    .unwrap_or("child".to_string())
+                                                    .map(|s| s.to_string()).unwrap_or("child".to_string())
                                             } else {
                                                 "child".to_string()
                                             };
@@ -1614,6 +1634,95 @@ impl CoreLib {
                 }
             }
 
+            // xml_stringify: convert a Txtcode Value (map/array) back to an XML string.
+            // Map keys: "_tag" → element name, "_text" → text content, others → attributes.
+            // Arrays → repeated sibling elements (use "_tag" in each element).
+            "xml_stringify" | "xml_encode" => {
+                #[cfg(not(feature = "stdlib-full"))]
+                return Err(RuntimeError::new(
+                    "xml_stringify requires the 'stdlib-full' feature. \
+                     Rebuild with: cargo build --features stdlib-full"
+                        .to_string(),
+                ));
+                #[cfg(feature = "stdlib-full")]
+                {
+                    if args.len() != 1 {
+                        return Err(RuntimeError::new(
+                            "xml_stringify requires 1 argument".to_string(),
+                        ));
+                    }
+                    fn value_to_xml(v: &Value) -> String {
+                        match v {
+                            Value::Map(m) => {
+                                let tag: String = match m.get("_tag") {
+                                    Some(Value::String(t)) => t.to_string(),
+                                    _ => "element".to_string(),
+                                };
+                                let text: String = match m.get("_text") {
+                                    Some(Value::String(t)) => t.to_string(),
+                                    _ => String::new(),
+                                };
+                                let attrs: String = m
+                                    .iter()
+                                    .filter(|(k, _)| k.as_str() != "_tag" && k.as_str() != "_text" && k.as_str() != "_children")
+                                    .map(|(k, v)| {
+                                        let val: String = match v {
+                                            Value::String(s) => s.to_string(),
+                                            other => format!("{:?}", other),
+                                        };
+                                        // Escape XML attribute values
+                                        let escaped = val
+                                            .replace('&', "&amp;")
+                                            .replace('"', "&quot;")
+                                            .replace('<', "&lt;")
+                                            .replace('>', "&gt;");
+                                        format!(" {}=\"{}\"", k, escaped)
+                                    })
+                                    .collect();
+                                let children = match m.get("_children") {
+                                    Some(Value::Array(arr)) => arr
+                                        .iter()
+                                        .map(value_to_xml)
+                                        .collect::<Vec<_>>()
+                                        .join(""),
+                                    _ => String::new(),
+                                };
+                                let inner = if children.is_empty() {
+                                    let escaped = text
+                                        .replace('&', "&amp;")
+                                        .replace('<', "&lt;")
+                                        .replace('>', "&gt;");
+                                    escaped
+                                } else {
+                                    children
+                                };
+                                if inner.is_empty() {
+                                    format!("<{}{}/>", tag, attrs)
+                                } else {
+                                    format!("<{}{}>{}</{}>", tag, attrs, inner, tag)
+                                }
+                            }
+                            Value::Array(arr) => arr
+                                .iter()
+                                .map(value_to_xml)
+                                .collect::<Vec<_>>()
+                                .join(""),
+                            Value::String(s) => {
+                                s.replace('&', "&amp;")
+                                    .replace('<', "&lt;")
+                                    .replace('>', "&gt;")
+                            }
+                            Value::Integer(n) => n.to_string(),
+                            Value::Float(f) => f.to_string(),
+                            Value::Boolean(b) => b.to_string(),
+                            Value::Null => String::new(),
+                            _ => String::new(),
+                        }
+                    }
+                    Ok(Value::String(Arc::from(value_to_xml(&args[0]))))
+                }
+            }
+
             "yaml_encode" => {
                 #[cfg(not(feature = "stdlib-full"))]
                 return Err(RuntimeError::new(
@@ -1636,7 +1745,7 @@ impl CoreLib {
                             Value::Float(f) => {
                                 serde_yaml::Value::Number(serde_yaml::Number::from(*f))
                             }
-                            Value::String(s) => serde_yaml::Value::String(s.clone()),
+                            Value::String(s) => serde_yaml::Value::String(s.to_string()),
                             Value::Array(arr) => serde_yaml::Value::Sequence(
                                 arr.iter().map(value_to_yaml).collect(),
                             ),
@@ -1644,7 +1753,7 @@ impl CoreLib {
                                 let mut m = serde_yaml::Mapping::new();
                                 for (k, v) in map {
                                     m.insert(
-                                        serde_yaml::Value::String(k.clone()),
+                                        serde_yaml::Value::String(k.to_string()),
                                         value_to_yaml(v),
                                     );
                                 }
@@ -1655,7 +1764,7 @@ impl CoreLib {
                     }
                     let yaml_val = value_to_yaml(&args[0]);
                     serde_yaml::to_string(&yaml_val)
-                        .map(Value::String)
+                        .map(|s| Value::String(Arc::from(s)))
                         .map_err(|e| RuntimeError::new(format!("yaml_encode error: {}", e)))
                 }
             }
@@ -1685,10 +1794,10 @@ impl CoreLib {
                                         } else if let Some(f) = n.as_f64() {
                                             Value::Float(f)
                                         } else {
-                                            Value::String(n.to_string())
+                                            Value::String(Arc::from(n.to_string()))
                                         }
                                     }
-                                    serde_yaml::Value::String(s) => Value::String(s),
+                                    serde_yaml::Value::String(s) => Value::String(Arc::from(s)),
                                     serde_yaml::Value::Sequence(seq) => {
                                         Value::Array(seq.into_iter().map(yaml_to_value).collect())
                                     }
@@ -1738,7 +1847,7 @@ impl CoreLib {
                 _ => Err(RuntimeError::new("float() requires one argument".to_string())),
             },
             "string" => match args.first() {
-                Some(v) => Ok(Value::String(v.to_string())),
+                Some(v) => Ok(Value::String(Arc::from(v.to_string()))),
                 None => Err(RuntimeError::new("string() requires one argument".to_string())),
             },
             "bool" => match args.first() {
@@ -1758,7 +1867,7 @@ impl CoreLib {
                     ));
                 }
                 let template = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => {
                         return Err(RuntimeError::new(
                             "str_format: template (arg 1) must be a string".to_string(),
@@ -1774,7 +1883,7 @@ impl CoreLib {
                         match chars.peek() {
                             Some('}') => {
                                 chars.next();
-                                let s = fmt_args.get(seq_idx).map(|s| s.as_str()).unwrap_or("");
+                                let s = fmt_args.get(seq_idx).map(|s| s.as_ref()).unwrap_or("");
                                 result.push_str(s);
                                 seq_idx += 1;
                             }
@@ -1786,7 +1895,7 @@ impl CoreLib {
                                 if chars.peek() == Some(&'}') {
                                     chars.next();
                                     let idx: usize = num_str.parse().unwrap_or(0);
-                                    let s = fmt_args.get(idx).map(|s| s.as_str()).unwrap_or("");
+                                    let s = fmt_args.get(idx).map(|s| s.as_ref()).unwrap_or("");
                                     result.push_str(s);
                                 } else {
                                     result.push('{');
@@ -1799,7 +1908,7 @@ impl CoreLib {
                         result.push(c);
                     }
                 }
-                Ok(Value::String(result))
+                Ok(Value::String(Arc::from(result)))
             }
 
             // ── str_repeat(s, n) ──────────────────────────────────────────────
@@ -1810,7 +1919,7 @@ impl CoreLib {
                     ));
                 }
                 let s = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => {
                         return Err(RuntimeError::new(
                             "str_repeat: first argument must be a string".to_string(),
@@ -1830,7 +1939,7 @@ impl CoreLib {
                         "str_repeat: count must be non-negative".to_string(),
                     ));
                 }
-                Ok(Value::String(s.repeat(n as usize)))
+                Ok(Value::String(Arc::from(s.repeat(n as usize))))
             }
 
             // ── str_contains(s, substr) ───────────────────────────────────────
@@ -1842,7 +1951,7 @@ impl CoreLib {
                 }
                 match (&args[0], &args[1]) {
                     (Value::String(s), Value::String(sub)) => {
-                        Ok(Value::Boolean(s.contains(sub.as_str())))
+                        Ok(Value::Boolean(s.contains(sub.as_ref())))
                     }
                     _ => Err(RuntimeError::new(
                         "str_contains requires string arguments".to_string(),
@@ -1859,7 +1968,7 @@ impl CoreLib {
                 }
                 match &args[0] {
                     Value::String(s) => Ok(Value::Array(
-                        s.chars().map(|c| Value::String(c.to_string())).collect(),
+                        s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(),
                     )),
                     _ => Err(RuntimeError::new(
                         "str_chars requires a string argument".to_string(),
@@ -1875,7 +1984,7 @@ impl CoreLib {
                     ));
                 }
                 match &args[0] {
-                    Value::String(s) => Ok(Value::String(s.chars().rev().collect())),
+                    Value::String(s) => Ok(Value::String(Arc::from(s.chars().rev().collect::<String>()))),
                     _ => Err(RuntimeError::new(
                         "str_reverse requires a string argument".to_string(),
                     )),
@@ -1890,7 +1999,7 @@ impl CoreLib {
                     ));
                 }
                 let s = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => {
                         return Err(RuntimeError::new(
                             "str_center: first argument must be a string".to_string(),
@@ -1917,7 +2026,7 @@ impl CoreLib {
                 };
                 let len = s.chars().count();
                 if len >= width {
-                    return Ok(Value::String(s));
+                    return Ok(Value::String(Arc::from(s)));
                 }
                 let total_pad = width - len;
                 let left_pad = total_pad / 2;
@@ -1928,7 +2037,7 @@ impl CoreLib {
                     s,
                     pad_char.to_string().repeat(right_pad)
                 );
-                Ok(Value::String(result))
+                Ok(Value::String(Arc::from(result)))
             }
 
             // ── array_sum(arr) ────────────────────────────────────────────────

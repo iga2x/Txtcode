@@ -1,4 +1,5 @@
 use crate::runtime::permissions::PermissionResource;
+use std::sync::Arc;
 use crate::runtime::{RuntimeError, Value};
 
 /// Capability management library
@@ -50,7 +51,7 @@ impl CapabilityLib {
         };
 
         let action = match &args[1] {
-            Value::String(s) => s.clone(),
+            Value::String(s) => s.to_string(),
             _ => {
                 return Err(RuntimeError::new(
                     "grant_capability: second argument must be a string (action)".to_string(),
@@ -60,7 +61,7 @@ impl CapabilityLib {
 
         let scope = if args.len() > 2 {
             match &args[2] {
-                Value::String(s) => Some(s.clone()),
+                Value::String(s) => Some(s.to_string()),
                 Value::Null => None,
                 _ => {
                     return Err(RuntimeError::new(
@@ -90,15 +91,14 @@ impl CapabilityLib {
         };
 
         // Parse resource string to PermissionResource
-        let resource = Self::parse_resource(&resource_str, &action)?;
+        let resource = Self::parse_resource(resource_str.as_ref(), &action)?;
 
         // Grant capability via executor
         let token_id = executor.grant_capability(
             resource, action, scope, expires_in, None, // granted_by
-            None, // ai_metadata
         );
 
-        Ok(Value::String(token_id))
+        Ok(Value::String(Arc::from(token_id)))
     }
 
     /// Use a capability token in current scope
@@ -122,7 +122,7 @@ impl CapabilityLib {
             }
         };
 
-        executor.use_capability(token_id)?;
+        executor.use_capability(token_id.to_string())?;
         Ok(Value::Null)
     }
 
@@ -149,7 +149,7 @@ impl CapabilityLib {
 
         let reason = if args.len() > 1 {
             match &args[1] {
-                Value::String(s) => Some(s.clone()),
+                Value::String(s) => Some(s.to_string()),
                 Value::Null => None,
                 _ => {
                     return Err(RuntimeError::new(
@@ -162,7 +162,7 @@ impl CapabilityLib {
             None
         };
 
-        executor.revoke_capability(&token_id, reason)?;
+        executor.revoke_capability(token_id.as_ref(), reason)?;
         Ok(Value::Null)
     }
 
@@ -265,7 +265,6 @@ pub trait CapabilityExecutor {
         scope: Option<String>,
         expires_in: Option<std::time::Duration>,
         granted_by: Option<String>,
-        ai_metadata: Option<crate::runtime::audit::AIMetadata>,
     ) -> String;
 
     fn use_capability(&mut self, token_id: String) -> Result<(), RuntimeError>;

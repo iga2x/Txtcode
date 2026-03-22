@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::sync::Arc;
 
 lazy_static::lazy_static! {
     static ref CHILD_PROCESSES: Mutex<HashMap<i64, Child>> = Mutex::new(HashMap::new());
@@ -38,10 +39,10 @@ impl SysLib {
                         use crate::runtime::permissions::PermissionResource;
                         checker.check_permission(
                             &PermissionResource::System("env".to_string()),
-                            Some(key.as_str()),
+                            Some(key.as_ref()),
                         )?;
                     }
-                    Ok(Value::String(std::env::var(key).unwrap_or_default()))
+                    Ok(Value::String(Arc::from(std::env::var(key.as_ref()).unwrap_or_default())))
                 } else {
                     Err(RuntimeError::new(
                         "getenv() requires a string argument".to_string(),
@@ -58,7 +59,7 @@ impl SysLib {
                 }
                 if args.len() >= 2 {
                     if let (Value::String(key), Value::String(val)) = (&args[0], &args[1]) {
-                        std::env::set_var(key, val);
+                        std::env::set_var(key.as_ref(), val.as_ref());
                         Ok(Value::Null)
                     } else {
                         Err(RuntimeError::new(
@@ -76,14 +77,14 @@ impl SysLib {
                     use crate::runtime::permissions::PermissionResource;
                     checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
                 }
-                Ok(Value::String(std::env::consts::OS.to_string()))
+                Ok(Value::String(Arc::from(std::env::consts::OS.to_string())))
             }
             "arch" => {
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
                     checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
                 }
-                Ok(Value::String(std::env::consts::ARCH.to_string()))
+                Ok(Value::String(Arc::from(std::env::consts::ARCH.to_string())))
             }
             "exec" => {
                 if !exec_allowed {
@@ -138,12 +139,12 @@ impl SysLib {
                         .map_err(|e| RuntimeError::new(format!("exec() failed: {}", e)))?;
                     if capture_stderr {
                         let mut result = IndexMap::new();
-                        result.insert("stdout".to_string(), Value::String(String::from_utf8_lossy(&output.stdout).to_string()));
-                        result.insert("stderr".to_string(), Value::String(String::from_utf8_lossy(&output.stderr).to_string()));
+                        result.insert("stdout".to_string(), Value::String(Arc::from(String::from_utf8_lossy(&output.stdout).to_string())));
+                        result.insert("stderr".to_string(), Value::String(Arc::from(String::from_utf8_lossy(&output.stderr).to_string())));
                         result.insert("status".to_string(), Value::Integer(output.status.code().unwrap_or(0) as i64));
                         Ok(Value::Map(result))
                     } else {
-                        Ok(Value::String(String::from_utf8_lossy(&output.stdout).to_string()))
+                        Ok(Value::String(Arc::from(String::from_utf8_lossy(&output.stdout).to_string())))
                     }
                 } else {
                     Err(RuntimeError::new(
@@ -208,7 +209,7 @@ impl SysLib {
                 for mut child in children {
                     let _ = child.wait();
                 }
-                Ok(Value::String(output))
+                Ok(Value::String(Arc::from(output)))
             }
             "exit" => {
                 let code = if let Some(Value::Integer(c)) = args.first() {
@@ -231,12 +232,12 @@ impl SysLib {
                 }
                 let args: Vec<Value> = std::env::args()
                     .skip(1) // Skip program name
-                    .map(Value::String)
+                    .map(|s| Value::String(Arc::from(s)))
                     .collect();
                 Ok(Value::Array(args))
             }
             "cwd" => match std::env::current_dir() {
-                Ok(path) => Ok(Value::String(path.to_string_lossy().to_string())),
+                Ok(path) => Ok(Value::String(Arc::from(path.to_string_lossy().to_string()))),
                 Err(e) => Err(RuntimeError::new(format!(
                     "Failed to get current directory: {}",
                     e
@@ -257,7 +258,7 @@ impl SysLib {
                 }
                 match &args[0] {
                     Value::String(path) => {
-                        std::env::set_current_dir(path).map_err(|e| {
+                        std::env::set_current_dir(path.as_ref()).map_err(|e| {
                             RuntimeError::new(format!("Failed to change directory: {}", e))
                         })?;
                         Ok(Value::Null)
@@ -286,24 +287,24 @@ impl SysLib {
                         let uid = libc::getuid();
                         let passwd = libc::getpwuid(uid);
                         if passwd.is_null() {
-                            Ok(Value::String("unknown".to_string()))
+                            Ok(Value::String(Arc::from("unknown".to_string())))
                         } else {
                             let name = CStr::from_ptr((*passwd).pw_name)
                                 .to_string_lossy()
                                 .to_string();
-                            Ok(Value::String(name))
+                            Ok(Value::String(Arc::from(name)))
                         }
                     }
                 }
                 #[cfg(not(unix))]
                 {
-                    Ok(Value::String(std::env::var("USER").unwrap_or_else(|_| {
+                    Ok(Value::String(Arc::from(std::env::var("USER").unwrap_or_else(|_| {
                         std::env::var("USERNAME").unwrap_or_else(|_| "unknown".to_string())
-                    })))
+                    }))))
                 }
             }
             "home" => match dirs::home_dir() {
-                Some(path) => Ok(Value::String(path.to_string_lossy().to_string())),
+                Some(path) => Ok(Value::String(Arc::from(path.to_string_lossy().to_string()))),
                 None => Err(RuntimeError::new(
                     "Failed to get home directory".to_string(),
                 )),
@@ -383,7 +384,7 @@ impl SysLib {
                     if let Value::Map(env_vars) = &args[1] {
                         for (key, value) in env_vars {
                             if let Value::String(val_str) = value {
-                                cmd.env(key, val_str);
+                                cmd.env(key, val_str.as_ref());
                             }
                         }
                     }
@@ -439,7 +440,7 @@ impl SysLib {
                     let signal = if args.len() == 2 {
                         match &args[1] {
                             Value::Integer(s) => *s as i32,
-                            Value::String(s) => match s.as_str() {
+                            Value::String(s) => match s.as_ref() {
                                 "SIGTERM" | "TERM" => libc::SIGTERM,
                                 "SIGKILL" | "KILL" => libc::SIGKILL,
                                 "SIGINT" | "INT" => libc::SIGINT,
@@ -520,7 +521,7 @@ impl SysLib {
                     )?;
                 }
                 let vars: IndexMap<String, Value> = std::env::vars()
-                    .map(|(k, v)| (k, Value::String(v)))
+                    .map(|(k, v)| (k, Value::String(Arc::from(v))))
                     .collect();
                 Ok(Value::Map(vars))
             }
@@ -555,7 +556,7 @@ impl SysLib {
                     let signal = if args.len() == 2 {
                         match &args[1] {
                             Value::Integer(s) => *s as i32,
-                            Value::String(s) => match s.as_str() {
+                            Value::String(s) => match s.as_ref() {
                                 "SIGTERM" | "TERM" => libc::SIGTERM,
                                 "SIGKILL" | "KILL" => libc::SIGKILL,
                                 "SIGINT" | "INT" => libc::SIGINT,
@@ -657,11 +658,11 @@ impl SysLib {
                 let mut result = IndexMap::new();
                 result.insert(
                     "stdout".to_string(),
-                    Value::String(String::from_utf8_lossy(&output.stdout).to_string()),
+                    Value::String(Arc::from(String::from_utf8_lossy(&output.stdout).to_string())),
                 );
                 result.insert(
                     "stderr".to_string(),
-                    Value::String(String::from_utf8_lossy(&output.stderr).to_string()),
+                    Value::String(Arc::from(String::from_utf8_lossy(&output.stderr).to_string())),
                 );
                 result.insert(
                     "exit_code".to_string(),
@@ -690,9 +691,9 @@ impl SysLib {
                 let sep = if cfg!(windows) { ';' } else { ':' };
                 let path_var = std::env::var("PATH").unwrap_or_default();
                 for dir in path_var.split(sep) {
-                    let candidate = std::path::Path::new(dir).join(&binary);
+                    let candidate = std::path::Path::new(dir).join(binary.as_ref());
                     if candidate.is_file() {
-                        return Ok(Value::String(candidate.to_string_lossy().to_string()));
+                        return Ok(Value::String(Arc::from(candidate.to_string_lossy().to_string())));
                     }
                 }
                 Ok(Value::Null)
@@ -759,7 +760,7 @@ impl SysLib {
                     ".".to_string()
                 } else {
                     match &args[0] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         _ => {
                             return Err(RuntimeError::new(
                                 "disk_space path must be a string".to_string(),
@@ -805,7 +806,7 @@ impl SysLib {
                     use crate::runtime::permissions::PermissionResource;
                     checker.check_permission(&PermissionResource::System("info".to_string()), None)?;
                 }
-                Ok(Value::String(std::env::consts::OS.to_string()))
+                Ok(Value::String(Arc::from(std::env::consts::OS.to_string())))
             }
             "os_version" => {
                 if let Some(checker) = permission_checker {
@@ -820,16 +821,16 @@ impl SysLib {
                         for line in content.lines() {
                             if line.starts_with("PRETTY_NAME=") {
                                 let val = line.trim_start_matches("PRETTY_NAME=").trim_matches('"');
-                                return Ok(Value::String(val.to_string()));
+                                return Ok(Value::String(Arc::from(val.to_string())));
                             }
                         }
                     }
                     // Fallback: read kernel version from /proc/version
                     if let Ok(content) = std::fs::read_to_string("/proc/version") {
                         let version = content.split_whitespace().take(3).collect::<Vec<_>>().join(" ");
-                        return Ok(Value::String(version));
+                        return Ok(Value::String(Arc::from(version)));
                     }
-                    Ok(Value::String("linux/unknown".to_string()))
+                    Ok(Value::String(Arc::from("linux/unknown".to_string())))
                 }
                 #[cfg(target_os = "macos")]
                 {
@@ -846,16 +847,16 @@ impl SysLib {
                                         .trim()
                                         .trim_start_matches("<string>")
                                         .trim_end_matches("</string>");
-                                    return Ok(Value::String(format!("macOS {}", ver)));
+                                    return Ok(Value::String(Arc::from(format!("macOS {}", ver))));
                                 }
                             }
                         }
                     }
-                    Ok(Value::String("macOS/unknown".to_string()))
+                    Ok(Value::String(Arc::from("macOS/unknown".to_string())))
                 }
                 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
                 {
-                    Ok(Value::String(std::env::consts::OS.to_string()))
+                    Ok(Value::String(Arc::from(std::env::consts::OS.to_string())))
                 }
             }
             // ── Subprocess IPC helpers ──────────────────────────────────────────
@@ -914,7 +915,7 @@ impl SysLib {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let lines: Vec<Value> = stdout
                     .lines()
-                    .map(|l| Value::String(l.to_string()))
+                    .map(|l| Value::String(Arc::from(l.to_string())))
                     .collect();
                 Ok(Value::Array(lines))
             }
@@ -988,8 +989,8 @@ impl SysLib {
                 } else {
                     indexmap::IndexMap::new()
                 };
-                let stdin_data = opts.get("stdin").and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
-                let cwd = opts.get("cwd").and_then(|v| if let Value::String(s) = v { Some(s.clone()) } else { None });
+                let stdin_data = opts.get("stdin").and_then(|v| if let Value::String(s) = v { Some(s.to_string()) } else { None });
+                let cwd = opts.get("cwd").and_then(|v| if let Value::String(s) = v { Some(s.to_string()) } else { None });
                 let timeout_ms = opts.get("timeout").and_then(|v| match v {
                     Value::Integer(n) => Some(*n as u64),
                     Value::Float(f) => Some(*f as u64),
@@ -997,7 +998,7 @@ impl SysLib {
                 });
                 let extra_env: Vec<(String, String)> = match opts.get("env") {
                     Some(Value::Map(m)) => m.iter().filter_map(|(k, v)| {
-                        if let Value::String(s) = v { Some((k.clone(), s.clone())) } else { None }
+                        if let Value::String(s) = v { Some((k.clone(), s.to_string())) } else { None }
                     }).collect(),
                     _ => vec![],
                 };
@@ -1010,7 +1011,7 @@ impl SysLib {
                     }
                     Value::Array(a) => {
                         let strs: Vec<String> = a.iter().map(|v| match v {
-                            Value::String(s) => s.clone(),
+                            Value::String(s) => s.to_string(),
                             other => other.to_string(),
                         }).collect();
                         (strs[0].clone(), strs[1..].to_vec())
@@ -1061,8 +1062,8 @@ impl SysLib {
                 };
 
                 let mut result = indexmap::IndexMap::new();
-                result.insert("stdout".to_string(), Value::String(String::from_utf8_lossy(&output.stdout).to_string()));
-                result.insert("stderr".to_string(), Value::String(String::from_utf8_lossy(&output.stderr).to_string()));
+                result.insert("stdout".to_string(), Value::String(Arc::from(String::from_utf8_lossy(&output.stdout).to_string())));
+                result.insert("stderr".to_string(), Value::String(Arc::from(String::from_utf8_lossy(&output.stderr).to_string())));
                 result.insert("status".to_string(), Value::Integer(output.status.code().unwrap_or(-1) as i64));
                 Ok(Value::Map(result))
             }
@@ -1097,7 +1098,7 @@ impl SysLib {
                         }
                         Value::Array(a) => {
                             let strs: Vec<String> = a.iter().map(|v| match v {
-                                Value::String(s) => s.clone(),
+                                Value::String(s) => s.to_string(),
                                 other => other.to_string(),
                             }).collect();
                             (strs[0].clone(), strs[1..].to_vec())
@@ -1134,7 +1135,7 @@ impl SysLib {
                     children.push(child);
                 }
 
-                let mut last = children.pop().unwrap();
+                let last = children.pop().unwrap();
                 // Reap earlier children (they may have already exited once stdout EOF was hit)
                 for mut child in children {
                     let _ = child.wait();
@@ -1143,8 +1144,8 @@ impl SysLib {
                     .map_err(|e| RuntimeError::new(format!("proc_pipe: {}", e)))?;
 
                 let mut result = indexmap::IndexMap::new();
-                result.insert("stdout".to_string(), Value::String(String::from_utf8_lossy(&output.stdout).to_string()));
-                result.insert("stderr".to_string(), Value::String(String::from_utf8_lossy(&output.stderr).to_string()));
+                result.insert("stdout".to_string(), Value::String(Arc::from(String::from_utf8_lossy(&output.stdout).to_string())));
+                result.insert("stderr".to_string(), Value::String(Arc::from(String::from_utf8_lossy(&output.stderr).to_string())));
                 result.insert("status".to_string(), Value::Integer(output.status.code().unwrap_or(-1) as i64));
                 Ok(Value::Map(result))
             }
@@ -1178,19 +1179,19 @@ impl SysLib {
                 };
                 let flags: Vec<String> = match spec.get("flags") {
                     Some(Value::Array(a)) => a.iter().filter_map(|v| {
-                        if let Value::String(s) = v { Some(s.clone()) } else { None }
+                        if let Value::String(s) = v { Some(s.to_string()) } else { None }
                     }).collect(),
                     _ => vec![],
                 };
                 let options: Vec<String> = match spec.get("options") {
                     Some(Value::Array(a)) => a.iter().filter_map(|v| {
-                        if let Value::String(s) = v { Some(s.clone()) } else { None }
+                        if let Value::String(s) = v { Some(s.to_string()) } else { None }
                     }).collect(),
                     _ => vec![],
                 };
                 let positional_names: Vec<String> = match spec.get("positionals") {
                     Some(Value::Array(a)) => a.iter().filter_map(|v| {
-                        if let Value::String(s) = v { Some(s.clone()) } else { None }
+                        if let Value::String(s) = v { Some(s.to_string()) } else { None }
                     }).collect(),
                     _ => vec![],
                 };
@@ -1207,7 +1208,7 @@ impl SysLib {
                 let mut iter = raw_args.iter().peekable();
                 while let Some(arg_val) = iter.next() {
                     let arg = match arg_val {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         other => other.to_string(),
                     };
                     let key = arg.trim_start_matches('-').to_string();
@@ -1216,18 +1217,18 @@ impl SysLib {
                             result.insert(key, Value::Boolean(true));
                         } else if options.contains(&key) {
                             let val = iter.next().map(|v| match v {
-                                Value::String(s) => Value::String(s.clone()),
-                                other => Value::String(other.to_string()),
+                                Value::String(s) => Value::String(Arc::from(s.clone())),
+                                other => Value::String(Arc::from(other.to_string())),
                             }).unwrap_or(Value::Null);
                             result.insert(key, val);
                         } else {
-                            rest.push(Value::String(arg));
+                            rest.push(Value::String(Arc::from(arg)));
                         }
                     } else if positional_idx < positional_names.len() {
-                        result.insert(positional_names[positional_idx].clone(), Value::String(arg));
+                        result.insert(positional_names[positional_idx].clone(), Value::String(Arc::from(arg)));
                         positional_idx += 1;
                     } else {
-                        rest.push(Value::String(arg));
+                        rest.push(Value::String(Arc::from(arg)));
                     }
                 }
                 result.insert("_rest".to_string(), Value::Array(rest));
@@ -1251,7 +1252,7 @@ fn json_to_value(j: &serde_json::Value) -> Value {
                 Value::Float(n.as_f64().unwrap_or(0.0))
             }
         }
-        serde_json::Value::String(s) => Value::String(s.clone()),
+        serde_json::Value::String(s) => Value::String(Arc::from(s.clone())),
         serde_json::Value::Array(arr) => Value::Array(arr.iter().map(json_to_value).collect()),
         serde_json::Value::Object(obj) => {
             let map = obj.iter().map(|(k, v)| (k.clone(), json_to_value(v))).collect();

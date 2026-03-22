@@ -1,0 +1,60 @@
+name: Playground WASM Build
+
+on:
+  push:
+    branches: [main]
+    tags:     ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages:    write
+  id-token: write
+
+jobs:
+  build-playground:
+    name: Build Txtcode WASM playground
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --version 0.2.93 --locked
+
+      - name: Build playground WASM
+        run: |
+          cargo build \
+            --target wasm32-unknown-unknown \
+            --features wasm \
+            --bin playground \
+            --release
+        env:
+          RUSTFLAGS: "-C opt-level=z"
+
+      - name: Generate JS bindings
+        run: |
+          wasm-bindgen \
+            --target web \
+            --out-dir playground/ \
+            target/wasm32-unknown-unknown/release/playground.wasm
+
+      - name: Upload artifact for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build-playground
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: github-pages
+      url:  ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

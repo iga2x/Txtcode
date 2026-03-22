@@ -1,10 +1,10 @@
 use crate::capability::CapabilityManager;
 use crate::compiler::bytecode::{Bytecode, Constant, Instruction};
 use crate::policy::PolicyEngine;
-use crate::runtime::audit::{AIMetadata, AuditResult, AuditTrail};
+use crate::runtime::audit::{AuditResult, AuditTrail};
 use crate::runtime::core::{ScopeManager, Value};
 use crate::runtime::errors::RuntimeError;
-use crate::runtime::gc::GarbageCollector;
+use crate::runtime::gc::MemoryTracker;
 use crate::runtime::intent::{IntentChecker, IntentDeclaration};
 use crate::runtime::permissions::{Permission, PermissionManager, PermissionResource};
 use crate::runtime::security::RuntimeSecurity;
@@ -57,8 +57,6 @@ pub struct BytecodeVM {
     // ── Security layer (parity with AST VM) ──────────────────────────────────
     /// Immutable append-only audit log of all security events
     pub audit_trail: AuditTrail,
-    /// AI agent metadata — set when invoked from an AI pipeline
-    ai_metadata: AIMetadata,
     /// Intent checker — enforces allowed/forbidden action constraints per function
     intent_checker: IntentChecker,
     /// Capability manager — time-bound authorisation tokens
@@ -78,8 +76,8 @@ pub struct BytecodeVM {
     /// Bytecode currently being executed — stored so `call_lambda_inline` can
     /// re-enter the instruction loop without needing extra parameters.
     current_bytecode: Option<(Vec<crate::compiler::bytecode::Instruction>, Vec<crate::compiler::bytecode::Constant>)>,
-    /// Garbage collector — tracks allocation metrics (Rust drop handles real memory).
-    gc: GarbageCollector,
+    /// Memory tracker — tracks allocation metrics (Rust drop handles real memory).
+    memory: MemoryTracker,
     /// Const variable names — reassignment is a runtime error.
     const_vars: std::collections::HashSet<String>,
 }
@@ -103,7 +101,6 @@ impl BytecodeVM {
             ],
             safe_mode: false,
             audit_trail: AuditTrail::new(),
-            ai_metadata: AIMetadata::new(),
             intent_checker: IntentChecker::new(),
             capability_manager: CapabilityManager::new(),
             active_capability: None,
@@ -112,7 +109,7 @@ impl BytecodeVM {
             function_name_stack: Vec::new(),
             cancel_flag: None,
             current_bytecode: None,
-            gc: GarbageCollector::new(),
+            memory: MemoryTracker::new(),
             const_vars: std::collections::HashSet::new(),
         }
     }
@@ -148,9 +145,6 @@ impl BytecodeVM {
     // ── Security management (parity with VirtualMachine) ─────────────────────
 
     /// Set AI agent metadata for audit trail attribution.
-    pub fn set_ai_metadata(&mut self, meta: AIMetadata) {
-        self.ai_metadata = meta;
-    }
 
     /// Register an intent declaration for a named function.
     pub fn register_function_intent(&mut self, name: String, declaration: IntentDeclaration) {
@@ -170,29 +164,20 @@ impl BytecodeVM {
         scope: Option<String>,
         expires_in: Option<std::time::Duration>,
         granted_by: Option<String>,
-        ai_metadata: Option<AIMetadata>,
     ) -> String {
-        let is_meta_empty = ai_metadata.as_ref().map(|m| m.is_empty()).unwrap_or(true);
         let token_id = self.capability_manager.grant(
             resource,
             action.clone(),
             scope.clone(),
             expires_in,
             granted_by,
-            ai_metadata.clone(),
         );
         let _ = self.audit_trail.log_action(
             format!("capability.granted.{}", action),
             scope.unwrap_or_default(),
             Some(format!("capability:{}", token_id)),
             AuditResult::Allowed,
-            if let Some(ref meta) = ai_metadata.filter(|m| !is_meta_empty && !m.is_empty()) {
-                Some(meta)
-            } else if !self.ai_metadata.is_empty() {
-                Some(&self.ai_metadata)
-            } else {
-                None
-            },
+            None, // B.1: ai_metadata removed
         );
         token_id
     }
@@ -226,7 +211,7 @@ impl BytecodeVM {
             token_id.to_string(),
             Some("capability".to_string()),
             AuditResult::Denied,
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            None, // B.1: ai_metadata removed
         );
         Ok(())
     }
@@ -332,7 +317,7 @@ impl BytecodeVM {
                 w.clone(),
                 None,
                 AuditResult::Error(w.clone()),
-                if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                None, // B.1: ai_metadata removed
             );
         }
         // Log overall startup result.
@@ -348,7 +333,7 @@ impl BytecodeVM {
             } else {
                 AuditResult::Error(report.warnings.first().cloned().unwrap_or_default())
             },
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            None, // B.1: ai_metadata removed
         );
         // Hard enforcement: block execution on active debugger or integrity failure.
         RuntimeSecurity::enforce_security_report(&report)
@@ -378,13 +363,13 @@ impl BytecodeVM {
                     if let Some(top) = self.stack.last() {
                         match top {
                             Value::Array(_) | Value::Map(_) | Value::Set(_) | Value::Function(_, _, _, _) => {
-                                self.gc.register_allocation(top);
+                                self.memory.register_allocation(top);
                             }
                             _ => {}
                         }
                     }
                     // Threshold-gated collection (runs only every N allocations)
-                    self.gc.collect(&self.stack, &self.variables, &[]);
+                    self.memory.collect(&self.stack, &self.variables, &[]);
                 }
                 Err(e) => {
                     // Control-flow signals (return/break/continue) must bypass try-catch entirely
@@ -1456,8 +1441,7 @@ impl BytecodeVM {
                         for perm in self.permission_manager.get_denied() {
                             sub_vm.permission_manager.deny(perm.clone());
                         }
-                        // Inherit AI metadata and active capability context
-                        sub_vm.ai_metadata = self.ai_metadata.clone();
+                        // Inherit active capability context
                         if let Some(ref token) = self.active_capability {
                             sub_vm.active_capability = Some(token.clone());
                         }
@@ -1764,11 +1748,10 @@ impl BytecodeVM {
                             self.ip = return_ip;
                             self.function_name_stack.pop();
                         } else {
-                            // Top-level propagate: `?` used outside any function body.
-                            return Err(RuntimeError::new(
-                                "? operator used outside of a function body".to_string(),
-                            )
-                            .with_code(crate::runtime::errors::ErrorCode::E0034));
+                            // Top-level propagate: mirrors AST VM — push the Err value
+                            // so it surfaces as the program's return value rather than
+                            // raising E0034 (which is only valid inside a function body).
+                            self.stack.push(err_val);
                         }
                     }
                     Value::Result(true, inner) => {
@@ -2441,7 +2424,7 @@ impl SecurityPipelineContext for BytecodeVM {
                         scope.unwrap_or("").to_string(),
                         Some(format!("capability:{}/deny-override", token_id)),
                         AuditResult::Denied,
-                        if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                        None, // B.1: ai_metadata removed
                     );
                     return Some(Err(format!("Permission error: {}", deny_err)));
                 }
@@ -2456,7 +2439,7 @@ impl SecurityPipelineContext for BytecodeVM {
                     scope.unwrap_or("").to_string(),
                     Some(format!("capability:{}", token_id)),
                     AuditResult::Allowed,
-                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                    None, // B.1: ai_metadata removed
                 );
                 Some(Ok(()))
             }
@@ -2466,7 +2449,7 @@ impl SecurityPipelineContext for BytecodeVM {
                     scope.unwrap_or("").to_string(),
                     Some(format!("capability:{}", token_id)),
                     AuditResult::Denied,
-                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                    None, // B.1: ai_metadata removed
                 );
                 Some(Err(format!("Capability error: {}", cap_err)))
             }
@@ -2489,17 +2472,13 @@ impl SecurityPipelineContext for BytecodeVM {
             resource,
             scope,
             result.clone(),
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            None, // B.1: ai_metadata removed
         );
         result.map_err(|e| format!("Permission error: {}", e))
     }
 
     fn current_function_name(&self) -> Option<&str> {
         self.function_name_stack.last().map(|s| s.as_str())
-    }
-
-    fn has_ai_metadata(&self) -> bool {
-        !self.ai_metadata.is_empty()
     }
 
     fn log_audit(
@@ -2518,7 +2497,7 @@ impl SecurityPipelineContext for BytecodeVM {
             resource.to_string(),
             token.map(|s| s.to_string()),
             audit_result,
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            None, // B.1: ai_metadata removed
         );
     }
 }

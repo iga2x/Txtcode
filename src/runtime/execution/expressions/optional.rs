@@ -1,6 +1,7 @@
 // Optional chaining evaluation (?., ?(), ?[])
 
 use super::ExpressionVM;
+use std::sync::Arc;
 use crate::parser::ast::Expression;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
@@ -102,7 +103,7 @@ pub fn evaluate_optional_index<VM: ExpressionVM>(
                 Ok(arr.get(i as usize).cloned().unwrap_or(Value::Null))
             }
             (Value::Map(map), Value::String(key)) => {
-                Ok(map.get(&key).cloned().unwrap_or(Value::Null))
+                Ok(map.get(key.as_ref()).cloned().unwrap_or(Value::Null))
             }
             _ => Ok(Value::Null),
         }

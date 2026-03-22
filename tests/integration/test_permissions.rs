@@ -1,3 +1,4 @@
+use std::sync::Arc;
 /// Permission denial and security tests for v0.4
 ///
 /// These tests verify that the permission system correctly denies access
@@ -166,7 +167,7 @@ fn test_safe_mode_blocks_exec() {
     // exec_allowed = false should produce an error for exec()
     let result = StdLib::call_function::<NoopExecutor>(
         "exec",
-        &[Value::String("echo hello".to_string())],
+        &[Value::String(Arc::from("echo hello"))],
         false, // exec NOT allowed
         None,
     );
@@ -234,7 +235,7 @@ fn test_bytecode_vm_null_coalesce_returns_value_when_not_null() {
     let mut vm = BytecodeVM::new();
     let result = vm.execute(&bytecode);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), Value::String("hello".to_string()));
+    assert_eq!(result.unwrap(), Value::String(Arc::from("hello")));
 }
 
 #[cfg(feature = "bytecode")]
@@ -751,7 +752,6 @@ fn test_capability_token_cannot_bypass_explicit_deny() {
         None,
         Some(Duration::from_secs(3600)),
         Some("test".to_string()),
-        None,
     );
     vm.use_capability(token_id).expect("token should be usable before check");
 
@@ -785,7 +785,6 @@ fn test_capability_token_works_when_no_explicit_deny() {
         None,
         Some(Duration::from_secs(3600)),
         Some("test".to_string()),
-        None,
     );
     vm.use_capability(token_id).expect("token should be usable");
 
@@ -940,8 +939,8 @@ fn test_setenv_blocked_without_sys_env_permission() {
     let result = txtcode::stdlib::sys::SysLib::call_function(
         "setenv",
         &[
-            Value::String("TEST_KEY".to_string()),
-            Value::String("val".to_string()),
+            Value::String(Arc::from("TEST_KEY")),
+            Value::String(Arc::from("val")),
         ],
         true,
         Some(checker),
@@ -973,7 +972,7 @@ fn test_chdir_blocked_without_sys_env_permission() {
     let checker: &dyn PermissionChecker = &DenyAll;
     let result = txtcode::stdlib::sys::SysLib::call_function(
         "chdir",
-        &[Value::String("/tmp".to_string())],
+        &[Value::String(Arc::from("/tmp"))],
         true,
         Some(checker),
     );
@@ -1009,7 +1008,7 @@ fn test_exec_blocked_by_permission_checker() {
     // exec_allowed = true but PermissionChecker must still block.
     let result = txtcode::stdlib::sys::SysLib::call_function(
         "exec",
-        &[Value::String("echo hello".to_string())],
+        &[Value::String(Arc::from("echo hello"))],
         true,
         Some(checker),
     );
@@ -1040,7 +1039,7 @@ fn test_spawn_blocked_by_permission_checker() {
     let checker: &dyn PermissionChecker = &DenyAll;
     let result = txtcode::stdlib::sys::SysLib::call_function(
         "spawn",
-        &[Value::String("echo hello".to_string())],
+        &[Value::String(Arc::from("echo hello"))],
         true,
         Some(checker),
     );
@@ -1071,7 +1070,7 @@ fn test_pipe_exec_blocked_by_permission_checker() {
     let checker: &dyn PermissionChecker = &DenyAll;
     let result = txtcode::stdlib::sys::SysLib::call_function(
         "pipe_exec",
-        &[Value::String("echo hello".to_string())],
+        &[Value::String(Arc::from("echo hello"))],
         true,
         Some(checker),
     );
@@ -1425,7 +1424,7 @@ fn test_tool_info_known_tool_returns_map() {
     use txtcode::runtime::Value;
     use txtcode::stdlib::ToolLib;
 
-    let args = [Value::String("nmap".to_string())];
+    let args = [Value::String(Arc::from("nmap"))];
     let result = ToolLib::call_function("tool_info", &args, None, None, None, None);
     assert!(result.is_ok(), "tool_info('nmap') should succeed: {:?}", result);
     match result.unwrap() {
@@ -1443,7 +1442,7 @@ fn test_tool_info_unknown_tool_errors() {
     use txtcode::runtime::Value;
     use txtcode::stdlib::ToolLib;
 
-    let args = [Value::String("nonexistent_xyz_tool".to_string())];
+    let args = [Value::String(Arc::from("nonexistent_xyz_tool"))];
     let result = ToolLib::call_function("tool_info", &args, None, None, None, None);
     assert!(result.is_err(), "tool_info on unknown tool must error");
     let msg = result.unwrap_err().to_string();
@@ -1459,7 +1458,7 @@ fn test_tool_exec_without_permission_checker_fails_secure() {
     use txtcode::runtime::Value;
     use txtcode::stdlib::ToolLib;
 
-    let args = [Value::String("nmap".to_string())];
+    let args = [Value::String(Arc::from("nmap"))];
     // No permission_checker — must fail with an enforcement error, not a panic.
     let result = ToolLib::call_function("tool_exec", &args, None, None, None, None);
     assert!(result.is_err(), "tool_exec without permission_checker must fail");
@@ -1524,7 +1523,7 @@ fn test_getenv_denied_by_permission_checker() {
     let checker: &dyn PermissionChecker = &DenyAll;
     let result = txtcode::stdlib::sys::SysLib::call_function(
         "getenv",
-        &[Value::String("PATH".to_string())],
+        &[Value::String(Arc::from("PATH"))],
         true,
         Some(checker),
     );
@@ -1557,12 +1556,12 @@ fn test_getenv_allowed_by_permission_checker() {
     let checker: &dyn PermissionChecker = &AllowAll;
     let result = txtcode::stdlib::sys::SysLib::call_function(
         "getenv",
-        &[Value::String("NPL_TEST_GETENV".to_string())],
+        &[Value::String(Arc::from("NPL_TEST_GETENV"))],
         true,
         Some(checker),
     );
     assert!(result.is_ok(), "getenv() must succeed when checker allows");
-    assert_eq!(result.unwrap(), Value::String("hello".to_string()));
+    assert_eq!(result.unwrap(), Value::String(Arc::from("hello")));
 }
 
 #[test]
@@ -1665,6 +1664,144 @@ fn test_exec_allowed_after_grant_permission() {
                 "Should not be a permission error after grant, got: {}",
                 msg
             );
+        }
+    }
+}
+
+// ── Group G.1: Persistent audit log in safe mode ─────────────────────────────
+
+/// In safe mode, auto_audit_log_path creates a path under ~/.txtcode/audit/.
+/// We test this by verifying `run_file_with_allowlists_full` creates a log
+/// file when safe_mode=true and no explicit audit_log path is given.
+#[test]
+fn test_safe_mode_creates_audit_log() {
+    use std::fs;
+
+    // Create a minimal .tc file in a temp dir
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("hello.tc");
+    fs::write(&script, "1 + 1\n").unwrap();
+
+    let result = txtcode::cli::run::run_file_with_allowlists_full(
+        &script.to_path_buf(),
+        true,  // safe_mode
+        false,
+        false, false,
+        &[], &[], &[],
+        false, None, false,
+        false, // no_audit_log = false → should auto-write
+    );
+    assert!(result.is_ok(), "safe mode run should succeed: {:?}", result);
+
+    // Verify that an audit log was written to ~/.txtcode/audit/
+    if let Some(home) = dirs::home_dir() {
+        let audit_dir = home.join(".txtcode").join("audit");
+        if audit_dir.exists() {
+            let entries: Vec<_> = fs::read_dir(&audit_dir)
+                .unwrap()
+                .flatten()
+                .filter(|e| e.path().extension().map(|x| x == "json").unwrap_or(false))
+                .collect();
+            assert!(!entries.is_empty(), "at least one audit log JSON should exist in ~/.txtcode/audit/");
+        }
+    }
+}
+
+/// When --no-audit-log is set, safe mode should NOT create an auto audit log.
+#[test]
+fn test_safe_mode_no_audit_log_suppresses_auto_write() {
+    use std::fs;
+
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("hello2.tc");
+    fs::write(&script, "2 + 2\n").unwrap();
+
+    // Note timestamp just before the run
+    let before_time = std::time::SystemTime::now();
+
+    let result = txtcode::cli::run::run_file_with_allowlists_full(
+        &script.to_path_buf(),
+        true,  // safe_mode
+        false,
+        false, false,
+        &[], &[], &[],
+        false, None, false,
+        true,  // no_audit_log = true → should NOT auto-write
+    );
+    assert!(result.is_ok(), "safe mode run with no_audit_log should succeed: {:?}", result);
+
+    // No audit log should have been written by THIS run (no file newer than before_time
+    // with the specific {ts}_{pid}.json naming of our process).
+    let our_pid = std::process::id();
+    let audit_dir = dirs::home_dir().map(|h| h.join(".txtcode").join("audit"));
+    if let Some(d) = audit_dir {
+        if let Ok(entries) = fs::read_dir(&d) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                // Files from THIS run would include our PID
+                if name.ends_with(&format!("_{}.json", our_pid)) {
+                    if let Ok(meta) = entry.metadata() {
+                        if let Ok(modified) = meta.modified() {
+                            assert!(
+                                modified < before_time,
+                                "--no-audit-log should not write audit file: {}",
+                                entry.path().display()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Non-safe mode should NOT create an auto audit log.
+#[test]
+fn test_non_safe_mode_no_auto_audit_log() {
+    use std::collections::HashSet;
+    use std::fs;
+
+    let our_pid = std::process::id();
+    let audit_dir = dirs::home_dir().map(|h| h.join(".txtcode").join("audit"));
+
+    // Snapshot existing files BEFORE the run so concurrent safe-mode tests don't pollute
+    let before_files: HashSet<String> = audit_dir
+        .as_ref()
+        .and_then(|d| fs::read_dir(d).ok())
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("hello3.tc");
+    fs::write(&script, "3 * 3\n").unwrap();
+
+    let result = txtcode::cli::run::run_file_with_allowlists(
+        &script.to_path_buf(),
+        false, // safe_mode = false
+        false, false, false,
+        &[], &[], &[],
+        false, None, false,
+    );
+    assert!(result.is_ok(), "non-safe mode run should succeed: {:?}", result);
+
+    // No NEW audit log file from our specific PID should have appeared during this run
+    let pid_suffix = format!("_{}.json", our_pid);
+    if let Some(d) = audit_dir {
+        if let Ok(entries) = fs::read_dir(&d) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(&pid_suffix) && !before_files.contains(&name) {
+                    panic!(
+                        "non-safe mode should not create a new audit file, but found: {}",
+                        entry.path().display()
+                    );
+                }
+            }
         }
     }
 }

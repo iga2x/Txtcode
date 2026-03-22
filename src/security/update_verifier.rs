@@ -16,7 +16,6 @@
 //   2. scripts/sign_release.sh uses SIGNING_KEY_HEX to produce a .sig sidecar.
 //   3. self_update downloads both binary + .sig and calls verify_update_binary.
 
-use ring::signature::{UnparsedPublicKey, ED25519};
 use sha2::{Digest, Sha256};
 
 /// Pinned Ed25519 release public key (32 raw bytes).
@@ -243,7 +242,7 @@ mod tests {
         // Low-level test: signs with ring, verifies with ring.
         // Demonstrates correct API usage independent of ScriptAuth.
         use ring::rand::SystemRandom;
-        use ring::signature::{Ed25519KeyPair, KeyPair};
+        use ring::signature::{Ed25519KeyPair, KeyPair, UnparsedPublicKey, ED25519};
 
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).expect("keygen failed");

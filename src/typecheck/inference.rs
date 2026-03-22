@@ -89,14 +89,13 @@ impl TypeInference {
                 let param_types: Vec<Type> = params
                     .iter()
                     .map(|p| {
-                        p.type_annotation.clone().unwrap_or({
-                            // Try to infer from usage
-                            Type::Int // Default
-                        })
+                        // K.1: Unknown instead of Int for unannotated params
+                        p.type_annotation.clone().unwrap_or(Type::Unknown)
                     })
                     .collect();
 
-                let func_return = return_type.clone().unwrap_or(Type::Int);
+                // K.1: Unknown instead of Int for unannotated return type
+                let func_return = return_type.clone().unwrap_or(Type::Unknown);
 
                 // Store function type (generic params tracked for call-site checking)
                 let generic_params: Vec<String> = type_params.iter().map(|tp| tp.name.clone()).collect();
@@ -159,6 +158,11 @@ impl TypeInference {
                                     if matches!(op, BinaryOperator::Add) =>
                                 {
                                     InferenceResult::Known(Type::String)
+                                }
+                                // If either operand is Unknown, suppress the false-positive:
+                                // the params are unannotated so we can't know the types.
+                                (Type::Unknown, _) | (_, Type::Unknown) => {
+                                    InferenceResult::Unknown
                                 }
                                 _ => InferenceResult::Error(format!(
                                     "Cannot apply {:?} to {} and {}",
@@ -311,7 +315,8 @@ impl TypeInference {
             Expression::Lambda { params, body, .. } => {
                 let param_types: Vec<Type> = params
                     .iter()
-                    .map(|p| p.type_annotation.clone().unwrap_or(Type::Int))
+                    // K.1: Unknown instead of Int for unannotated lambda params
+                    .map(|p| p.type_annotation.clone().unwrap_or(Type::Unknown))
                     .collect();
 
                 let return_type = self.infer_expression(body);
@@ -508,6 +513,9 @@ impl TypeInference {
             Pattern::Range(..) => {
                 // Range pattern — no variable bindings to infer
             }
+            Pattern::Literal(_) => {
+                // N.1: Literal pattern — no variable bindings (match only)
+            }
             Pattern::Rest(name) => {
                 // Rest binds to an array of the same element type
                 types.insert(name.clone(), value_type.clone());
@@ -519,6 +527,7 @@ impl TypeInference {
 
     fn type_to_string(&self, ty: &Type) -> String {
         match ty {
+            Type::Unknown => "unknown".to_string(),
             Type::Int => "int".to_string(),
             Type::Float => "float".to_string(),
             Type::String => "string".to_string(),

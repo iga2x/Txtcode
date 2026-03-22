@@ -1,0 +1,11 @@
+[package]
+name = "txtcode-plugin-sdk"
+version = "0.1.0"
+edition = "2021"
+description = "SDK for writing native Txtcode plugins in Rust"
+license = "MIT"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]

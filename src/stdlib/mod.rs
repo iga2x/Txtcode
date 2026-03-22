@@ -1,10 +1,13 @@
+use std::sync::Arc;
 pub mod bytes;
 pub mod capabilities;
 pub mod db;
 pub mod core;
 pub mod crypto;
+pub mod errors;
 pub mod ffi;
 pub mod function_executor;
+pub mod plugin;
 pub mod io;
 pub mod json;
 pub mod log;
@@ -19,6 +22,126 @@ pub mod test;
 pub mod time;
 pub mod tools;
 pub mod url;
+pub mod wasm_exec;
+
+// ── Group 26.3: Async cancellation token registry ─────────────────────────
+// Maps integer token IDs → Arc<AtomicBool> (true = cancelled).
+// Tokens are created by async_cancel_token() and checked by is_cancelled().
+lazy_static::lazy_static! {
+    static ref CANCEL_TOKENS: std::sync::Mutex<
+        std::collections::HashMap<i64, std::sync::Arc<std::sync::atomic::AtomicBool>>
+    > = std::sync::Mutex::new(std::collections::HashMap::new());
+    static ref CANCEL_TOKEN_NEXT_ID: std::sync::Mutex<i64> = std::sync::Mutex::new(1);
+}
+
+// ── P.1: O(1) stdlib dispatch table ───────────────────────────────────────
+// Maps exact function names to a module code for O(1) routing.
+// Functions that need special executor/event-loop handling (db_transaction,
+// http_serve, ws_serve, async_http_*, async_cancel_*, await_all/any,
+// grant_capability) are NOT in this table — they stay in the explicit branches.
+const M_CORE:     u8 =  0;
+const M_CRYPTO:   u8 =  1;
+const M_IO:       u8 =  2;
+const M_SYS:      u8 =  3;
+const M_TIME:     u8 =  4;
+const M_LOG:      u8 =  5;
+const M_TEST:     u8 =  6;
+const M_DB:       u8 =  7;
+const M_FFI:      u8 =  8;
+const M_PLUGIN:   u8 =  9;
+const M_WASM:     u8 = 10;
+const M_TEMPLATE: u8 = 11;
+const M_ERROR:    u8 = 12;
+const M_NET:      u8 = 13;
+const M_BYTES:    u8 = 14;
+
+lazy_static::lazy_static! {
+    static ref STDLIB_DISPATCH: std::collections::HashMap<&'static str, u8> = {
+        let mut m = std::collections::HashMap::with_capacity(256);
+        // Core — exact names (prefix variants str_*, math_*, array_*, set_*, to_*
+        // are still handled by starts_with checks in the fallback path)
+        for n in &["len", "length", "type", "input", "print", "max", "min", "set",
+                   "map", "filter", "reduce", "find", "range", "enumerate",
+                   "zip", "chain", "sin", "cos", "tan", "sqrt", "log", "pow",
+                   "abs", "floor", "ceil", "round", "split", "join", "replace",
+                   "trim", "substring", "indexOf", "startsWith", "endsWith",
+                   "toUpper", "toLower", "sort", "reverse", "concat",
+                   "ok", "err", "is_ok", "is_err", "unwrap", "unwrap_or",
+                   "base32_encode", "base32_decode", "html_escape", "csv_to_string",
+                   "xml_decode", "xml_parse", "xml_stringify", "xml_encode",
+                   "math_random_float", "format", "string", "int", "float", "bool",
+                   "str_build", "array_slice"] {
+            m.insert(*n, M_CORE);
+        }
+        // Crypto
+        for n in &["md5", "encrypt", "decrypt", "base64_encode", "base64_decode",
+                   "hmac_sha256", "uuid_v4", "secure_compare", "pbkdf2",
+                   "bcrypt_hash", "bcrypt_verify", "ed25519_sign", "ed25519_verify",
+                   "rsa_generate", "rsa_sign", "rsa_verify",
+                   "jwt_sign", "jwt_verify", "jwt_decode"] {
+            m.insert(*n, M_CRYPTO);
+        }
+        // IO
+        for n in &["is_file", "is_dir", "mkdir", "rmdir", "delete",
+                   "append_file", "copy_file", "move_file", "rename_file",
+                   "temp_file", "watch_file", "symlink_create",
+                   "zip_create", "zip_extract", "csv_write",
+                   "async_read_file", "async_write_file",
+                   "csv_stream_reader", "csv_stream_writer",
+                   "csv_read_row", "csv_write_row", "csv_stream_close"] {
+            m.insert(*n, M_IO);
+        }
+        // System
+        for n in &["getenv", "setenv", "platform", "arch", "exec",
+                   "exec_status", "exec_lines", "exec_json", "exit", "args",
+                   "cwd", "env_list", "signal_send", "pipe_exec", "exec_pipe",
+                   "which", "is_root", "cpu_count", "memory_available",
+                   "disk_space", "os_name", "os_version", "cli_parse",
+                   "proc_run", "proc_pipe", "chdir", "pid", "user", "home",
+                   "uid", "gid", "spawn", "kill", "wait"] {
+            m.insert(*n, M_SYS);
+        }
+        // Time
+        for n in &["now", "sleep", "async_sleep", "format_time", "time_format",
+                   "parse_time", "time_parse", "now_utc", "now_local",
+                   "parse_datetime", "format_datetime", "datetime_add", "datetime_diff"] {
+            m.insert(*n, M_TIME);
+        }
+        // Log
+        m.insert("log", M_LOG);
+        // Test
+        m.insert("expect_error", M_TEST);
+        // DB (NOT db_transaction — it needs executor for the closure call)
+        for n in &["db_open", "db_exec", "db_close", "db_connect", "db_query",
+                   "db_execute", "db_commit", "db_rollback", "db_schema", "db_tables"] {
+            m.insert(*n, M_DB);
+        }
+        // FFI
+        for n in &["ffi_load", "ffi_call", "ffi_close"] { m.insert(*n, M_FFI); }
+        // Plugin
+        for n in &["plugin_load", "plugin_functions", "plugin_call"] { m.insert(*n, M_PLUGIN); }
+        // WASM
+        for n in &["wasm_load", "wasm_call", "wasm_close"] { m.insert(*n, M_WASM); }
+        // Template
+        m.insert("template_render", M_TEMPLATE);
+        // Error constructors
+        for n in &["FileNotFoundError", "PermissionError", "NetworkError",
+                   "ParseError", "TypeError", "ValueError", "IndexError", "TimeoutError"] {
+            m.insert(*n, M_ERROR);
+        }
+        // Net exact names (most go through http/ws/tcp prefix check)
+        for n in &["udp_send", "resolve", "tls_connect", "websocket_connect",
+                   "dns_resolve", "net_ping", "net_port_open"] {
+            m.insert(*n, M_NET);
+        }
+        // Bytes / gzip
+        for n in &["gzip_compress", "gzip_decompress",
+                   "gzip_compress_string", "gzip_decompress_string"] {
+            m.insert(*n, M_BYTES);
+        }
+        m
+    };
+}
 
 pub use bytes::BytesLib;
 pub use capabilities::{CapabilityExecutor, CapabilityLib};
@@ -26,6 +149,7 @@ pub use db::DbLib;
 pub use core::CoreLib;
 pub use crypto::CryptoLib;
 pub use ffi::FfiLib;
+pub use plugin::PluginLib;
 pub use function_executor::FunctionExecutor;
 pub use io::IOLib;
 pub use json::JsonLib;
@@ -145,6 +269,45 @@ impl StdLib {
         let time_override = executor.as_ref().and_then(|e| e.deterministic_time());
         let seed_override = executor.as_ref().and_then(|e| e.deterministic_random_seed());
 
+        // ── P.1: O(1) fast-path dispatch for exact-name functions ─────────────
+        // Functions that need special executor/event-loop handling are excluded
+        // from this table and fall through to the explicit branches below.
+        if let Some(&module) = STDLIB_DISPATCH.get(name) {
+            return match module {
+                M_CORE     => CoreLib::call_function(name, args, executor),
+                M_CRYPTO   => CryptoLib::call_function(name, args, seed_override),
+                M_IO       => IOLib::call_function(name, args, effective_permission_checker),
+                M_SYS      => SysLib::call_function(name, args, exec_allowed, effective_permission_checker),
+                M_TIME     => TimeLib::call_function(name, args, time_override),
+                M_LOG      => LogLib::call_function(name, args),
+                M_TEST     => TestLib::call_function(name, args),
+                M_DB       => DbLib::call_function(name, args, effective_permission_checker),
+                M_FFI      => {
+                    #[cfg(feature = "ffi")]
+                    { FfiLib::call_function(name, args, effective_permission_checker) }
+                    #[cfg(not(feature = "ffi"))]
+                    Err(crate::runtime::RuntimeError::new(format!(
+                        "FFI function '{}' requires the 'ffi' feature. \
+                         Rebuild with: cargo build --features ffi", name)))
+                }
+                M_PLUGIN   => PluginLib::call_function(name, args, effective_permission_checker),
+                M_WASM     => crate::stdlib::wasm_exec::call_function(name, args),
+                M_TEMPLATE => TemplateLib::call_function(name, args),
+                M_ERROR    => errors::ErrorLib::call_function(name, args),
+                M_NET      => {
+                    #[cfg(feature = "net")]
+                    { NetLib::call_function(name, args, effective_permission_checker) }
+                    #[cfg(not(feature = "net"))]
+                    Err(crate::runtime::RuntimeError::new(format!(
+                        "Network function '{}' requires the 'net' feature. \
+                         Rebuild with: cargo build --features net", name)))
+                }
+                M_BYTES    => BytesLib::call_function(name, args),
+                _          => unreachable!("Unknown module code for '{}'", name),
+            };
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         // Route to appropriate library
         if name.starts_with("str_")
             || name.starts_with("math_")
@@ -207,6 +370,8 @@ impl StdLib {
             || name == "csv_to_string"
             || name == "xml_decode"
             || name == "xml_parse"
+            || name == "xml_stringify"
+            || name == "xml_encode"
             || name.starts_with("yaml_")
             || name == "math_random_float"
             || name == "format"
@@ -235,6 +400,16 @@ impl StdLib {
             || name == "jwt_decode"
         {
             CryptoLib::call_function(name, args, seed_override)
+        } else if name == "db_transaction" {
+            // R.1: db_transaction(conn, handler) — auto-rollback closure API.
+            // Requires an executor context (to call the handler closure).
+            if let Some(exec) = executor {
+                return crate::stdlib::db::DbLib::transaction_with_executor(
+                    args, exec, effective_permission_checker,
+                );
+            }
+            // Fallback: no executor — legacy BEGIN-only mode.
+            return crate::stdlib::db::DbLib::call_function(name, args, effective_permission_checker);
         } else if name == "http_serve" {
             #[cfg(feature = "net")]
             {
@@ -267,6 +442,48 @@ impl StdLib {
             return Err(crate::runtime::RuntimeError::new(
                 "ws_serve requires the 'net' feature. Rebuild with: cargo build --features net".to_string(),
             ))
+        } else if name == "async_http_get" || name == "async_http_post" {
+            // Task 26.2: Non-blocking HTTP wrappers.
+            // Submits the blocking http_get/http_post call to the event loop (or a thread)
+            // and returns a Future handle immediately.
+            if let Some(checker) = effective_permission_checker {
+                use crate::runtime::permissions::PermissionResource;
+                checker.check_permission(&PermissionResource::Network("connect".to_string()), None)?;
+            }
+            let url = match args.first() {
+                Some(crate::runtime::Value::String(s)) => s.clone(),
+                _ => return Err(crate::runtime::RuntimeError::new(format!("{}: first argument must be a URL string", name))),
+            };
+            let body_arg = if name == "async_http_post" {
+                args.get(1).cloned()
+            } else {
+                None
+            };
+            let fn_name = name.to_string();
+            let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+            let task = move || {
+                let result: Result<crate::runtime::Value, String> = (|| -> Result<crate::runtime::Value, crate::runtime::RuntimeError> {
+                    #[cfg(feature = "net")]
+                    {
+                        if fn_name == "async_http_get" {
+                            crate::stdlib::net::NetLib::call_function("http_get", &[crate::runtime::Value::String(Arc::from(url))], None)
+                        } else {
+                            let body = body_arg.unwrap_or(crate::runtime::Value::String(Arc::from("{}".to_string())));
+                            crate::stdlib::net::NetLib::call_function("http_post", &[crate::runtime::Value::String(Arc::from(url)), body], None)
+                        }
+                    }
+                    #[cfg(not(feature = "net"))]
+                    Err(crate::runtime::RuntimeError::new(format!("{}: requires the 'net' feature", fn_name)))
+                })()
+                .map_err(|e| e.to_string());
+                sender.send(result);
+            };
+            if crate::runtime::event_loop::is_enabled() {
+                crate::runtime::event_loop::submit(Box::new(task));
+            } else {
+                std::thread::spawn(task);
+            }
+            return Ok(crate::runtime::Value::Future(handle));
         } else if name.starts_with("http")
             || name.starts_with("tcp")
             || name == "udp_send"
@@ -307,6 +524,11 @@ impl StdLib {
             || name == "csv_write"
             || name == "async_read_file"
             || name == "async_write_file"
+            || name == "csv_stream_reader"
+            || name == "csv_stream_writer"
+            || name == "csv_read_row"
+            || name == "csv_write_row"
+            || name == "csv_stream_close"
         {
             IOLib::call_function(name, args, effective_permission_checker)
         } else if name == "getenv"
@@ -396,6 +618,56 @@ impl StdLib {
                 "Capability function '{}' requires VM executor. Use grant_capability() etc. from VM context.",
                 name
             )))
+        } else if name == "async_cancel_token" {
+            // Group 26.3: create a new cancellation token; returns integer ID.
+            let id = {
+                let mut next = CANCEL_TOKEN_NEXT_ID.lock().unwrap();
+                let id = *next;
+                *next += 1;
+                id
+            };
+            CANCEL_TOKENS.lock().unwrap().insert(
+                id,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            );
+            Ok(crate::runtime::Value::Integer(id))
+        } else if name == "async_cancel" {
+            // Group 26.3: cancel a token by ID; returns null.
+            match args.first() {
+                Some(crate::runtime::Value::Integer(id)) => {
+                    if let Some(flag) =
+                        CANCEL_TOKENS.lock().unwrap().get(id)
+                    {
+                        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    Ok(crate::runtime::Value::Null)
+                }
+                _ => Err(crate::runtime::RuntimeError::new(
+                    "async_cancel(token_id): expected integer token ID".to_string(),
+                )),
+            }
+        } else if name == "is_cancelled" {
+            // Group 26.3: check whether a token has been cancelled.
+            match args.first() {
+                Some(crate::runtime::Value::Integer(id)) => {
+                    let cancelled = CANCEL_TOKENS
+                        .lock()
+                        .unwrap()
+                        .get(id)
+                        .map(|f| f.load(std::sync::atomic::Ordering::Relaxed))
+                        .unwrap_or(false);
+                    Ok(crate::runtime::Value::Boolean(cancelled))
+                }
+                _ => Err(crate::runtime::RuntimeError::new(
+                    "is_cancelled(token_id): expected integer token ID".to_string(),
+                )),
+            }
+        } else if name == "async_cancel_token_drop" {
+            // Group 26.3: release a cancellation token.
+            if let Some(crate::runtime::Value::Integer(id)) = args.first() {
+                CANCEL_TOKENS.lock().unwrap().remove(id);
+            }
+            Ok(crate::runtime::Value::Null)
         } else if name == "await_all" || name == "await_any" {
             // Task 12.1: concurrent future combinators
             let futures: Vec<_> = match args.first() {
@@ -431,11 +703,20 @@ impl StdLib {
                 }
                 Ok(crate::runtime::Value::Null)
             }
+        } else if name.starts_with("gzip_") {
+            BytesLib::call_function(name, args)
         } else if name.starts_with("bytes_") {
             BytesLib::call_function(name, args)
         } else if name == "template_render" {
             TemplateLib::call_function(name, args)
-        } else if name == "db_open" || name == "db_exec" || name == "db_close" {
+        } else if name == "db_open"
+            || name == "db_exec"
+            || name == "db_close"
+            || name == "db_connect"
+            || name == "db_query"
+            || name == "db_execute"
+            || name == "db_transaction"
+        {
             DbLib::call_function(name, args, effective_permission_checker)
         } else if name == "ffi_load" || name == "ffi_call" || name == "ffi_close" {
             #[cfg(feature = "ffi")]
@@ -446,6 +727,16 @@ impl StdLib {
                  Rebuild with: cargo build --features ffi",
                 name
             )))
+        } else if name == "plugin_load" || name == "plugin_functions" || name == "plugin_call" {
+            PluginLib::call_function(name, args, effective_permission_checker)
+        } else if name == "wasm_load" || name == "wasm_call" || name == "wasm_close" {
+            crate::stdlib::wasm_exec::call_function(name, args)
+        } else if matches!(name,
+            "FileNotFoundError" | "PermissionError" | "NetworkError" |
+            "ParseError" | "TypeError" | "ValueError" |
+            "IndexError" | "TimeoutError"
+        ) {
+            errors::ErrorLib::call_function(name, args)
         } else {
             Err(crate::runtime::RuntimeError::new(format!("Unknown standard library function: {}", name))
                 .with_hint("Check the function name spelling. Use standard library functions like print, len, array_map, etc.".to_string()))

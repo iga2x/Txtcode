@@ -1,5 +1,5 @@
 use super::VirtualMachine;
-use crate::runtime::audit::{AIMetadata, AuditTrail};
+use crate::runtime::audit::AuditTrail;
 use sha2::{Digest, Sha256};
 
 /// Audit trail and provenance management methods for VirtualMachine
@@ -12,30 +12,6 @@ impl VirtualMachine {
     /// Get audit trail mutable reference (for logging)
     pub fn get_audit_trail_mut(&mut self) -> &mut AuditTrail {
         &mut self.audit_trail
-    }
-
-    /// Get AI metadata reference
-    pub fn get_ai_metadata(&self) -> &AIMetadata {
-        &self.ai_metadata
-    }
-
-    /// Get AI metadata mutable reference
-    pub fn get_ai_metadata_mut(&mut self) -> &mut AIMetadata {
-        &mut self.ai_metadata
-    }
-
-    /// Set AI metadata (convenience method)
-    pub fn set_ai_metadata(
-        &mut self,
-        model: Option<String>,
-        user: Option<String>,
-        session: Option<String>,
-        policy_version: Option<String>,
-    ) {
-        self.ai_metadata.model = model;
-        self.ai_metadata.user = user;
-        self.ai_metadata.session = session;
-        self.ai_metadata.policy_version = policy_version;
     }
 
     /// Calculate execution provenance hash
@@ -63,28 +39,7 @@ impl VirtualMachine {
             provenance.permissions_hash = Some(hasher.finalize().to_vec());
         }
 
-        // Hash AI metadata
-        if !self.ai_metadata.is_empty() {
-            let mut hasher = Sha256::new();
-            if let Some(model) = &self.ai_metadata.model {
-                hasher.update(b"model:");
-                hasher.update(model.as_bytes());
-            }
-            if let Some(user) = &self.ai_metadata.user {
-                hasher.update(b"user:");
-                hasher.update(user.as_bytes());
-            }
-            if let Some(session) = &self.ai_metadata.session {
-                hasher.update(b"session:");
-                hasher.update(session.as_bytes());
-            }
-            if let Some(policy) = &self.ai_metadata.policy_version {
-                hasher.update(b"policy:");
-                hasher.update(policy.as_bytes());
-            }
-            provenance.ai_metadata_hash = Some(hasher.finalize().to_vec());
-        }
-
+        // B.1: ai_metadata removed — hash omitted (was always empty)
         provenance.hash_hex()
     }
 

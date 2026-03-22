@@ -1,4 +1,5 @@
-use crate::parser::ast::{Expression, Literal, Pattern, Span};
+use crate::parser::ast::{Expression, Literal, Pattern};
+use crate::lexer::token::TokenKind;
 use crate::parser::parser::Parser;
 
 pub fn parse_pattern(parser: &mut Parser) -> Result<Pattern, String> {
@@ -67,25 +68,52 @@ fn parse_single_pattern(parser: &mut Parser) -> Result<Pattern, String> {
                 ));
             }
         }
-        return Ok(Pattern::Identifier(format!("__literal_{}", value)));
+        return Ok(match tok_kind {
+            TokenKind::Integer => Pattern::Literal(Literal::Integer(
+                value.parse::<i64>().map_err(|_| format!("Invalid integer '{}'", value))?,
+            )),
+            _ => Pattern::Literal(Literal::Float(
+                value.parse::<f64>().map_err(|_| format!("Invalid float '{}'", value))?,
+            )),
+        });
     }
 
-    if matches!(
-        token.kind,
-        crate::lexer::token::TokenKind::String | crate::lexer::token::TokenKind::Char
-    ) {
+    if token.kind == TokenKind::String {
         let value = token.value.clone();
         parser.advance();
-        return Ok(Pattern::Identifier(format!("__literal_{}", value)));
+        return Ok(Pattern::Literal(Literal::String(value)));
+    }
+
+    if token.kind == TokenKind::Char {
+        let value = token.value.clone();
+        parser.advance();
+        let char_val = if value.len() == 1 {
+            value.chars().next().unwrap()
+        } else {
+            match value.as_str() {
+                "\\n" => '\n',
+                "\\t" => '\t',
+                "\\r" => '\r',
+                "\\\\" => '\\',
+                "\\'" => '\'',
+                "\\\"" => '"',
+                _ => value.chars().next().unwrap_or('\0'),
+            }
+        };
+        return Ok(Pattern::Literal(Literal::Char(char_val)));
     }
 
     // Handle boolean/null literal keywords
-    if token.kind == crate::lexer::token::TokenKind::Keyword
+    if token.kind == TokenKind::Keyword
         && (token.value == "true" || token.value == "false" || token.value == "null")
     {
         let value = token.value.clone();
         parser.advance();
-        return Ok(Pattern::Identifier(format!("__literal_{}", value)));
+        return Ok(match value.as_str() {
+            "true" => Pattern::Literal(Literal::Boolean(true)),
+            "false" => Pattern::Literal(Literal::Boolean(false)),
+            _ => Pattern::Literal(Literal::Null),
+        });
     }
 
     // Check for array pattern: [a, b, c] or [head, ...rest]
@@ -99,10 +127,18 @@ fn parse_single_pattern(parser: &mut Parser) -> Result<Pattern, String> {
                 if parser.check(crate::lexer::token::TokenKind::Spread) {
                     parser.advance(); // consume `...`
                     let rest_name = parser.expect_identifier()?;
-                    patterns.push(Pattern::Rest(rest_name));
+                    patterns.push(Pattern::Rest(rest_name.clone()));
                     // rest must be the last element — skip optional trailing comma then stop
                     if parser.check(crate::lexer::token::TokenKind::Comma) {
                         parser.advance();
+                    }
+                    // N.6: emit error if there are more patterns after ...rest
+                    if !parser.check(crate::lexer::token::TokenKind::RightBracket) {
+                        let tok = parser.peek();
+                        return Err(format!(
+                            "Rest pattern '...{}' must be the last element in array pattern at line {}:{}",
+                            rest_name, tok.span.0, tok.span.1
+                        ));
                     }
                     break;
                 }

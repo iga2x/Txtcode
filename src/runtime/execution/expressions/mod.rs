@@ -2,6 +2,7 @@
 // Modular structure for better maintainability
 
 use crate::parser::ast::{Expression, Literal, Statement};
+use std::sync::Arc;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::operators::OperatorRegistry;
@@ -26,6 +27,9 @@ mod optional;
 /// Trait for VM methods needed by expression evaluation
 pub trait ExpressionVM {
     fn get_variable(&self, name: &str) -> Option<Value>;
+    /// Return all known variable names in scope (for "did you mean?" suggestions).
+    /// Default: empty vec (implementations override for better UX).
+    fn list_variables(&self) -> Vec<String> { Vec::new() }
     fn set_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError>;
     /// Bind a variable directly in the current (innermost) scope without searching outer scopes.
     /// Must be used for function parameter binding to prevent a callee's parameter from
@@ -57,9 +61,7 @@ pub trait ExpressionVM {
         resource: String,
         context: Option<String>,
         result: crate::runtime::audit::AuditResult,
-        ai_metadata: Option<&crate::runtime::audit::AIMetadata>,
     );
-    fn ai_metadata(&self) -> &crate::runtime::audit::AIMetadata;
     fn struct_defs(&self) -> &HashMap<String, Vec<(String, Type)>>;
     fn enum_defs(&self) -> &HashMap<String, Vec<(String, Option<Expression>)>>;
     /// Look up an impl method registered for a struct type. Returns None if not found.
@@ -127,6 +129,20 @@ pub trait ExpressionVM {
         ))
     }
 
+    /// D.2: Run `func` with a restricted permission subset. Default returns error.
+    fn async_run_scoped(&mut self, _func: Value, _allowed: Value) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::new(
+            "async_run_scoped requires an async-capable VM".to_string(),
+        ))
+    }
+
+    /// O.4: Run `func` and cancel it after `timeout_ms` milliseconds. Default returns error.
+    fn async_run_timeout(&mut self, _func: Value, _timeout_ms: i64) -> Result<Value, RuntimeError> {
+        Err(RuntimeError::new(
+            "async_run_timeout requires an async-capable VM".to_string(),
+        ))
+    }
+
     /// Attempt to spawn `name` as an async task.
     ///
     /// Returns `Some(Ok(Value::Future(…)))` when the function is async and a
@@ -180,7 +196,7 @@ impl ExpressionEvaluator {
             Expression::Literal(lit) => Ok(match lit {
                 Literal::Integer(i) => Value::Integer(*i),
                 Literal::Float(f) => Value::Float(*f),
-                Literal::String(s) => Value::String(s.clone()),
+                Literal::String(s) => Value::String(Arc::from(s.clone())),
                 Literal::Char(c) => Value::Char(*c),
                 Literal::Boolean(b) => Value::Boolean(*b),
                 Literal::Null => Value::Null,
@@ -190,8 +206,15 @@ impl ExpressionEvaluator {
                 if let Some(value) = vm.get_variable(name) {
                     Ok(value)
                 } else {
-                    // Not a variable - could be an enum type (handled in Member expression)
-                    Err(vm.create_error(format!("Undefined variable: {}", name)))
+                    // Not a variable — build a helpful error with a "did you mean?" hint
+                    let known: Vec<String> = vm.list_variables();
+                    let hint = did_you_mean(name, &known);
+                    let mut err = RuntimeError::new(format!("undefined variable '{}'", name))
+                        .with_code(crate::runtime::errors::ErrorCode::E0010);
+                    if let Some(suggestion) = hint {
+                        err = err.with_hint(format!("did you mean '{}'?", suggestion));
+                    }
+                    Err(err)
                 }
             }
             Expression::BinaryOp {
@@ -205,14 +228,25 @@ impl ExpressionEvaluator {
                 let obj = Self::evaluate(vm, target)?;
                 let idx = Self::evaluate(vm, index)?;
                 match (obj, idx) {
-                    (Value::Array(arr), Value::Integer(i)) => arr
-                        .get(i as usize)
-                        .cloned()
-                        .ok_or_else(|| RuntimeError::new("Index out of bounds".to_string())),
+                    (Value::Array(arr), Value::Integer(i)) => {
+                        let len = arr.len();
+                        arr.get(i as usize)
+                            .cloned()
+                            .ok_or_else(|| RuntimeError::new(format!(
+                                "index {} out of bounds for array of length {}",
+                                i, len
+                            ))
+                            .with_code(crate::runtime::errors::ErrorCode::E0013)
+                            .with_hint("array indices start at 0".to_string()))
+                    }
                     (Value::Map(map), Value::String(key)) => map
-                        .get(&key)
+                        .get(key.as_ref())
                         .cloned()
                         .ok_or_else(|| RuntimeError::new(format!("Key not found: {}", key))),
+                    (Value::Struct(_, fields), Value::String(key)) => fields
+                        .get(key.as_ref())
+                        .cloned()
+                        .ok_or_else(|| RuntimeError::new(format!("Struct field '{}' not found", key))),
                     _ => Err(RuntimeError::new("Invalid index operation".to_string())),
                 }
             }
@@ -263,7 +297,7 @@ impl ExpressionEvaluator {
                         }
                     }
                 }
-                Ok(Value::String(result))
+                Ok(Value::String(Arc::from(result)))
             }
             Expression::Slice {
                 target,
@@ -377,4 +411,40 @@ impl ExpressionEvaluator {
             }
         }
     }
+}
+
+// ── "Did you mean?" helper ────────────────────────────────────────────────────
+
+/// Return the closest known name if within edit distance 2, else None.
+pub fn did_you_mean(name: &str, candidates: &[String]) -> Option<String> {
+    candidates
+        .iter()
+        .filter_map(|c| {
+            let d = levenshtein(name, c);
+            if d <= 2 && d > 0 { Some((d, c.clone())) } else { None }
+        })
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, c)| c)
+}
+
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let m = a.len();
+    let n = b.len();
+    if m == 0 { return n; }
+    if n == 0 { return m; }
+    let mut dp = vec![vec![0usize; n + 1]; m + 1];
+    for i in 0..=m { dp[i][0] = i; }
+    for j in 0..=n { dp[0][j] = j; }
+    for i in 1..=m {
+        for j in 1..=n {
+            dp[i][j] = if a[i-1] == b[j-1] {
+                dp[i-1][j-1]
+            } else {
+                1 + dp[i-1][j].min(dp[i][j-1]).min(dp[i-1][j-1])
+            };
+        }
+    }
+    dp[m][n]
 }

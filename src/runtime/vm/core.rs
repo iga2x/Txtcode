@@ -14,7 +14,7 @@ impl VirtualMachine {
             enum_defs: std::collections::HashMap::new(),
             struct_defs: std::collections::HashMap::new(),
             call_stack: crate::runtime::core::CallStack::new(),
-            gc: crate::runtime::gc::GarbageCollector::new(),
+            memory: crate::runtime::gc::MemoryTracker::new(),
             module_resolver: crate::runtime::module::ModuleResolver::new(),
             current_file: None,
             import_stack: Vec::new(),
@@ -26,7 +26,6 @@ impl VirtualMachine {
             exec_allowed: false,
             permission_manager: crate::runtime::permissions::PermissionManager::new(),
             audit_trail: crate::runtime::audit::AuditTrail::new(),
-            ai_metadata: crate::runtime::audit::AIMetadata::new(),
             policy_engine: crate::policy::PolicyEngine::new(),
             intent_checker: crate::runtime::intent::IntentChecker::new(),
             capability_manager: crate::capability::CapabilityManager::new(),
@@ -37,6 +36,7 @@ impl VirtualMachine {
             struct_methods: std::collections::HashMap::new(),
             covered_lines: std::collections::HashSet::new(),
             coverage_enabled: false,
+            current_span: None,
         }
     }
 
@@ -52,7 +52,7 @@ impl VirtualMachine {
             enum_defs: std::collections::HashMap::new(),
             struct_defs: std::collections::HashMap::new(),
             call_stack: crate::runtime::core::CallStack::new(),
-            gc: crate::runtime::gc::GarbageCollector::new(),
+            memory: crate::runtime::gc::MemoryTracker::new(),
             module_resolver: crate::runtime::module::ModuleResolver::new(),
             current_file: None,
             import_stack: Vec::new(),
@@ -64,7 +64,6 @@ impl VirtualMachine {
             exec_allowed: false,
             permission_manager: crate::runtime::permissions::PermissionManager::new(),
             audit_trail: crate::runtime::audit::AuditTrail::new(),
-            ai_metadata: crate::runtime::audit::AIMetadata::new(),
             policy_engine: crate::policy::PolicyEngine::new(),
             intent_checker: crate::runtime::intent::IntentChecker::new(),
             capability_manager: crate::capability::CapabilityManager::new(),
@@ -75,6 +74,7 @@ impl VirtualMachine {
             struct_methods: std::collections::HashMap::new(),
             covered_lines: std::collections::HashSet::new(),
             coverage_enabled: false,
+            current_span: None,
         };
 
         // If safe_mode is enabled, deny exec by default
@@ -86,7 +86,12 @@ impl VirtualMachine {
     }
 
     pub(super) fn create_error(&self, message: String) -> RuntimeError {
-        RuntimeError::new(message).with_stack_trace(self.call_stack.clone_frames())
+        let mut err = RuntimeError::new(message).with_stack_trace(self.call_stack.clone_frames());
+        // O.3: attach current statement span so runtime errors show source location
+        if let Some((line, col)) = self.current_span {
+            err = err.with_span(line, col);
+        }
+        err
     }
 
     /// Get a variable from current scope or globals
@@ -122,6 +127,16 @@ impl VirtualMachine {
         self.scope_manager.pop_scope();
     }
 
+    /// W.3: Returns true when executing inside at least one local scope (inside a function body).
+    pub(super) fn is_in_local_scope(&self) -> bool {
+        self.scope_manager.is_in_local_scope()
+    }
+
+    /// W.3: Snapshot all locally-visible variables for closure capture.
+    pub(super) fn snapshot_local_vars(&self) -> std::collections::HashMap<String, crate::runtime::core::value::Value> {
+        self.scope_manager.snapshot_locals()
+    }
+
     /// Attach a cancellation flag.  When the flag is set to `true` the execution
     /// loop will terminate at the next statement boundary with a timeout error.
     /// Used by `run_file_with_timeout` to stop the worker thread after deadline.
@@ -144,11 +159,13 @@ impl VirtualMachine {
     }
 
     /// Register a function as async (called from FunctionDef statement handler).
+    #[allow(dead_code)]
     pub(super) fn register_async_function(&mut self, name: &str) {
         self.async_functions.insert(name.to_string());
     }
 
     /// True if the named function was defined with the `async` keyword.
+    #[allow(dead_code)]
     pub(super) fn is_async_function(&self, name: &str) -> bool {
         self.async_functions.contains(name)
     }

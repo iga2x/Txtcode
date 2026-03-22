@@ -68,7 +68,7 @@ impl LogLib {
                     }
                 };
                 let message = match &args[1] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     v => v.to_string(),
                 };
                 Self::log_message(level, &message);
@@ -87,7 +87,7 @@ impl LogLib {
         // Format message from arguments
         let message = if args.len() == 1 {
             match &args[0] {
-                Value::String(s) => s.clone(),
+                Value::String(s) => s.to_string(),
                 v => v.to_string(),
             }
         } else {

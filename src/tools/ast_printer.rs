@@ -283,6 +283,13 @@ impl AstPrinter {
                     .join(", ");
                 format!("{}struct {}({})", ind, name, fields_str)
             }
+            Statement::Protocol { name, methods, .. } => {
+                let method_names = methods.iter().map(|(m, _, _)| m.as_str()).collect::<Vec<_>>().join(", ");
+                format!("{}protocol → {} {{ {} }}", ind, name, method_names)
+            }
+            Statement::Error { message, .. } => {
+                format!("{}[parse error: {}]", ind, message)
+            }
             Statement::Impl { struct_name, methods, .. } => {
                 let method_names = methods
                     .iter()
@@ -611,6 +618,7 @@ impl AstPrinter {
             Pattern::Or(pats) => pats.iter().map(|p| self.print_pattern(p)).collect::<Vec<_>>().join(" | "),
             Pattern::Range(start, end) => format!("{:?}..={:?}", start, end),
             Pattern::Rest(name) => format!("...{}", name),
+            Pattern::Literal(lit) => self.print_literal(lit),
         }
     }
 }

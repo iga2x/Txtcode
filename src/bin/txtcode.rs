@@ -104,9 +104,18 @@ pub enum Commands {
         /// kept for backward compatibility).
         #[arg(long, hide = true)]
         type_check: bool,
-        /// Treat type-check violations as hard errors (aborts execution on any type warning).
-        #[arg(long)]
+        /// Deprecated — strict type checking is now the default. Kept for backward compatibility.
+        #[arg(long, hide = true)]
         strict_types: bool,
+        /// Use the experimental multi-worker event loop instead of spawning one OS thread per async task.
+        #[arg(long, hide = true)]
+        experimental_event_loop: bool,
+        /// Number of worker threads for the event loop (default: logical CPUs, min 2, max 64).
+        #[arg(long, value_name = "N", hide = true)]
+        event_loop_workers: Option<usize>,
+        /// Maximum number of concurrent async tasks when using --experimental-event-loop (default 64, 0=unlimited).
+        #[arg(long, value_name = "N", hide = true)]
+        async_max_tasks: Option<usize>,
         /// Print all permissions the script would request and exit without running.
         #[arg(long)]
         permissions_report: bool,
@@ -116,6 +125,13 @@ pub enum Commands {
         /// Append security audit events to this JSON file after execution.
         #[arg(long, value_name = "FILE")]
         audit_log: Option<PathBuf>,
+        /// Suppress automatic audit log writing even in --sandbox mode.
+        #[arg(long)]
+        no_audit_log: bool,
+        /// Enable strict sandbox mode — applies a seccomp allowlist on Linux x86-64 (unlisted
+        /// syscalls return EPERM). Implies --sandbox. More restrictive than --sandbox.
+        #[arg(long)]
+        sandbox_strict: bool,
     },
     /// Sign a Txt-code script with an Ed25519 private key (produces a .tc.sig sidecar)
     Sign {
@@ -431,6 +447,17 @@ pub enum PackageCommands {
         #[arg(long)]
         registry: Option<String>,
     },
+    /// Download and install a named package directly from the registry
+    Get {
+        /// Package name (e.g. http-client)
+        name: String,
+        /// Package version (defaults to "0.1.0")
+        #[arg(default_value = "0.1.0")]
+        version: String,
+        /// Registry endpoint (overrides TXTCODE_REGISTRY env var)
+        #[arg(long)]
+        registry: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -544,10 +571,24 @@ pub fn main() {
                     no_type_check,
                     type_check: _,
                     strict_types,
+                    experimental_event_loop,
+                    event_loop_workers,
+                    async_max_tasks,
                     permissions_report,
                     require_sig,
                     audit_log,
+                    no_audit_log,
+                    sandbox_strict,
                 } => {
+                    if *experimental_event_loop {
+                        if let Some(n) = event_loop_workers {
+                            txtcode::runtime::event_loop::set_worker_count(*n);
+                        }
+                        if let Some(n) = async_max_tasks {
+                            txtcode::runtime::event_loop::set_max_concurrent_tasks(*n);
+                        }
+                        txtcode::runtime::event_loop::enable();
+                    }
                     if *no_color || std::env::var_os("NO_COLOR").is_some() {
                         std::env::set_var("NO_COLOR", "1");
                     }
@@ -561,8 +602,15 @@ pub fn main() {
                             std::process::exit(1);
                         }
                     }
-                    let effective_safe = safe_mode || *sandbox;
-                    let effective_allow_exec = if *sandbox { false } else { allow_exec };
+                    let effective_safe = safe_mode || *sandbox || *sandbox_strict;
+                    let effective_allow_exec = if *sandbox || *sandbox_strict { false } else { allow_exec };
+                    // Apply strict seccomp allowlist when --sandbox-strict is requested.
+                    // Done here (before run_file*) so it applies to all execution paths.
+                    if *sandbox_strict {
+                        if let Err(e) = txtcode::runtime::sandbox::apply_sandbox_strict(true) {
+                            eprintln!("[sandbox-strict] WARNING: {}", e);
+                        }
+                    }
 
                     // --require-sig: verify .tc.sig sidecar before execution.
                     if *require_sig {
@@ -642,7 +690,7 @@ pub fn main() {
                             *no_type_check,
                         )
                     } else {
-                        run_cli::run_file_with_allowlists(
+                        run_cli::run_file_with_allowlists_full(
                             file,
                             effective_safe,
                             effective_allow_exec,
@@ -654,6 +702,7 @@ pub fn main() {
                             *strict_types,
                             audit_log.as_deref(),
                             *no_type_check,
+                            *no_audit_log,
                         )
                     };
                     if let Err(e) = result {
@@ -907,6 +956,9 @@ fn handle_package_command(command: &PackageCommands) -> Result<(), Box<dyn std::
         }
         PackageCommands::Login { token, registry } => {
             package::login(token.as_deref(), registry.as_deref())?;
+        }
+        PackageCommands::Get { name, version, registry } => {
+            package::get_package(name, version, registry.as_deref())?;
         }
     }
     Ok(())

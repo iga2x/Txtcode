@@ -1,12 +1,43 @@
 // Function call evaluation (stdlib, user functions, struct instantiation)
 
 use super::ExpressionVM;
+use std::sync::Arc;
 use crate::parser::ast::{Expression, Span, Statement};
 use crate::runtime::core::{CallFrame, Value};
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::permission_map;
 use crate::tools::logger::{log_debug, log_warn};
 use std::collections::HashMap;
+use std::cell::RefCell;
+
+// P.4: Thread-local pool of pre-allocated argument vectors.
+// Reusing cleared Vecs avoids per-call heap allocation for the args slice.
+// Re-entrancy is safe: each call level pops its own Vec from the pool
+// (or allocates a fresh one if the pool is empty); nested calls do the same.
+// The pool depth grows to match maximum observed call depth, capped
+// by the natural call-stack limit.
+thread_local! {
+    static ARG_POOL: RefCell<Vec<Vec<Value>>> = RefCell::new(Vec::with_capacity(16));
+}
+
+/// RAII guard: returns the Vec to the pool when dropped, even on error paths.
+struct PooledArgs(Vec<Value>);
+
+impl PooledArgs {
+    fn acquire(capacity: usize) -> Self {
+        let vec = ARG_POOL.with(|pool| pool.borrow_mut().pop())
+            .unwrap_or_else(|| Vec::with_capacity(capacity.max(4)));
+        PooledArgs(vec)
+    }
+}
+
+impl Drop for PooledArgs {
+    fn drop(&mut self) {
+        self.0.clear();
+        let vec = std::mem::take(&mut self.0);
+        ARG_POOL.with(|pool| pool.borrow_mut().push(vec));
+    }
+}
 
 pub fn evaluate_function_call<VM: ExpressionVM>(
     vm: &mut VM,
@@ -14,10 +45,12 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
     arguments: &[Expression],
     expr: &Expression,
 ) -> Result<Value, RuntimeError> {
-    let args: Vec<Value> = arguments
-        .iter()
-        .map(|arg| super::ExpressionEvaluator::evaluate(vm, arg))
-        .collect::<Result<_, _>>()?;
+    // P.4: acquire a pooled Vec to avoid per-call allocation.
+    let mut pooled = PooledArgs::acquire(arguments.len());
+    for arg in arguments {
+        pooled.0.push(super::ExpressionEvaluator::evaluate(vm, arg)?);
+    }
+    let args: &[Value] = &pooled.0;
 
     // Single canonical permission gate: intent → capability → rate-limit → permission → audit.
     // The resource type and scope are determined by the central permission map so that adding a
@@ -45,21 +78,54 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
                 "with_timeout: first argument must be a number (milliseconds)".to_string(),
             )),
         };
-        let func = args.into_iter().nth(1).unwrap();
+        let func = args[1].clone();
         return vm.with_timeout_function(ms, func);
     }
 
     // Task 20.2: Handle async_run before stdlib — needs VM access to spawn threads
     if name == "async_run" {
-        let func = args.into_iter().next().ok_or_else(|| {
+        let func = args.first().cloned().ok_or_else(|| {
             vm.create_error("async_run requires 1 argument (a zero-arg closure)".to_string())
         })?;
         return vm.async_run(func);
     }
 
+    // D.2: async_run_scoped(fn, [allowed_permissions]) — runs closure with a
+    // permission-restricted subset of the parent's grants.
+    if name == "async_run_scoped" {
+        let func = args.first().cloned().ok_or_else(|| {
+            vm.create_error(
+                "async_run_scoped requires 2 arguments: closure and allowed-permissions array".to_string()
+            )
+        })?;
+        let allowed = args.get(1).cloned().unwrap_or(Value::Array(vec![]));
+        return vm.async_run_scoped(func, allowed);
+    }
+
+    // O.4: async_run_timeout(fn, timeout_ms) — like async_run but with a timeout.
+    if name == "async_run_timeout" {
+        let func = args.first().cloned().ok_or_else(|| {
+            vm.create_error(
+                "async_run_timeout requires 2 arguments: closure and timeout_ms (integer)".to_string()
+            )
+        })?;
+        let timeout_val = args.get(1).cloned().ok_or_else(|| {
+            vm.create_error(
+                "async_run_timeout requires 2 arguments: closure and timeout_ms (integer)".to_string()
+            )
+        })?;
+        let timeout_ms = match timeout_val {
+            Value::Integer(n) => n,
+            _ => return Err(vm.create_error(
+                "async_run_timeout: timeout_ms must be an integer".to_string()
+            )),
+        };
+        return vm.async_run_timeout(func, timeout_ms);
+    }
+
     // Task 20.2: Handle await_future (single future resolve) before stdlib
     if name == "await_future" {
-        let fut = args.into_iter().next().ok_or_else(|| {
+        let fut = args.first().cloned().ok_or_else(|| {
             vm.create_error("await_future requires 1 argument (a Future)".to_string())
         })?;
         return match fut {
@@ -70,7 +136,7 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
 
     // Task 15.1: Handle nursery_spawn before stdlib — needs VM access to spawn threads
     if name == "nursery_spawn" {
-        let func = args.into_iter().next().ok_or_else(|| {
+        let func = args.first().cloned().ok_or_else(|| {
             vm.create_error("nursery_spawn requires 1 argument (a function)".to_string())
         })?;
         vm.spawn_for_nursery(func)?;
@@ -151,10 +217,23 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
     // Try user-defined function
     if let Some(Value::Function(_, params, body, captured_env)) = vm.get_variable(name) {
         // If the function was declared `async`, spawn a thread and return a Future.
-        if let Some(future_result) = vm.maybe_spawn_async(name, params.clone(), body.clone(), captured_env.clone(), args.clone()) {
+        if let Some(future_result) = vm.maybe_spawn_async(name, params.clone(), body.clone(), captured_env.clone(), args.to_vec()) {
             return future_result;
         }
         return call_user_function(vm, name, &params, &body, &captured_env, &args, expr);
+    }
+
+    // Check embed NATIVE_REGISTRY: variable holds "__native_fn::<name>" sentinel
+    if let Some(Value::String(sentinel)) = vm.get_variable(name) {
+        if let Some(fn_name) = sentinel.strip_prefix("__native_fn::") {
+            if let Some(result) = crate::embed::call_native(fn_name, &args) {
+                return Ok(result);
+            }
+            return Err(vm.create_error(format!(
+                "Native function '{}' registered but call failed",
+                name
+            )));
+        }
     }
 
     // Try method call: "obj.method" pattern
@@ -168,7 +247,7 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
                 if vm.enum_defs().get(obj_name).and_then(|variants| {
                     variants.iter().find(|(v, _)| v == method_name)
                 }).is_some() {
-                    let payload = args.into_iter().next();
+                    let payload = args.first().cloned();
                     let result = Value::Enum(
                         obj_name.to_string(),
                         method_name.to_string(),
@@ -185,7 +264,7 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         if let Some(variants) = vm.enum_defs().get(obj_name) {
             let variant_exists = variants.iter().any(|(v, _)| v == method_name);
             if variant_exists {
-                let payload = args.into_iter().next();
+                let payload = args.first().cloned();
                 let result = Value::Enum(
                     obj_name.to_string(),
                     method_name.to_string(),
@@ -233,6 +312,40 @@ fn call_method<VM: ExpressionVM>(
         Value::Array(arr) => call_array_method(arr, method, args, obj_name),
         Value::Map(map) => call_map_method(map, method, args, obj_name),
         Value::Set(set) => call_set_method(set, method, args, obj_name),
+        // Q.3: For structs, check if the missing method is required by a declared protocol.
+        Value::Struct(type_name, _) => {
+            let implements_key = format!("__implements_{}", type_name);
+            if let Some(Value::Array(protocols)) = vm.get_variable(&implements_key) {
+                for proto_val in &protocols {
+                    if let Value::String(proto_name) = proto_val {
+                        let proto_key = format!("__protocol_{}", proto_name);
+                        if let Some(Value::Array(proto_methods)) = vm.get_variable(&proto_key) {
+                            // Protocol methods are stored as Value::Map { "name": ..., ... }
+                            let has_method = proto_methods.iter().any(|m| {
+                                match m {
+                                    Value::String(mn) => mn.as_ref() == method,
+                                    Value::Map(map) => map.get("name")
+                                        .and_then(|v| if let Value::String(mn) = v { Some(mn) } else { None })
+                                        .map(|mn| mn.as_ref() == method)
+                                        .unwrap_or(false),
+                                    _ => false,
+                                }
+                            });
+                            if has_method {
+                                return Err(RuntimeError::new(format!(
+                                    "struct '{}' declares 'implements {}' but is missing required method '{}'",
+                                    type_name, proto_name, method
+                                )).with_code(crate::runtime::errors::ErrorCode::E0029));
+                            }
+                        }
+                    }
+                }
+            }
+            Err(RuntimeError::new(format!(
+                "Type '{}' has no method '{}'",
+                type_name, method
+            )))
+        }
         _ => Err(RuntimeError::new(format!(
             "Type '{}' has no method '{}'",
             obj.type_name(), method
@@ -247,15 +360,15 @@ fn call_string_method(
     _obj_name: &str,
 ) -> Result<Value, RuntimeError> {
     match method {
-        "toLower" | "toLowerCase" => Ok(Value::String(s.to_lowercase())),
-        "toUpper" | "toUpperCase" => Ok(Value::String(s.to_uppercase())),
-        "trim" => Ok(Value::String(s.trim().to_string())),
-        "trimStart" | "trimLeft" => Ok(Value::String(s.trim_start().to_string())),
-        "trimEnd" | "trimRight" => Ok(Value::String(s.trim_end().to_string())),
+        "toLower" | "toLowerCase" => Ok(Value::String(Arc::from(s.to_lowercase()))),
+        "toUpper" | "toUpperCase" => Ok(Value::String(Arc::from(s.to_uppercase()))),
+        "trim" => Ok(Value::String(Arc::from(s.trim().to_string()))),
+        "trimStart" | "trimLeft" => Ok(Value::String(Arc::from(s.trim_start().to_string()))),
+        "trimEnd" | "trimRight" => Ok(Value::String(Arc::from(s.trim_end().to_string()))),
         "len" | "length" => Ok(Value::Integer(s.chars().count() as i64)),
-        "reverse" => Ok(Value::String(s.chars().rev().collect())),
+        "reverse" => Ok(Value::String(Arc::from(s.chars().rev().collect::<String>()))),
         "chars" | "toChars" => Ok(Value::Array(
-            s.chars().map(|c| Value::String(c.to_string())).collect(),
+            s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(),
         )),
         "toInt" | "parseInt" => s
             .trim()
@@ -272,18 +385,18 @@ fn call_string_method(
             let sep = args
                 .first()
                 .and_then(|v| match v {
-                    Value::String(sep) => Some(sep.as_str()),
+                    Value::String(sep) => Some(sep.as_ref()),
                     _ => None,
                 })
                 .unwrap_or(" ");
-            let parts: Vec<Value> = s.split(sep).map(|p| Value::String(p.to_string())).collect();
+            let parts: Vec<Value> = s.split(sep).map(|p| Value::String(Arc::from(p.to_string()))).collect();
             Ok(Value::Array(parts))
         }
         "startsWith" => {
             let prefix = args
                 .first()
                 .and_then(|v| match v {
-                    Value::String(p) => Some(p.as_str()),
+                    Value::String(p) => Some(p.as_ref()),
                     _ => None,
                 })
                 .unwrap_or("");
@@ -293,7 +406,7 @@ fn call_string_method(
             let suffix = args
                 .first()
                 .and_then(|v| match v {
-                    Value::String(p) => Some(p.as_str()),
+                    Value::String(p) => Some(p.as_ref()),
                     _ => None,
                 })
                 .unwrap_or("");
@@ -303,7 +416,7 @@ fn call_string_method(
             let needle = args
                 .first()
                 .and_then(|v| match v {
-                    Value::String(n) => Some(n.as_str()),
+                    Value::String(n) => Some(n.as_ref()),
                     _ => None,
                 })
                 .unwrap_or("");
@@ -318,7 +431,7 @@ fn call_string_method(
                 })
                 .unwrap_or_default();
             Ok(Value::Integer(
-                s.find(needle.as_str()).map(|i| i as i64).unwrap_or(-1),
+                s.find(needle.as_ref()).map(|i| i as i64).unwrap_or(-1),
             ))
         }
         "replace" => {
@@ -336,7 +449,7 @@ fn call_string_method(
                     _ => None,
                 })
                 .unwrap_or_default();
-            Ok(Value::String(s.replace(from.as_str(), to.as_str())))
+            Ok(Value::String(Arc::from(s.replace(from.as_ref(), to.as_ref()))))
         }
         "substring" | "slice" => {
             let start = args
@@ -355,7 +468,7 @@ fn call_string_method(
                 .unwrap_or(s.len());
             let chars: Vec<char> = s.chars().collect();
             let end = end.min(chars.len());
-            Ok(Value::String(chars[start..end].iter().collect()))
+            Ok(Value::String(Arc::from(chars[start..end].iter().collect::<String>())))
         }
         "repeat" => {
             let n = args
@@ -365,7 +478,7 @@ fn call_string_method(
                     _ => None,
                 })
                 .unwrap_or(1);
-            Ok(Value::String(s.repeat(n)))
+            Ok(Value::String(Arc::from(s.repeat(n))))
         }
         "padStart" => {
             let len = args
@@ -381,13 +494,13 @@ fn call_string_method(
                     Value::String(p) => Some(p.clone()),
                     _ => None,
                 })
-                .unwrap_or_else(|| " ".to_string());
+                .unwrap_or_else(|| Arc::from(" "));
             if s.len() >= len {
-                Ok(Value::String(s.to_string()))
+                Ok(Value::String(Arc::from(s.to_string())))
             } else {
                 let needed = len - s.len();
                 let pad_str: String = pad.chars().cycle().take(needed).collect();
-                Ok(Value::String(format!("{}{}", pad_str, s)))
+                Ok(Value::String(Arc::from(format!("{}{}", pad_str, s))))
             }
         }
         "padEnd" => {
@@ -404,13 +517,13 @@ fn call_string_method(
                     Value::String(p) => Some(p.clone()),
                     _ => None,
                 })
-                .unwrap_or_else(|| " ".to_string());
+                .unwrap_or_else(|| Arc::from(" "));
             if s.len() >= len {
-                Ok(Value::String(s.to_string()))
+                Ok(Value::String(Arc::from(s.to_string())))
             } else {
                 let needed = len - s.len();
                 let pad_str: String = pad.chars().cycle().take(needed).collect();
-                Ok(Value::String(format!("{}{}", s, pad_str)))
+                Ok(Value::String(Arc::from(format!("{}{}", s, pad_str))))
             }
         }
         "center" => {
@@ -430,17 +543,17 @@ fn call_string_method(
                 .unwrap_or(' ');
             let current_len = s.chars().count();
             if current_len >= width {
-                Ok(Value::String(s.to_string()))
+                Ok(Value::String(Arc::from(s.to_string())))
             } else {
                 let total_pad = width - current_len;
                 let left_pad = total_pad / 2;
                 let right_pad = total_pad - left_pad;
-                Ok(Value::String(format!(
+                Ok(Value::String(Arc::from(format!(
                     "{}{}{}",
                     std::iter::repeat(pad_ch).take(left_pad).collect::<String>(),
                     s,
                     std::iter::repeat(pad_ch).take(right_pad).collect::<String>()
-                )))
+                ))))
             }
         }
         _ => Err(RuntimeError::new(format!(
@@ -506,7 +619,7 @@ fn call_array_method(
                 })
                 .unwrap_or_default();
             let joined: Vec<String> = arr.iter().map(|v| v.to_string()).collect();
-            Ok(Value::String(joined.join(&sep)))
+            Ok(Value::String(Arc::from(joined.join(&sep))))
         }
         "slice" => {
             let start = args
@@ -612,7 +725,7 @@ fn call_map_method(
         "keys" => {
             let mut keys: Vec<&String> = map.keys().collect();
             keys.sort();
-            Ok(Value::Array(keys.into_iter().map(|k| Value::String(k.clone())).collect()))
+            Ok(Value::Array(keys.into_iter().map(|k| Value::String(Arc::from(k.clone()))).collect()))
         }
         "values" => {
             let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
@@ -624,7 +737,7 @@ fn call_map_method(
             pairs.sort_by_key(|(k, _)| k.as_str());
             let entries: Vec<Value> = pairs
                 .into_iter()
-                .map(|(k, v)| Value::Array(vec![Value::String(k.clone()), v.clone()]))
+                .map(|(k, v)| Value::Array(vec![Value::String(Arc::from(k.clone())), v.clone()]))
                 .collect();
             Ok(Value::Array(entries))
         }
@@ -632,7 +745,7 @@ fn call_map_method(
             let key = args
                 .first()
                 .and_then(|v| match v {
-                    Value::String(k) => Some(k.as_str()),
+                    Value::String(k) => Some(k.as_ref()),
                     _ => None,
                 })
                 .unwrap_or("");
@@ -646,7 +759,7 @@ fn call_map_method(
                     _ => None,
                 })
                 .unwrap_or_default();
-            Ok(map.get(&key).cloned().unwrap_or(Value::Null))
+            Ok(map.get(key.as_ref()).cloned().unwrap_or(Value::Null))
         }
         _ => Err(RuntimeError::new(format!("Map has no method '{}'", method))),
     }
@@ -668,6 +781,84 @@ fn call_set_method(
         }
         _ => Err(RuntimeError::new(format!("Set has no method '{}'", method))),
     }
+}
+
+/// Task E.5 / N.4 — Detect if a function body ends with a self-tail-recursive call.
+/// Handles:
+/// - `return → fn_name(...)` as the last statement
+/// - bare `fn_name(...)` as the last statement (N.4)
+/// - if/else where every branch ends with a tail call to fn_name (N.4)
+fn detect_self_tail_recursive(fn_name: &str, body: &[Statement]) -> bool {
+    if body.is_empty() { return false; }
+    stmt_is_tail_call(fn_name, body.last().unwrap())
+}
+
+fn stmt_is_tail_call(fn_name: &str, stmt: &Statement) -> bool {
+    match stmt {
+        // return → fn_name(...)
+        Statement::Return { value: Some(expr), .. } => matches!(
+            expr,
+            Expression::FunctionCall { name, .. } if name == fn_name
+        ),
+        // bare fn_name(...)  (N.4)
+        Statement::Expression(Expression::FunctionCall { name, .. }) if name == fn_name => true,
+        // if/else: all branches must end with a tail call  (N.4)
+        Statement::If { then_branch, else_if_branches, else_branch, .. } => {
+            let then_ok = then_branch.last().map_or(false, |s| stmt_is_tail_call(fn_name, s));
+            let else_ok = else_branch.as_ref()
+                .and_then(|b| b.last())
+                .map_or(false, |s| stmt_is_tail_call(fn_name, s));
+            let elif_ok = else_if_branches.iter().all(|(_, b)| {
+                b.last().map_or(false, |s| stmt_is_tail_call(fn_name, s))
+            });
+            // All branches must be present and end with a tail call.
+            // An if without an else is NOT guaranteed to tail-call.
+            then_ok && else_ok && (else_if_branches.is_empty() || elif_ok)
+        }
+        _ => false,
+    }
+}
+
+/// Task E.5 — Bind a list of evaluated args to function params in the current scope.
+/// Extracted from the stacker closure for use in the TCO loop.
+fn bind_params_to_scope<VM: ExpressionVM>(
+    vm: &mut VM,
+    fn_name: &str,
+    params: &[crate::parser::ast::Parameter],
+    args: &[Value],
+) -> Result<(), RuntimeError> {
+    let mut arg_index = 0;
+    let args_len = args.len();
+    for param in params {
+        if param.is_variadic {
+            let remaining: Vec<Value> = args[arg_index..].to_vec();
+            vm.define_local_variable(param.name.clone(), Value::Array(remaining))?;
+            arg_index = args_len;
+        } else if arg_index < args_len {
+            let arg = &args[arg_index];
+            if let Some(expected_type) = &param.type_annotation {
+                if !matches!(arg, Value::Null)
+                    && !crate::runtime::execution::statements::param_type_matches(arg, expected_type)
+                {
+                    return Err(RuntimeError::new(format!(
+                        "type mismatch: parameter '{}' of '{}' expects '{}' but got '{}'",
+                        param.name, fn_name,
+                        crate::runtime::execution::statements::type_annotation_display(expected_type),
+                        crate::runtime::execution::statements::value_type_display(arg),
+                    )).with_code(crate::runtime::errors::ErrorCode::E0011));
+                }
+            }
+            vm.define_local_variable(param.name.clone(), arg.clone())?;
+            arg_index += 1;
+        } else if let Some(default_expr) = &param.default_value {
+            let default_val = super::ExpressionEvaluator::evaluate(vm, default_expr)?;
+            vm.define_local_variable(param.name.clone(), default_val)?;
+            arg_index += 1;
+        } else {
+            return Err(vm.create_error(format!("Missing required parameter: {}", param.name)));
+        }
+    }
+    Ok(())
 }
 
 pub fn call_user_function<VM: ExpressionVM>(
@@ -722,11 +913,113 @@ pub fn call_user_function<VM: ExpressionVM>(
         }
     }
 
+    // Task E.5 — Tail-Call Optimization (TCO)
+    // If the last statement in the body is `return → <same_fn>(...)`, we can
+    // reuse the current call frame instead of recursing. This turns O(n) stack
+    // usage into O(1) for tail-recursive functions.
+    //
+    // Safety: enforce a TCO iteration limit so that infinitely-recursive
+    // tail-recursive functions still produce an error rather than looping forever.
+    // 100 K iterations is unreachable in real programs but stops true infinite loops quickly.
+    const TCO_LIMIT: usize = 100_000;
+    if detect_self_tail_recursive(name, &body) {
+        let mut current_args = args.to_vec();
+        let mut tco_iter: usize = 0;
+        let result = 'tco: loop {
+            tco_iter += 1;
+            if tco_iter > TCO_LIMIT {
+                break 'tco Err(RuntimeError::new(format!(
+                    "Maximum call depth ({}) exceeded — possible infinite recursion (tail-recursive) in '{}'",
+                    TCO_LIMIT, name
+                )));
+            }
+            vm.push_scope(); // params scope — popped at end of each iteration
+
+            // Bind current iteration's args to params
+            if let Err(e) = bind_params_to_scope(vm, name, &params, &current_args) {
+                vm.pop_scope();
+                break 'tco Err(e);
+            }
+
+            // Execute all statements except the last (tail call)
+            let body_len = body.len();
+            let mut early_result: Option<Result<Value, RuntimeError>> = None;
+            for stmt in &body[..body_len.saturating_sub(1)] {
+                if let Statement::Return { value, .. } = stmt {
+                    let v = if let Some(e) = value {
+                        match super::ExpressionEvaluator::evaluate(vm, e) {
+                            Ok(v) => v,
+                            Err(e) => { early_result = Some(Err(e)); break; }
+                        }
+                    } else { Value::Null };
+                    early_result = Some(Ok(v));
+                    break;
+                }
+                match vm.execute_statement(stmt) {
+                    Ok(_) => {}
+                    Err(e) => match e.take_return_value() {
+                        Ok(v) => { early_result = Some(Ok(v)); break; }
+                        Err(other) => {
+                            // O.1: break/continue must NOT escape function boundaries.
+                            let err = if other.is_break_signal() || other.is_continue_signal() {
+                                RuntimeError::new("break/continue cannot escape a function boundary".to_string())
+                                    .with_code(crate::runtime::errors::ErrorCode::E0040)
+                            } else {
+                                other
+                            };
+                            early_result = Some(Err(err));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if let Some(r) = early_result {
+                vm.pop_scope();
+                break 'tco r;
+            }
+
+            // Evaluate new args for the tail call (last statement).
+            // N.4: Also handles bare `fn_name(args)` as the last statement.
+            let new_args_result = match body.last() {
+                Some(Statement::Return { value: Some(expr), .. }) => match expr {
+                    Expression::FunctionCall { arguments, .. } => arguments
+                        .iter()
+                        .map(|a| super::ExpressionEvaluator::evaluate(vm, a))
+                        .collect::<Result<Vec<_>, _>>(),
+                    _ => Ok(vec![]),
+                },
+                Some(Statement::Expression(Expression::FunctionCall { arguments, .. })) => arguments
+                    .iter()
+                    .map(|a| super::ExpressionEvaluator::evaluate(vm, a))
+                    .collect::<Result<Vec<_>, _>>(),
+                _ => Ok(vec![]),
+            };
+
+            vm.pop_scope(); // pop params scope before rebinding
+            match new_args_result {
+                Ok(new_args) => { current_args = new_args; }
+                Err(e) => break 'tco Err(e),
+            }
+            // continue 'tco with updated args
+        };
+
+        if !captured_env.is_empty() { vm.pop_scope(); }
+        vm.call_stack_pop();
+        return result;
+    }
+
+    // Non-TCO path: push scope then use stacker
     // Push new scope for function parameters
     vm.push_scope();
 
+    // Use stacker::maybe_grow so that deep recursion transparently extends the
+    // Rust thread stack rather than overflowing it. When remaining stack space
+    // falls below 128 KB, stacker spawns a helper thread with an 8 MB stack
+    // segment and runs the continuation there — transparent to callers.
+    //
     // Use a closure to ensure cleanup on early return
-    let result = (|| -> Result<Value, RuntimeError> {
+    let result = stacker::maybe_grow(128 * 1024, 8 * 1024 * 1024, || (|| -> Result<Value, RuntimeError> {
         // Bind arguments with variadic support
         let mut arg_index = 0;
         let args_len = args.len();
@@ -744,6 +1037,18 @@ pub fn call_user_function<VM: ExpressionVM>(
             } else if arg_index < args_len {
                 let arg = &args[arg_index];
                 log_debug(&format!("Binding parameter '{}' = {:?}", param.name, arg));
+                // Runtime type enforcement for typed parameters
+                if let Some(expected_type) = &param.type_annotation {
+                    if !matches!(arg, Value::Null) && !crate::runtime::execution::statements::param_type_matches(arg, expected_type) {
+                        return Err(RuntimeError::new(format!(
+                            "type mismatch: parameter '{}' of '{}' expects '{}' but got '{}'",
+                            param.name,
+                            name,
+                            crate::runtime::execution::statements::type_annotation_display(expected_type),
+                            crate::runtime::execution::statements::value_type_display(arg),
+                        )).with_code(crate::runtime::errors::ErrorCode::E0011));
+                    }
+                }
                 vm.define_local_variable(param.name.clone(), arg.clone())?;
                 arg_index += 1;
             } else if let Some(default_expr) = &param.default_value {
@@ -781,9 +1086,15 @@ pub fn call_user_function<VM: ExpressionVM>(
                     Err(e) => match e.take_return_value() {
                         Ok(_) => break, // `return` ends the generator
                         Err(other) => {
-                            // Cleanup collector before returning error
                             GENERATOR_COLLECTOR.with(|c| *c.borrow_mut() = None);
-                            return Err(other);
+                            // O.1: break/continue must NOT escape function boundaries.
+                            let err = if other.is_break_signal() || other.is_continue_signal() {
+                                RuntimeError::new("break/continue cannot escape a function boundary".to_string())
+                                    .with_code(crate::runtime::errors::ErrorCode::E0040)
+                            } else {
+                                other
+                            };
+                            return Err(err);
                         }
                     },
                 }
@@ -814,18 +1125,26 @@ pub fn call_user_function<VM: ExpressionVM>(
                         result = v;
                         break;
                     }
-                    Err(other) => return Err(other),
+                    Err(other) => {
+                        // O.1: break/continue must NOT escape function boundaries.
+                        if other.is_break_signal() || other.is_continue_signal() {
+                            return Err(RuntimeError::new(
+                                "break/continue cannot escape a function boundary".to_string(),
+                            ).with_code(crate::runtime::errors::ErrorCode::E0040));
+                        }
+                        return Err(other);
+                    }
                 },
             }
         }
 
         Ok(result)
-    })();
+    })());
 
     // Always clean up scope and call frame, even on error
-    vm.pop_scope();
+    vm.pop_scope(); // params scope
     if !captured_env.is_empty() {
-        vm.pop_scope();
+        vm.pop_scope(); // captured env scope
     }
     vm.call_stack_pop();
 

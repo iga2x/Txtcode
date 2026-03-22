@@ -28,7 +28,15 @@ impl VirtualMachine {
     ) -> Result<(), RuntimeError> {
         self.permission_manager
             .check(resource, scope)
-            .map_err(|e| self.create_error(format!("Permission error: {}", e)))
+            .map_err(|e| {
+                let hint = permission_hint(resource);
+                let mut err = RuntimeError::new(format!("permission denied: {}", e))
+                    .with_code(crate::runtime::errors::ErrorCode::E0001);
+                if let Some(h) = hint {
+                    err = err.with_hint(h);
+                }
+                err
+            })
     }
 
     /// Check permission and log to audit trail (mutable version).
@@ -46,6 +54,16 @@ impl VirtualMachine {
     /// Get permission manager reference
     pub fn get_permission_manager(&self) -> &PermissionManager {
         &self.permission_manager
+    }
+
+    /// Replace the permission manager (used to apply a permission snapshot).
+    pub fn set_permission_manager(&mut self, pm: PermissionManager) {
+        self.permission_manager = pm;
+    }
+
+    /// Return a clone of the current permission manager (snapshot at call time).
+    pub fn snapshot_permissions(&self) -> PermissionManager {
+        self.permission_manager.clone()
     }
 }
 
@@ -88,7 +106,7 @@ impl SecurityPipelineContext for VirtualMachine {
                         scope.unwrap_or("").to_string(),
                         Some(format!("capability:{}/deny-override", token_id)),
                         AuditResult::Denied,
-                        if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                        None // B.1: ai_metadata removed,
                     );
                     return Some(Err(format!("Permission error: {}", deny_err)));
                 }
@@ -103,7 +121,7 @@ impl SecurityPipelineContext for VirtualMachine {
                     scope.unwrap_or("").to_string(),
                     Some(format!("capability:{}", token_id)),
                     AuditResult::Allowed,
-                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                    None // B.1: ai_metadata removed,
                 );
                 Some(Ok(()))
             }
@@ -113,7 +131,7 @@ impl SecurityPipelineContext for VirtualMachine {
                     scope.unwrap_or("").to_string(),
                     Some(format!("capability:{}", token_id)),
                     AuditResult::Denied,
-                    if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                    None // B.1: ai_metadata removed,
                 );
                 Some(Err(format!("Capability error: {}", cap_err)))
             }
@@ -136,7 +154,7 @@ impl SecurityPipelineContext for VirtualMachine {
             resource,
             scope,
             result.clone(),
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            None // B.1: ai_metadata removed,
         );
         result.map_err(|e| format!("Permission error: {}", e))
     }
@@ -145,9 +163,7 @@ impl SecurityPipelineContext for VirtualMachine {
         self.call_stack.current_frame().map(|f| f.function_name.as_str())
     }
 
-    fn has_ai_metadata(&self) -> bool {
-        !self.ai_metadata.is_empty()
-    }
+    // B.1: has_ai_metadata removed along with ai_metadata field
 
     fn log_audit(
         &mut self,
@@ -165,7 +181,31 @@ impl SecurityPipelineContext for VirtualMachine {
             resource.to_string(),
             token.map(|s| s.to_string()),
             audit_result,
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            None // B.1: ai_metadata removed,
         );
+    }
+}
+
+/// Return a CLI hint for how to grant a denied permission.
+fn permission_hint(resource: &PermissionResource) -> Option<String> {
+    match resource {
+        PermissionResource::Network(host) => Some(format!(
+            "use --allow-net={} to grant network access",
+            host
+        )),
+        PermissionResource::FileSystem(path) => Some(format!(
+            "use --allow-fs={} to grant file system access",
+            path
+        )),
+        PermissionResource::Process(_) => Some(
+            "use --allow-exec to grant process execution access".to_string()
+        ),
+        PermissionResource::System(sys) if sys == "exec" => Some(
+            "use --allow-exec to grant system exec access".to_string()
+        ),
+        PermissionResource::System(sys) => Some(format!(
+            "use --allow-{} to grant system access",
+            sys
+        )),
     }
 }

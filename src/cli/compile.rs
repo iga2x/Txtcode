@@ -178,11 +178,24 @@ pub fn compile_wasm(
         .into())
 }
 
-/// Task 12.3 — Compile a Txt-code file to WebAssembly Text Format (WAT)
+/// Task 12.3 / 29.2 — Compile a Txt-code file to WebAssembly.
+///
+/// `binary`: when true produce a `.wasm` binary (requires `wasm` feature);
+///           when false produce a `.wat` text file.
 #[cfg(feature = "bytecode")]
 pub fn compile_wasm(
     file: &PathBuf,
     output: Option<&std::path::Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    compile_wasm_with_opts(file, output, false)
+}
+
+/// Compile to WAT or binary WASM depending on `binary`.
+#[cfg(feature = "bytecode")]
+pub fn compile_wasm_with_opts(
+    file: &PathBuf,
+    output: Option<&std::path::Path>,
+    binary: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::compiler::wasm::WasmCompiler;
     use crate::compiler::bytecode::BytecodeCompiler;
@@ -197,19 +210,28 @@ pub fn compile_wasm(
     let program = parser.parse()?;
     Validator::validate_program(&program)?;
 
-    // First compile to bytecode, then translate bytecode → WAT
     let mut bc_compiler = BytecodeCompiler::new();
     let bytecode = bc_compiler.compile(&program);
 
-    let mut wasm_compiler = WasmCompiler::new();
-    let wat = wasm_compiler.compile(&bytecode);
-
-    let out_path = output
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| file.with_extension("wat"));
-
-    std::fs::write(&out_path, &wat)?;
-    println!("Compiled (WASM/WAT) to: {}", out_path.display());
-    println!("  To convert to binary: wat2wasm {} -o {}", out_path.display(), out_path.with_extension("wasm").display());
+    if binary {
+        // Task 29.2 — emit binary .wasm
+        let bytes = crate::compiler::wasm_binary::compile_to_binary(&bytecode)?;
+        let out_path = output
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| file.with_extension("wasm"));
+        std::fs::write(&out_path, &bytes)?;
+        println!("Compiled (WASM binary) to: {}", out_path.display());
+        println!("  {} bytes written", bytes.len());
+    } else {
+        // Task 12.3 — emit text .wat
+        let mut wasm_compiler = WasmCompiler::new();
+        let wat = wasm_compiler.compile(&bytecode);
+        let out_path = output
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| file.with_extension("wat"));
+        std::fs::write(&out_path, &wat)?;
+        println!("Compiled (WASM/WAT) to: {}", out_path.display());
+        println!("  To convert to binary: wat2wasm {} -o {}", out_path.display(), out_path.with_extension("wasm").display());
+    }
     Ok(())
 }

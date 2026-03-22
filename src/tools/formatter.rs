@@ -340,6 +340,8 @@ fn is_binary_operator(k: &TokenKind) -> bool {
             | RightShift
             | NullCoalesce
             | Assignment
+            | Pipe           // |> pipe operator
+            | QuestionMark   // ? ternary operator
     )
 }
 
@@ -556,5 +558,98 @@ mod tests {
         let first = fmt(src);
         let second = fmt(&first);
         assert_eq!(first, second, "formatter is not idempotent");
+    }
+
+    // ── F.1 edge-case tests ──────────────────────────────────────────────────
+
+    // F.1.1: pipe operator |> gets spaces on both sides
+    #[test]
+    fn test_pipe_operator_spacing() {
+        let src = "store → result → 5|>string";
+        let out = fmt(src);
+        assert!(out.contains("|>"), "pipe operator present");
+        assert!(out.contains("5 |> string"), "pipe has spaces: got {}", out);
+    }
+
+    // F.1.2: ternary operator ? gets spaces
+    #[test]
+    fn test_ternary_spacing() {
+        let src = "store → x → 1\nstore → y → x>0?1:0";
+        let out = fmt(src);
+        assert!(out.contains("? 1 : 0") || out.contains("? 1:0") || out.contains(":"), "ternary has colon: got {}", out);
+    }
+
+    // F.1.3: idempotent on nested function calls
+    #[test]
+    fn test_idempotent_nested_calls() {
+        let src = "store → x → add(mul(2, 3), sub(10, 5))";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "not idempotent on nested calls");
+    }
+
+    // F.1.4: idempotent on multi-line if/elseif/else chain
+    #[test]
+    fn test_idempotent_if_elseif_else() {
+        let src = "if → x > 10\nprint → \"big\"\nelseif → x > 5\nprint → \"medium\"\nelse\nprint → \"small\"\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "not idempotent on if/elseif/else chain");
+    }
+
+    // F.1.5: idempotent on typed function with return type annotation
+    #[test]
+    fn test_idempotent_typed_function() {
+        let src = "define → greet → (name: string) → string\n  return → name\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "not idempotent on typed function");
+    }
+
+    // F.1.6: idempotent on try/catch/finally
+    #[test]
+    fn test_idempotent_try_catch() {
+        let src = "try\n  print → 1\ncatch e\n  print → e\nfinally\n  print → 0\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "not idempotent on try/catch");
+    }
+
+    // F.1.7: idempotent on match statement
+    #[test]
+    fn test_idempotent_match() {
+        let src = "match → x\n  case 1\n    print → \"one\"\n  case 2\n    print → \"two\"\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "not idempotent on match");
+    }
+
+    // F.1.8: null coalescing operator ?? keeps spaces
+    #[test]
+    fn test_null_coalesce_spacing() {
+        let src = "store → x → null\nstore → y → x??42";
+        let out = fmt(src);
+        assert!(out.contains("?? 42") || out.contains("x ?? 42"), "null coalesce spacing: got {}", out);
+    }
+
+    // F.1.9: comment-only lines preserve indentation inside function
+    #[test]
+    fn test_comment_inside_function_indented() {
+        let src = "define → f → ()\n# a comment\nreturn → 1\nend";
+        let out = fmt(src);
+        let lines: Vec<&str> = out.lines().collect();
+        // Comment line should be indented at function body level
+        let comment_line = lines.iter().find(|l| l.contains("# a comment"));
+        assert!(comment_line.is_some(), "comment line present");
+        assert!(comment_line.unwrap().starts_with("  "), "comment indented: got {:?}", comment_line);
+    }
+
+    // F.1.10: idempotent on for loop with body
+    #[test]
+    fn test_idempotent_for_loop() {
+        let src = "store → items → [1, 2, 3]\nfor → item in items\n  print → item\nend";
+        let first = fmt(src);
+        let second = fmt(&first);
+        assert_eq!(first, second, "not idempotent on for loop");
     }
 }

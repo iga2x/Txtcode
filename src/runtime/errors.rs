@@ -3,15 +3,11 @@ use crate::runtime::core::Value;
 
 /// Maximum call stack depth before raising a recursion error.
 ///
-/// Kept at 50 because the AST VM uses Rust's own call stack for Txtcode
-/// recursion (each Txtcode frame = ~10-20 Rust frames in debug mode).
-/// Increasing this limit without first making the VM iterative causes
-/// Rust's thread stack to overflow before our guard fires.
-///
-/// TODO (Group 7): convert AST VM to iterative execution, then raise to 500+.
-/// The value is configurable via `RuntimeConfig::max_call_depth` for release
-/// builds where frame sizes are much smaller.
-pub const MAX_CALL_DEPTH: usize = 25;
+/// The AST VM uses `stacker::maybe_grow` to transparently extend the Rust
+/// thread stack when needed, so this limit reflects logical call depth not
+/// Rust stack exhaustion. 500 is safe because stacker grows the stack by
+/// 8 MB per segment as required.
+pub const MAX_CALL_DEPTH: usize = 500;
 
 /// Control-flow signals — non-error exits that must pierce block boundaries.
 /// These are not runtime errors; they ride the `Result<_, RuntimeError>` channel
@@ -27,6 +23,9 @@ pub enum ControlFlowSignal {
     Continue,
     /// `yield → value` — produce a value from a generator function.
     Yield(Value),
+    /// Task E.5 — Tail-call signal: instead of recursing, restart the current
+    /// function with new arguments.  Carries `(function_name, Vec<Value>)`.
+    TailCall(String, Vec<Value>),
 }
 
 /// Stable machine-readable error codes for IDE and CI consumers.
@@ -77,6 +76,10 @@ pub enum ErrorCode {
     E0033,
     /// `?` operator used outside of a function body.
     E0034,
+    /// Async task queue full — concurrency cap reached.
+    E0053,
+    /// Q.3: Protocol method not implemented by struct.
+    E0029,
 }
 
 impl ErrorCode {
@@ -104,6 +107,8 @@ impl ErrorCode {
             Self::E0050 => "E0050",
             Self::E0033 => "E0033",
             Self::E0034 => "E0034",
+            Self::E0053 => "E0053",
+            Self::E0029 => "E0029",
         }
     }
 
@@ -148,6 +153,8 @@ impl ErrorCode {
             Self::E0034
         } else if lower.contains("process") || lower.contains("exec") || lower.contains("spawn") {
             Self::E0032
+        } else if lower.contains("protocol") && (lower.contains("missing") || lower.contains("not implemented")) {
+            Self::E0029
         } else if lower.contains("import") || lower.contains("module") {
             Self::E0040
         } else if lower.contains("encrypt") || lower.contains("decrypt") || lower.contains("crypto") || lower.contains("hmac") {

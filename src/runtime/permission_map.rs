@@ -55,6 +55,8 @@ pub fn map_function_to_permission(name: &str) -> Option<PermissionResource> {
         | "http_put"
         | "http_delete"
         | "http_patch"
+        | "async_http_get"
+        | "async_http_post"
         | "tcp_connect"
         | "udp_send"
         | "resolve" => Some(PermissionResource::Network("connect".to_string())),
@@ -92,8 +94,23 @@ pub fn map_function_to_permission(name: &str) -> Option<PermissionResource> {
             Some(PermissionResource::Process(vec!["signal_send".to_string()]))
         }
 
+        // ── Database connections (multi-driver) ───────────────────────────
+        "db_connect" | "db_query" | "db_execute" | "db_transaction" | "db_commit" | "db_rollback" => {
+            Some(PermissionResource::System("db".to_string()))
+        }
+
         // ── FFI — native shared-library loading ───────────────────────────
         "ffi_load" | "ffi_call" | "ffi_close" => {
+            Some(PermissionResource::System("ffi".to_string()))
+        }
+
+        // ── Plugin — higher-level native plugin system ────────────────────
+        "plugin_load" | "plugin_functions" | "plugin_call" => {
+            Some(PermissionResource::System("ffi".to_string()))
+        }
+
+        // ── WASM execution (Task 29.3) ────────────────────────────────────
+        "wasm_load" | "wasm_call" | "wasm_close" => {
             Some(PermissionResource::System("ffi".to_string()))
         }
 
@@ -117,7 +134,7 @@ pub fn map_function_to_permission(name: &str) -> Option<PermissionResource> {
 pub fn extract_permission_scope(resource: &PermissionResource, args: &[Value]) -> Option<String> {
     let first_string = || {
         args.first().and_then(|v| match v {
-            Value::String(s) => Some(s.clone()),
+            Value::String(s) => Some(s.to_string()),
             _ => None,
         })
     };
@@ -132,7 +149,7 @@ pub fn extract_permission_scope(resource: &PermissionResource, args: &[Value]) -
                     .nth(1)
                     .and_then(|s| s.split('/').next())
                     .and_then(|s| s.split(':').next())
-                    .unwrap_or(url.as_str());
+                    .unwrap_or(url.as_ref());
                 if host.is_empty() {
                     None
                 } else {

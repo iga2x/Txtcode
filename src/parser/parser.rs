@@ -79,7 +79,19 @@ impl Parser {
                     self.advance();
                 }
                 Err(e) => {
-                    errors.push(e);
+                    errors.push(e.clone());
+                    // Task E.4: Insert a Statement::Error node so the LSP can
+                    // still inspect valid regions of the partial AST.
+                    let err_span = {
+                        let tok = self.peek();
+                        crate::parser::ast::common::Span {
+                            start: tok.span.1,
+                            end: tok.span.1 + tok.value.len(),
+                            line: tok.span.0,
+                            column: tok.span.1,
+                        }
+                    };
+                    statements.push(Statement::Error { message: e, span: err_span });
                     // Synchronize: skip tokens until we reach a likely
                     // statement boundary (newline + keyword, or EOF).
                     self.synchronize();
@@ -118,7 +130,7 @@ impl Parser {
                             "store" | "define" | "if" | "while" | "for" | "return"
                             | "try" | "import" | "export" | "struct" | "enum" | "impl"
                             | "match" | "const" | "break" | "continue" | "repeat"
-                            | "async" | "permission" | "type" | "error" => break,
+                            | "async" | "permission" | "type" | "error" | "protocol" => break,
                             "end" | "catch" | "finally" | "else" | "elseif" => {
                                 // Block terminators — stop so caller can handle
                                 break;
@@ -137,7 +149,7 @@ impl Parser {
                     "store" | "define" | "if" | "while" | "for" | "return"
                     | "try" | "import" | "export" | "struct" | "enum" | "impl"
                     | "match" | "const" | "break" | "continue" | "repeat"
-                    | "async" | "permission" | "end" => break,
+                    | "async" | "permission" | "protocol" | "end" => break,
                     _ => {}
                 }
             }
@@ -203,6 +215,7 @@ impl Parser {
                     "enum" => crate::parser::statements::types::parse_enum(self),
                     "struct" => crate::parser::statements::types::parse_struct(self),
                     "impl" => crate::parser::statements::types::parse_impl(self),
+                    "protocol" => crate::parser::statements::types::parse_protocol(self),
                     "match" | "switch" => {
                         // Consume the keyword (match or switch, both canonicalize to "match")
                         self.advance();

@@ -5,6 +5,7 @@
 pub mod capability;
 pub mod cli;
 pub mod compiler;
+pub mod embed;
 pub mod config;
 pub mod lexer;
 pub mod parser;

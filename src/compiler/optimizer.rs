@@ -346,20 +346,59 @@ impl Optimizer {
 
     /// Peephole optimization on bytecode
     fn peephole_optimization(&self, bytecode: &mut Bytecode) {
-        use crate::compiler::bytecode::Instruction;
+        use crate::compiler::bytecode::{Constant, Instruction};
 
-        // Remove consecutive Nop instructions
+        // Pass 1: remove Nop instructions
         bytecode
             .instructions
             .retain(|inst| !matches!(inst, Instruction::Nop));
 
-        // Optimize: PushConstant 0; Add -> (no change needed, handled at runtime)
-        // Optimize: PushConstant 1; Multiply -> (no change needed)
-        // More peephole optimizations can be added here
-    }
+        // Pass 2: constant folding — PushConst(a) PushConst(b) <arith-op> → PushConst(result)
+        let mut i = 0;
+        while i + 2 < bytecode.instructions.len() {
+            let folded: Option<Constant> = match (
+                &bytecode.instructions[i],
+                &bytecode.instructions[i + 1],
+                &bytecode.instructions[i + 2],
+            ) {
+                (
+                    Instruction::PushConstant(ia),
+                    Instruction::PushConstant(ib),
+                    op,
+                ) => {
+                    let ca = bytecode.constants.get(*ia);
+                    let cb = bytecode.constants.get(*ib);
+                    match (ca, cb, op) {
+                        (Some(Constant::Integer(a)), Some(Constant::Integer(b)), Instruction::Add) =>
+                            Some(Constant::Integer(a.wrapping_add(*b))),
+                        (Some(Constant::Integer(a)), Some(Constant::Integer(b)), Instruction::Subtract) =>
+                            Some(Constant::Integer(a.wrapping_sub(*b))),
+                        (Some(Constant::Integer(a)), Some(Constant::Integer(b)), Instruction::Multiply) =>
+                            Some(Constant::Integer(a.wrapping_mul(*b))),
+                        (Some(Constant::Float(a)), Some(Constant::Float(b)), Instruction::Add) =>
+                            Some(Constant::Float(a + b)),
+                        (Some(Constant::Float(a)), Some(Constant::Float(b)), Instruction::Subtract) =>
+                            Some(Constant::Float(a - b)),
+                        (Some(Constant::Float(a)), Some(Constant::Float(b)), Instruction::Multiply) =>
+                            Some(Constant::Float(a * b)),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
 
-    // Constant propagation removed - not needed for cyber orchestration
-    // Keep optimizer focused on essential optimizations only
+            if let Some(result_const) = folded {
+                // Replace 3 instructions with one PushConstant(new_idx)
+                let new_idx = bytecode.constants.len();
+                bytecode.constants.push(result_const);
+                bytecode.instructions.drain(i..i + 3);
+                bytecode.instructions.insert(i, Instruction::PushConstant(new_idx));
+                // Don't advance i — the new PushConstant might be folded further
+            } else {
+                i += 1;
+            }
+        }
+    }
 }
 
 impl Default for Optimizer {

@@ -102,6 +102,9 @@ pub enum Pattern {
     /// Rest/spread pattern: `...name` — captures remaining array elements
     /// Only valid as the final element in an array pattern: `[a, b, ...rest]`
     Rest(String),
+    /// N.1: Typed literal pattern — matches a specific literal value.
+    /// Replaces the fragile `Identifier("__literal_<value>")` encoding.
+    Literal(Literal),
 }
 
 /// A generic type parameter with an optional constraint bound.

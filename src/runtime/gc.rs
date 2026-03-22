@@ -47,12 +47,30 @@
 // and iterating or comparing dangling pointers is undefined behaviour. That approach
 // has been removed entirely.
 //
-// The `GarbageCollector` name is retained as a type alias so existing call sites in
-// vm.rs, bytecode_vm.rs, and vm/core.rs compile without modification while the
-// implementation is accurate.
+// M.2: `MemoryTracker` is the accurate name. `GarbageCollector` is kept as a
+// deprecated alias only; all internal call sites now use `MemoryTracker`.
 
 use std::collections::HashMap;
 use crate::runtime::core::Value;
+
+/// Read the process Resident Set Size (RSS) in bytes from `/proc/self/status`.
+/// Returns `None` if the file cannot be read or parsed.
+#[cfg(target_os = "linux")]
+fn get_rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    for line in status.lines() {
+        if line.starts_with("VmRSS:") {
+            let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+            return Some(kb * 1024);
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn get_rss_bytes() -> Option<u64> {
+    None
+}
 
 /// Parse a human-readable memory limit string into bytes.
 /// Recognises: "256mb", "1gb", "512kb", "1024" (raw bytes), "none".
@@ -136,14 +154,17 @@ impl AllocationTracker {
         self
     }
 
-    /// Check whether the current estimated usage exceeds the configured limit.
+    /// Check whether the current memory usage exceeds the configured limit.
+    /// On Linux, reads real RSS from `/proc/self/status`; falls back to the
+    /// estimated byte counter on other platforms or if the file is unavailable.
     /// Returns `Err` with a human-readable message if the limit is exceeded.
     pub fn check_limit(&self) -> Result<(), String> {
         if let Some(limit) = self.max_bytes {
-            if self.estimated_bytes > limit {
+            let actual = get_rss_bytes().unwrap_or(self.estimated_bytes as u64) as usize;
+            if actual > limit {
                 return Err(format!(
                     "Memory limit exceeded: using ~{} bytes, limit is {} bytes",
-                    self.estimated_bytes, limit
+                    actual, limit
                 ));
             }
         }
@@ -246,7 +267,14 @@ impl Default for AllocationTracker {
     }
 }
 
-/// Type alias preserved for backward compatibility with existing call sites.
+/// M.2: Accurate name — this is NOT a garbage collector.
+/// Rust RAII (ownership + Drop) handles deallocation automatically.
+/// This type tracks estimated allocation counts and enforces an optional
+/// soft memory limit. Use `MemoryTracker` in all new code.
+pub type MemoryTracker = AllocationTracker;
+
+/// Legacy alias — use `MemoryTracker` in new code.
+#[deprecated(note = "Use MemoryTracker instead")]
 pub type GarbageCollector = AllocationTracker;
 
 /// Allocation statistics.
@@ -264,4 +292,42 @@ pub struct GCStats {
     pub allocated_objects: usize,
     pub marked_objects: usize,
     pub allocations_since_gc: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// S.3.1: get_rss_bytes() returns Some(> 0) on Linux, None elsewhere.
+    #[test]
+    fn test_s3_rss_bytes_linux() {
+        #[cfg(target_os = "linux")]
+        {
+            let rss = get_rss_bytes();
+            assert!(rss.is_some(), "get_rss_bytes() should return Some on Linux");
+            assert!(rss.unwrap() > 0, "RSS should be > 0");
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(get_rss_bytes().is_none(), "get_rss_bytes() should be None on non-Linux");
+        }
+    }
+
+    /// S.3.2: check_limit() uses RSS (or estimate fallback) and triggers on small limit.
+    #[test]
+    fn test_s3_check_limit_triggers() {
+        // Set a 1-byte limit — guaranteed to exceed real RSS (or estimated_bytes)
+        let tracker = AllocationTracker::new().with_max_bytes(Some(1));
+        let result = tracker.check_limit();
+        assert!(result.is_err(), "check_limit() must err when limit=1 byte");
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Memory limit exceeded"), "error message: {}", msg);
+    }
+
+    /// S.3.3: check_limit() passes when limit is large enough.
+    #[test]
+    fn test_s3_check_limit_passes() {
+        let tracker = AllocationTracker::new().with_max_bytes(Some(usize::MAX));
+        assert!(tracker.check_limit().is_ok(), "check_limit() should pass with usize::MAX limit");
+    }
 }

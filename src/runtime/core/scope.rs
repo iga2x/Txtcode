@@ -115,6 +115,23 @@ impl ScopeManager {
         &mut self.globals
     }
 
+    /// W.3: Returns true when inside at least one local scope (i.e. inside a function body).
+    pub fn is_in_local_scope(&self) -> bool {
+        !self.scopes.is_empty()
+    }
+
+    /// W.3: Snapshot all variables visible in local scopes (not globals) for closure capture.
+    /// Iterates scopes outer-to-inner so inner bindings override outer ones.
+    pub fn snapshot_locals(&self) -> HashMap<String, Value> {
+        let mut captured = HashMap::new();
+        for scope in self.scopes.iter() {
+            for (k, v) in scope {
+                captured.insert(k.clone(), v.clone());
+            }
+        }
+        captured
+    }
+
     /// Remove const flag if variable exists (used for imports)
     pub fn remove_const_if_exists(&mut self, name: &str) {
         self.const_vars.remove(name);

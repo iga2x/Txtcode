@@ -1,6 +1,6 @@
 [package]
 name = "txtcode"
-version = "0.5.0"
+version = "3.0.0"
 edition = "2021"
 authors = ["MD POOR"]
 description = "Txt-code: A simple, memorable, security-focused programming language"
@@ -36,6 +36,8 @@ native-tls      = { version = "0.2", optional = true }
 tungstenite     = { version = "0.29", features = ["native-tls"], optional = true }
 jsonwebtoken    = { version = "10", default-features = false, features = ["rust_crypto"] }
 rusqlite        = { version = "0.33", features = ["bundled"], optional = true }
+postgres        = { version = "0.19", optional = true }
+mysql           = { version = "24", optional = true }
 
 # File I/O — archive + structured formats (opt-in)
 zip       = { version = "2.1", optional = true }
@@ -70,6 +72,10 @@ dirs = "5.0"
 
 # FFI — dynamic library loading (opt-in; requires unsafe native code)
 libloading = { version = "0.8", optional = true }
+wasm-encoder = { version = "0.219", optional = true }
+wasmparser   = { version = "0.219", optional = true }
+wasmtime     = { version = "29", optional = true, default-features = false, features = ["cranelift", "runtime"] }
+stacker = "0.1"
 
 # System calls (Unix only)
 [target.'cfg(unix)'.dependencies]
@@ -93,10 +99,14 @@ libc = "0.2"
 default = ["stdlib-full", "net", "db"]
 stdlib-full     = ["dep:zip", "dep:quick-xml", "dep:serde_yaml"]
 db              = ["dep:rusqlite"]
+postgres        = ["dep:postgres"]
+mysql           = ["dep:mysql"]
 net             = ["dep:tokio", "dep:reqwest", "dep:native-tls", "dep:tungstenite"]
 bytecode        = ["dep:bincode"]
 crypto-advanced = ["dep:bcrypt", "dep:rsa"]
 ffi             = ["dep:libloading"] # Native shared-library FFI (experimental, opt-in)
+wasm            = ["dep:wasm-encoder", "dep:wasmparser", "bytecode"] # WASM binary output
+wasm-exec       = ["dep:wasmtime"]                                  # WASM execution in runtime
 ai-metadata     = []                # AI-aware execution context (experimental)
 
 # Legacy aliases — kept to avoid breaking external build scripts.
@@ -115,3 +125,4 @@ harness = false
 [lib]
 name = "txtcode"
 path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]

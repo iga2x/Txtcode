@@ -1,4 +1,5 @@
 use crate::parser::ast::*;
+use std::sync::Arc;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::operators::OperatorRegistry;
@@ -192,7 +193,7 @@ impl ControlFlowExecutor {
                 // Materialize inner iter to an array then wrap with index
                 let inner_items: Vec<Value> = match inner_iter {
                     Value::Array(arr) => arr,
-                    Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+                    Value::String(s) => s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(),
                     Value::Set(s) => s,
                     _ => return Err(RuntimeError::new("enumerate: inner iterator must be an array, string, or set".to_string())),
                 };
@@ -220,8 +221,8 @@ impl ControlFlowExecutor {
             if type_name == "__Zip__" {
                 let iter1 = match fields.get("iter1") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Zip__: missing 'iter1'".to_string())) };
                 let iter2 = match fields.get("iter2") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Zip__: missing 'iter2'".to_string())) };
-                let items1: Vec<Value> = match iter1 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(), _ => return Err(RuntimeError::new("zip: iter1 must be an array or string".to_string())) };
-                let items2: Vec<Value> = match iter2 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(), _ => return Err(RuntimeError::new("zip: iter2 must be an array or string".to_string())) };
+                let items1: Vec<Value> = match iter1 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(), _ => return Err(RuntimeError::new("zip: iter1 must be an array or string".to_string())) };
+                let items2: Vec<Value> = match iter2 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(), _ => return Err(RuntimeError::new("zip: iter2 must be an array or string".to_string())) };
                 vm.push_scope();
                 let mut outer_err: Option<RuntimeError> = None;
                 'zip_outer: for (a, b) in items1.into_iter().zip(items2.into_iter()) {
@@ -246,8 +247,8 @@ impl ControlFlowExecutor {
             if type_name == "__Chain__" {
                 let iter1 = match fields.get("iter1") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Chain__: missing 'iter1'".to_string())) };
                 let iter2 = match fields.get("iter2") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Chain__: missing 'iter2'".to_string())) };
-                let arr1: Vec<Value> = match iter1 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(), _ => return Err(RuntimeError::new("chain: iter1 must be an array or string".to_string())) };
-                let arr2: Vec<Value> = match iter2 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(), _ => return Err(RuntimeError::new("chain: iter2 must be an array or string".to_string())) };
+                let arr1: Vec<Value> = match iter1 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(), _ => return Err(RuntimeError::new("chain: iter1 must be an array or string".to_string())) };
+                let arr2: Vec<Value> = match iter2 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(), _ => return Err(RuntimeError::new("chain: iter2 must be an array or string".to_string())) };
                 let chained: Vec<Value> = arr1.into_iter().chain(arr2.into_iter()).collect();
                 vm.push_scope();
                 let mut outer_err: Option<RuntimeError> = None;
@@ -322,7 +323,7 @@ impl ControlFlowExecutor {
             }
             Value::Map(map) => {
                 log_debug(&format!("For loop: iterating map with {} keys", map.len()));
-                map.keys().map(|k| Value::String(k.clone())).collect()
+                map.keys().map(|k| Value::String(Arc::from(k.clone()))).collect()
             }
             Value::Set(set) => {
                 log_debug(&format!(
@@ -336,7 +337,7 @@ impl ControlFlowExecutor {
                     "For loop: iterating string with {} chars",
                     s.len()
                 ));
-                s.chars().map(|c| Value::String(c.to_string())).collect()
+                s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect()
             }
             _ => {
                 log_warn(&format!("For loop: cannot iterate over {:?}", iter_val));
@@ -479,7 +480,7 @@ impl ControlFlowExecutor {
                 vm.push_scope();
                 let set_res = vm.set_variable(
                     error_var.clone(),
-                    Value::String(error.message().to_string()),
+                    Value::String(Arc::from(error.message().to_string())),
                 );
                 if let Err(e) = set_res {
                     vm.pop_scope();

@@ -81,6 +81,29 @@ pub fn parse_struct(parser: &mut Parser) -> Result<Option<Statement>, String> {
     let name = parser.expect_identifier()?;
     parser.skip_optional_arrow(); // Optional arrow before fields (if any)
 
+    // Task E.2: Optional generic type parameters `<T, U>`
+    let mut type_params = Vec::new();
+    if parser.check(crate::lexer::token::TokenKind::Less) {
+        parser.advance(); // consume `<`
+        loop {
+            while parser.check(crate::lexer::token::TokenKind::Whitespace) { parser.advance(); }
+            if parser.check(crate::lexer::token::TokenKind::Identifier) {
+                type_params.push(parser.expect_identifier()?);
+            } else {
+                break;
+            }
+            while parser.check(crate::lexer::token::TokenKind::Whitespace) { parser.advance(); }
+            if parser.check(crate::lexer::token::TokenKind::Comma) {
+                parser.advance();
+            } else {
+                break;
+            }
+        }
+        if parser.check(crate::lexer::token::TokenKind::Greater) {
+            parser.advance(); // consume `>`
+        }
+    }
+
     let mut fields = Vec::new();
 
     // Parse struct fields
@@ -143,8 +166,39 @@ pub fn parse_struct(parser: &mut Parser) -> Result<Option<Statement>, String> {
         return parser.error("Expected opening parenthesis for struct fields");
     }
 
+    // Optional: `implements → [Protocol1, Protocol2]` or `implements Protocol1, Protocol2`
+    let mut implements = Vec::new();
+    // Skip horizontal whitespace (not newlines) before checking implements
+    while parser.check(crate::lexer::token::TokenKind::Whitespace) {
+        parser.advance();
+    }
+    if parser.check_keyword("implements") {
+        parser.advance(); // consume `implements`
+        parser.skip_optional_arrow();
+        // Skip optional `[`
+        let bracketed = parser.check(crate::lexer::token::TokenKind::LeftBracket);
+        if bracketed { parser.advance(); }
+        loop {
+            while parser.check(crate::lexer::token::TokenKind::Whitespace) { parser.advance(); }
+            if parser.check(crate::lexer::token::TokenKind::Identifier) {
+                implements.push(parser.expect_identifier()?);
+            } else {
+                break;
+            }
+            while parser.check(crate::lexer::token::TokenKind::Whitespace) { parser.advance(); }
+            if parser.check(crate::lexer::token::TokenKind::Comma) {
+                parser.advance();
+            } else {
+                break;
+            }
+        }
+        if bracketed && parser.check(crate::lexer::token::TokenKind::RightBracket) {
+            parser.advance();
+        }
+    }
+
     let span = token_span_to_ast_span(&start_token);
-    Ok(Some(Statement::Struct { name, fields, span }))
+    Ok(Some(Statement::Struct { name, type_params, fields, implements, span }))
 }
 
 /// Parse `impl → StructName\n  define → method → (self, ...) ... end\nend`
@@ -187,4 +241,101 @@ pub fn parse_impl(parser: &mut Parser) -> Result<Option<Statement>, String> {
 
     let span = token_span_to_ast_span(&start_token);
     Ok(Some(Statement::Impl { struct_name, methods, span }))
+}
+
+/// Task E.1 — Parse `protocol → Name\n  method_name(params) → return\nend`
+///
+/// Syntax:
+/// ```text
+/// protocol → Serializable
+///   serialize(self) → string
+///   deserialize(s: string) → Self
+/// end
+/// ```
+pub fn parse_protocol(parser: &mut Parser) -> Result<Option<Statement>, String> {
+    use crate::lexer::token::TokenKind;
+    let start_token = parser.peek().clone();
+    parser.expect_keyword("protocol")?;
+    parser.skip_optional_arrow();
+    let name = parser.expect_identifier()?;
+
+    let mut methods = Vec::new();
+
+    // Skip newlines before body
+    while !parser.is_at_end() && matches!(parser.peek().kind, TokenKind::Newline | TokenKind::Whitespace) {
+        parser.advance();
+    }
+
+    // Parse method signatures until `end`
+    while !parser.is_at_end() && !parser.check_keyword("end") {
+        // Skip blank lines
+        while !parser.is_at_end() && matches!(parser.peek().kind, TokenKind::Newline | TokenKind::Whitespace) {
+            parser.advance();
+        }
+        if parser.check_keyword("end") || parser.is_at_end() { break; }
+
+        // method_name(param: type, ...) → return_type
+        if parser.check(TokenKind::Identifier) {
+            let method_name = parser.expect_identifier()?;
+            let mut param_types = Vec::new();
+
+            // Optional parameter list in parens
+            if parser.check(TokenKind::LeftParen) {
+                parser.advance();
+                while !parser.check(TokenKind::RightParen) && !parser.is_at_end() {
+                    // param_name: type  OR  just a type name
+                    let _param_name = if parser.check(TokenKind::Identifier) {
+                        let id = parser.expect_identifier()?;
+                        if parser.check(TokenKind::Colon) { parser.advance(); }
+                        id
+                    } else {
+                        "arg".to_string()
+                    };
+                    // Collect type name (identifier or built-in type keyword like string/int)
+                    // Use allow_reserved=true so type keywords ("string", "int", etc.) are accepted
+                    if parser.check(TokenKind::Identifier) {
+                        let type_name = parser.expect_identifier_allow_reserved(true)?;
+                        param_types.push(type_name);
+                    }
+                    while parser.check(TokenKind::Comma) { parser.advance(); }
+                    // skip whitespace
+                    while matches!(parser.peek().kind, TokenKind::Whitespace) { parser.advance(); }
+                }
+                if parser.check(TokenKind::RightParen) { parser.advance(); }
+            }
+
+            // Optional return type after → (accept identifiers, type keywords, and other keywords like null)
+            let return_type = if parser.check(TokenKind::Arrow) {
+                parser.advance();
+                if parser.check(TokenKind::Identifier) {
+                    Some(parser.expect_identifier_allow_reserved(true)?)
+                } else if parser.check(TokenKind::Keyword) {
+                    // Accept keywords like `null`, `bool`, etc. as return type names
+                    let kw = parser.peek().value.clone();
+                    parser.advance();
+                    Some(kw)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            methods.push((method_name, param_types, return_type));
+
+            // Consume any remaining tokens on this line (safety: avoids infinite loop on unexpected tokens)
+            while !parser.is_at_end() && !matches!(parser.peek().kind, TokenKind::Newline | TokenKind::Whitespace) && !parser.check_keyword("end") {
+                parser.advance();
+            }
+        }
+
+        // Consume newline
+        while !parser.is_at_end() && matches!(parser.peek().kind, TokenKind::Newline | TokenKind::Whitespace) {
+            parser.advance();
+        }
+    }
+
+    parser.expect_keyword("end")?;
+    let span = token_span_to_ast_span(&start_token);
+    Ok(Some(Statement::Protocol { name, methods, span }))
 }

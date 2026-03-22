@@ -60,6 +60,7 @@ impl Permission {
 }
 
 /// Permission manager - grants, denies, and checks permissions
+#[derive(Clone)]
 pub struct PermissionManager {
     granted: Vec<Permission>,
     denied: Vec<Permission>, // Explicit denials override grants

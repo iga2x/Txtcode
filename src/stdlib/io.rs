@@ -10,11 +10,17 @@ use std::path::PathBuf;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::Arc;
 
 lazy_static::lazy_static! {
     static ref READ_HANDLES: Mutex<HashMap<i64, BufReader<fs::File>>> = Mutex::new(HashMap::new());
     static ref WRITE_HANDLES: Mutex<HashMap<i64, std::io::BufWriter<fs::File>>> = Mutex::new(HashMap::new());
     static ref NEXT_HANDLE_ID: Mutex<i64> = Mutex::new(1);
+    // Group 27.4: CSV streaming handles
+    static ref CSV_READ_HANDLES: Mutex<HashMap<i64, (BufReader<fs::File>, char)>> =
+        Mutex::new(HashMap::new());
+    static ref CSV_WRITE_HANDLES: Mutex<HashMap<i64, (std::io::BufWriter<fs::File>, char)>> =
+        Mutex::new(HashMap::new());
 }
 
 fn next_handle_id() -> i64 {
@@ -256,14 +262,18 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
 
                         let validated_path = Self::validate_path(path)?;
-                        fs::read_to_string(&validated_path)
-                            .map(Value::String)
-                            .map_err(|e| RuntimeError::new(format!("Failed to read file: {}", e)))
+                        match fs::read_to_string(&validated_path) {
+                            Ok(content) => Ok(Value::String(Arc::from(content))),
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                Ok(crate::stdlib::errors::file_not_found(path))
+                            }
+                            Err(e) => Err(RuntimeError::new(format!("Failed to read file: {}", e))),
+                        }
                     }
                     _ => Err(RuntimeError::new(
                         "read_file requires a string path".to_string(),
@@ -283,12 +293,12 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
 
                         let validated_path = Self::validate_path(path)?;
-                        fs::write(&validated_path, content)
+                        fs::write(&validated_path, content.as_bytes())
                             .map(|_| Value::Null)
                             .map_err(|e| RuntimeError::new(format!("Failed to write file: {}", e)))
                     }
@@ -307,7 +317,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         match Self::validate_path(path) {
@@ -332,7 +342,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
@@ -344,7 +354,7 @@ impl IOLib {
                                 .map(|entry: Result<std::fs::DirEntry, std::io::Error>| {
                                     entry
                                         .map(|e: std::fs::DirEntry| {
-                                            Value::String(e.path().to_string_lossy().to_string())
+                                            Value::String(Arc::from(e.path().to_string_lossy().to_string()))
                                         })
                                         .map_err(|e| {
                                             RuntimeError::new(format!(
@@ -376,7 +386,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         match Self::validate_path(path) {
@@ -401,7 +411,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         match Self::validate_path(path) {
@@ -426,7 +436,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
@@ -453,7 +463,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("delete".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
@@ -481,7 +491,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("delete".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
 
@@ -517,7 +527,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
@@ -525,7 +535,7 @@ impl IOLib {
                             RuntimeError::new(format!("Failed to read file: {}", e))
                         })?;
                         // Return as hex string for binary data
-                        Ok(Value::String(hex::encode(data)))
+                        Ok(Value::String(Arc::from(hex::encode(data))))
                     }
                     _ => Err(RuntimeError::new(
                         "read_file_binary requires a string path".to_string(),
@@ -545,7 +555,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
@@ -571,11 +581,11 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
-                        let data = hex::decode(data_hex)
+                        let data = hex::decode(data_hex.as_ref())
                             .map_err(|e| RuntimeError::new(format!("Invalid hex data: {}", e)))?;
                         fs::write(&validated_path, data)
                             .map(|_| Value::Null)
@@ -598,7 +608,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
@@ -632,11 +642,11 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(src.as_str()),
+                                Some(src.as_ref()),
                             )?;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(dst.as_str()),
+                                Some(dst.as_ref()),
                             )?;
                         }
                         let validated_src = Self::validate_path(src)?;
@@ -662,11 +672,11 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(src.as_str()),
+                                Some(src.as_ref()),
                             )?;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(dst.as_str()),
+                                Some(dst.as_ref()),
                             )?;
                         }
                         let validated_src = Self::validate_path(src)?;
@@ -747,7 +757,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
@@ -756,7 +766,7 @@ impl IOLib {
                         })?;
                         let lines: Vec<Value> = content
                             .lines()
-                            .map(|l| Value::String(l.to_string()))
+                            .map(|l| Value::String(Arc::from(l.to_string())))
                             .collect();
                         Ok(Value::Array(lines))
                     }
@@ -777,7 +787,7 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("read".to_string()),
-                                Some(path.as_str()),
+                                Some(path.as_ref()),
                             )?;
                         }
                         let validated_path = Self::validate_path(path)?;
@@ -807,7 +817,7 @@ impl IOLib {
                                         }
                                     }
                                     ',' if !in_quotes => {
-                                        fields.push(Value::String(field.clone()));
+                                        fields.push(Value::String(Arc::from(field.clone())));
                                         field.clear();
                                     }
                                     _ => {
@@ -815,7 +825,7 @@ impl IOLib {
                                     }
                                 }
                             }
-                            fields.push(Value::String(field));
+                            fields.push(Value::String(Arc::from(field)));
                             rows.push(Value::Array(fields));
                         }
                         Ok(Value::Array(rows))
@@ -836,7 +846,7 @@ impl IOLib {
                 };
                 let mode = if args.len() == 2 {
                     match &args[1] {
-                        Value::String(m) => m.as_str(),
+                        Value::String(m) => m.as_ref(),
                         _ => return Err(RuntimeError::new("file_open: mode must be a string".to_string())),
                     }
                 } else {
@@ -849,21 +859,21 @@ impl IOLib {
                 }
                 match mode {
                     "r" | "read" => {
-                        let file = fs::File::open(&path)
+                        let file = fs::File::open(path.as_ref())
                             .map_err(|e| RuntimeError::new(format!("file_open: cannot open '{}': {}", path, e)))?;
                         let id = next_handle_id();
                         READ_HANDLES.lock().unwrap().insert(id, BufReader::new(file));
                         Ok(Value::Integer(id))
                     }
                     "w" | "write" => {
-                        let file = fs::File::create(&path)
+                        let file = fs::File::create(path.as_ref())
                             .map_err(|e| RuntimeError::new(format!("file_open: cannot create '{}': {}", path, e)))?;
                         let id = next_handle_id();
                         WRITE_HANDLES.lock().unwrap().insert(id, std::io::BufWriter::new(file));
                         Ok(Value::Integer(id))
                     }
                     "a" | "append" => {
-                        let file = fs::OpenOptions::new().append(true).create(true).open(&path)
+                        let file = fs::OpenOptions::new().append(true).create(true).open(path.as_ref())
                             .map_err(|e| RuntimeError::new(format!("file_open: cannot open '{}' for append: {}", path, e)))?;
                         let id = next_handle_id();
                         WRITE_HANDLES.lock().unwrap().insert(id, std::io::BufWriter::new(file));
@@ -892,7 +902,7 @@ impl IOLib {
                     // Strip trailing newline
                     if line.ends_with('\n') { line.pop(); }
                     if line.ends_with('\r') { line.pop(); }
-                    Ok(Value::String(line))
+                    Ok(Value::String(Arc::from(line)))
                 }
             }
             "file_write_line" => {
@@ -903,8 +913,8 @@ impl IOLib {
                     Value::Integer(n) => *n,
                     _ => return Err(RuntimeError::new("file_write_line: handle must be an integer".to_string())),
                 };
-                let line = match &args[1] {
-                    Value::String(s) => s.clone(),
+                let line: String = match &args[1] {
+                    Value::String(s) => s.to_string(),
                     other => other.to_string(),
                 };
                 let mut handles = WRITE_HANDLES.lock().unwrap();
@@ -950,7 +960,7 @@ impl IOLib {
                     checker.check_permission(&PermissionResource::FileSystem("write".to_string()), None)?;
                 }
                 let path = match &args[0] {
-                    Value::String(p) => p.clone(),
+                    Value::String(p) => p.to_string(),
                     _ => return Err(RuntimeError::new("csv_write: path must be a string".to_string())),
                 };
                 let rows = match &args[1] {
@@ -980,7 +990,7 @@ impl IOLib {
                 path.keep().map_err(|e| {
                     RuntimeError::new(format!("Failed to persist temp file: {}", e))
                 })?;
-                Ok(Value::String(path_str))
+                Ok(Value::String(Arc::from(path_str)))
             }
             "watch_file" => {
                 if args.len() != 1 {
@@ -991,7 +1001,7 @@ impl IOLib {
                 match &args[0] {
                     Value::String(path) => {
                         let mut map = indexmap::IndexMap::new();
-                        map.insert("path".to_string(), Value::String(path.clone()));
+                        map.insert("path".to_string(), Value::String(Arc::from(path.clone())));
                         match Self::validate_path(path) {
                             Ok(validated_path) => {
                                 let exists = validated_path.exists();
@@ -1052,11 +1062,11 @@ impl IOLib {
                             use crate::runtime::permissions::PermissionResource;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(target.as_str()),
+                                Some(target.as_ref()),
                             )?;
                             checker.check_permission(
                                 &PermissionResource::FileSystem("write".to_string()),
-                                Some(link_path.as_str()),
+                                Some(link_path.as_ref()),
                             )?;
                         }
                         let validated_link = Self::validate_path(link_path)?;
@@ -1118,14 +1128,14 @@ impl IOLib {
                             arr.iter()
                                 .filter_map(|v| {
                                     if let Value::String(s) = v {
-                                        Some(s.clone())
+                                        Some(s.to_string())
                                     } else {
                                         None
                                     }
                                 })
                                 .collect()
                         } else if let Value::String(s) = &args[1] {
-                            vec![s.clone()]
+                            vec![s.to_string()]
                         } else {
                             return Err(RuntimeError::new(
                                 "zip_create: second argument must be a string or array of strings"
@@ -1137,7 +1147,7 @@ impl IOLib {
                             .iter()
                             .filter_map(|v| {
                                 if let Value::String(s) = v {
-                                    Some(s.clone())
+                                    Some(s.to_string())
                                 } else {
                                     None
                                 }
@@ -1148,7 +1158,7 @@ impl IOLib {
                         let name = std::path::Path::new(src_path)
                             .file_name()
                             .and_then(|n| n.to_str())
-                            .unwrap_or(src_path.as_str());
+                            .unwrap_or(src_path.as_ref());
                         zip_writer.start_file(name, options).map_err(|e| {
                             RuntimeError::new(format!(
                                 "zip_create: error adding {}: {}",
@@ -1169,7 +1179,7 @@ impl IOLib {
                     zip_writer.finish().map_err(|e| {
                         RuntimeError::new(format!("zip_create: finalize error: {}", e))
                     })?;
-                    Ok(Value::String(validated_output.to_string_lossy().to_string()))
+                    Ok(Value::String(Arc::from(validated_output.to_string_lossy().to_string())))
                 }
             }
             "zip_extract" => {
@@ -1196,14 +1206,14 @@ impl IOLib {
                         }
                     };
                     let output_dir = match &args[1] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         _ => {
                             return Err(RuntimeError::new(
                                 "zip_extract: output_dir must be a string".to_string(),
                             ))
                         }
                     };
-                    let file = std::fs::File::open(&archive_path).map_err(|e| {
+                    let file = std::fs::File::open(archive_path.as_ref()).map_err(|e| {
                         RuntimeError::new(format!(
                             "zip_extract: cannot open {}: {}",
                             archive_path, e
@@ -1272,14 +1282,14 @@ impl IOLib {
                     use crate::runtime::permissions::PermissionResource;
                     checker.check_permission(
                         &PermissionResource::FileSystem("read".to_string()),
-                        Some(path.as_str()),
+                        Some(path.as_ref()),
                     )?;
                 }
                 let validated = Self::validate_path(&path)?;
                 let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
                 std::thread::spawn(move || {
                     let result = fs::read_to_string(&validated)
-                        .map(Value::String)
+                        .map(|s| Value::String(Arc::from(s)))
                         .map_err(|e| format!("Failed to read file: {}", e));
                     sender.send(result);
                 });
@@ -1292,7 +1302,7 @@ impl IOLib {
                     ));
                 }
                 let (path, content) = match (&args[0], &args[1]) {
-                    (Value::String(p), Value::String(c)) => (p.clone(), c.clone()),
+                    (Value::String(p), Value::String(c)) => (p.to_string(), c.to_string()),
                     _ => return Err(RuntimeError::new(
                         "async_write_file requires string path and content".to_string(),
                     )),
@@ -1305,18 +1315,210 @@ impl IOLib {
                         Some(path.as_str()),
                     )?;
                 }
-                let validated = Self::validate_path(&path)?;
+                let validated = Self::validate_path(path.as_str())?;
                 let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
                 std::thread::spawn(move || {
-                    let result = fs::write(&validated, &content)
+                    let result = fs::write(&validated, content.as_bytes())
                         .map(|_| Value::Null)
                         .map_err(|e| format!("Failed to write file: {}", e));
                     sender.send(result);
                 });
                 Ok(Value::Future(handle))
             }
+            // ── Group 27.4: CSV Streaming ─────────────────────────────────────────
+
+            // csv_stream_reader(path [, delimiter]) → handle_id
+            // Opens a CSV file for row-by-row reading.
+            "csv_stream_reader" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::new(
+                        "csv_stream_reader requires 1 argument (path)".to_string(),
+                    ));
+                }
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    if let Value::String(path) = &args[0] {
+                        checker.check_permission(
+                            &PermissionResource::FileSystem("read".to_string()),
+                            Some(path.as_ref()),
+                        )?;
+                    }
+                }
+                let path = match &args[0] {
+                    Value::String(s) => s.to_string(),
+                    _ => return Err(RuntimeError::new(
+                        "csv_stream_reader: path must be a string".to_string(),
+                    )),
+                };
+                let delimiter = match args.get(1) {
+                    Some(Value::String(d)) if !d.is_empty() => {
+                        d.chars().next().unwrap_or(',')
+                    }
+                    _ => ',',
+                };
+                let file = fs::File::open(&path).map_err(|e| {
+                    RuntimeError::new(format!("csv_stream_reader: cannot open '{}': {}", path, e))
+                })?;
+                let reader = BufReader::new(file);
+                let id = next_handle_id();
+                CSV_READ_HANDLES.lock().unwrap().insert(id, (reader, delimiter));
+                Ok(Value::Integer(id))
+            }
+
+            // csv_stream_writer(path [, delimiter]) → handle_id
+            // Opens a CSV file for row-by-row writing (overwrites).
+            "csv_stream_writer" => {
+                if args.is_empty() {
+                    return Err(RuntimeError::new(
+                        "csv_stream_writer requires 1 argument (path)".to_string(),
+                    ));
+                }
+                if let Some(checker) = permission_checker {
+                    use crate::runtime::permissions::PermissionResource;
+                    if let Value::String(path) = &args[0] {
+                        checker.check_permission(
+                            &PermissionResource::FileSystem("write".to_string()),
+                            Some(path.as_ref()),
+                        )?;
+                    }
+                }
+                let path = match &args[0] {
+                    Value::String(s) => s.to_string(),
+                    _ => return Err(RuntimeError::new(
+                        "csv_stream_writer: path must be a string".to_string(),
+                    )),
+                };
+                let delimiter = match args.get(1) {
+                    Some(Value::String(d)) if !d.is_empty() => {
+                        d.chars().next().unwrap_or(',')
+                    }
+                    _ => ',',
+                };
+                let file = fs::File::create(&path).map_err(|e| {
+                    RuntimeError::new(format!("csv_stream_writer: cannot create '{}': {}", path, e))
+                })?;
+                let writer = std::io::BufWriter::new(file);
+                let id = next_handle_id();
+                CSV_WRITE_HANDLES.lock().unwrap().insert(id, (writer, delimiter));
+                Ok(Value::Integer(id))
+            }
+
+            // csv_read_row(handle_id) → Array[String] | null (null = EOF)
+            "csv_read_row" => {
+                let id = match args.first() {
+                    Some(Value::Integer(n)) => *n,
+                    _ => return Err(RuntimeError::new(
+                        "csv_read_row(id): expected integer handle".to_string(),
+                    )),
+                };
+                let mut handles = CSV_READ_HANDLES.lock().unwrap();
+                let (reader, delimiter) = handles.get_mut(&id).ok_or_else(|| {
+                    RuntimeError::new(format!("csv_read_row: no open reader with id {}", id))
+                })?;
+                let delim = *delimiter;
+                let mut line = String::new();
+                let n = reader.read_line(&mut line).map_err(|e| {
+                    RuntimeError::new(format!("csv_read_row: read error: {}", e))
+                })?;
+                if n == 0 {
+                    return Ok(Value::Null); // EOF
+                }
+                let line = line.trim_end_matches('\n').trim_end_matches('\r');
+                // Simple CSV parsing (handles quoted fields)
+                let fields = Self::parse_csv_line(line, delim);
+                Ok(Value::Array(fields.into_iter().map(|s| Value::String(Arc::from(s))).collect()))
+            }
+
+            // csv_write_row(handle_id, row_array) → null
+            "csv_write_row" => {
+                if args.len() < 2 {
+                    return Err(RuntimeError::new(
+                        "csv_write_row requires 2 arguments (id, row)".to_string(),
+                    ));
+                }
+                let id = match &args[0] {
+                    Value::Integer(n) => *n,
+                    _ => return Err(RuntimeError::new(
+                        "csv_write_row: first argument must be integer handle".to_string(),
+                    )),
+                };
+                let fields = match &args[1] {
+                    Value::Array(arr) => arr.clone(),
+                    _ => return Err(RuntimeError::new(
+                        "csv_write_row: second argument must be an array".to_string(),
+                    )),
+                };
+                let mut handles = CSV_WRITE_HANDLES.lock().unwrap();
+                let (writer, delimiter) = handles.get_mut(&id).ok_or_else(|| {
+                    RuntimeError::new(format!("csv_write_row: no open writer with id {}", id))
+                })?;
+                let delim = *delimiter;
+                let line: Vec<String> = fields.iter().map(|f| {
+                    let s: String = match f {
+                        Value::String(s) => s.to_string(),
+                        other => other.to_string(),
+                    };
+                    if s.contains(delim) || s.contains('"') || s.contains('\n') {
+                        format!("\"{}\"", s.replace('"', "\"\""))
+                    } else {
+                        s
+                    }
+                }).collect();
+                writeln!(writer, "{}", line.join(&delim.to_string())).map_err(|e| {
+                    RuntimeError::new(format!("csv_write_row: write error: {}", e))
+                })?;
+                Ok(Value::Null)
+            }
+
+            // csv_stream_close(handle_id) → null
+            "csv_stream_close" => {
+                let id = match args.first() {
+                    Some(Value::Integer(n)) => *n,
+                    _ => return Err(RuntimeError::new(
+                        "csv_stream_close(id): expected integer handle".to_string(),
+                    )),
+                };
+                // Try to remove from both maps (writer needs flush)
+                let removed_writer = CSV_WRITE_HANDLES.lock().unwrap().remove(&id);
+                if let Some((mut writer, _)) = removed_writer {
+                    writer.flush().ok();
+                }
+                CSV_READ_HANDLES.lock().unwrap().remove(&id);
+                Ok(Value::Null)
+            }
+
             _ => Err(RuntimeError::new(format!("Unknown I/O function: {}", name))),
         }
+    }
+
+    /// Parse a single CSV line respecting quoted fields.
+    fn parse_csv_line(line: &str, delimiter: char) -> Vec<String> {
+        let mut fields = Vec::new();
+        let mut current = String::new();
+        let mut in_quotes = false;
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '"' {
+                if in_quotes {
+                    // Check for escaped quote ("")
+                    if chars.peek() == Some(&'"') {
+                        chars.next();
+                        current.push('"');
+                    } else {
+                        in_quotes = false;
+                    }
+                } else {
+                    in_quotes = true;
+                }
+            } else if c == delimiter && !in_quotes {
+                fields.push(current.clone());
+                current.clear();
+            } else {
+                current.push(c);
+            }
+        }
+        fields.push(current);
+        fields
     }
 
     fn rows_to_csv(rows: &[Value]) -> Result<String, RuntimeError> {
@@ -1325,8 +1527,8 @@ impl IOLib {
             match row {
                 Value::Array(fields) => {
                     let parts: Vec<String> = fields.iter().map(|f| {
-                        let s = match f {
-                            Value::String(s) => s.clone(),
+                        let s: String = match f {
+                            Value::String(s) => s.to_string(),
                             other => other.to_string(),
                         };
                         if s.contains(',') || s.contains('"') || s.contains('\n') {

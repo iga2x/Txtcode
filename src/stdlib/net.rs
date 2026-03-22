@@ -47,9 +47,9 @@ impl NetLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                         }
-                        Ok(Self::http_get_future(url.clone()))
+                        Ok(Self::http_get_future(url.to_string()))
                     }
                     _ => Err(RuntimeError::new("http_get requires a string URL".to_string())),
                 }
@@ -63,7 +63,7 @@ impl NetLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                         }
                         let headers = if args.len() == 3 {
                             match &args[2] {
@@ -71,7 +71,7 @@ impl NetLib {
                                 _ => return Err(RuntimeError::new("http_post headers must be a map".to_string())),
                             }
                         } else { None };
-                        Ok(Self::http_post_future(url.clone(), body.clone(), headers))
+                        Ok(Self::http_post_future(url.to_string(), body.to_string(), headers))
                     }
                     _ => Err(RuntimeError::new("http_post requires url and body as strings".to_string())),
                 }
@@ -85,12 +85,12 @@ impl NetLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                         }
                         let headers = if args.len() == 3 {
                             match &args[2] { Value::Map(h) => Some(h.clone()), _ => return Err(RuntimeError::new("http_put headers must be a map".to_string())) }
                         } else { None };
-                        Ok(Self::http_put_future(url.clone(), body.clone(), headers))
+                        Ok(Self::http_put_future(url.to_string(), body.to_string(), headers))
                     }
                     _ => Err(RuntimeError::new("http_put requires url and body as strings".to_string())),
                 }
@@ -104,12 +104,12 @@ impl NetLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                         }
                         let headers = if args.len() == 2 {
                             match &args[1] { Value::Map(h) => Some(h.clone()), _ => return Err(RuntimeError::new("http_delete headers must be a map".to_string())) }
                         } else { None };
-                        Ok(Self::http_delete_future(url.clone(), headers))
+                        Ok(Self::http_delete_future(url.to_string(), headers))
                     }
                     _ => Err(RuntimeError::new("http_delete requires a string URL".to_string())),
                 }
@@ -123,12 +123,12 @@ impl NetLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                         }
                         let headers = if args.len() == 3 {
                             match &args[2] { Value::Map(h) => Some(h.clone()), _ => return Err(RuntimeError::new("http_patch headers must be a map".to_string())) }
                         } else { None };
-                        Ok(Self::http_patch_future(url.clone(), body.clone(), headers))
+                        Ok(Self::http_patch_future(url.to_string(), body.to_string(), headers))
                     }
                     _ => Err(RuntimeError::new("http_patch requires url and body as strings".to_string())),
                 }
@@ -142,7 +142,7 @@ impl NetLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                         }
                         Self::http_headers_sync(url)
                     }
@@ -158,7 +158,7 @@ impl NetLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                         }
                         Self::http_status_sync(url)
                     }
@@ -172,7 +172,7 @@ impl NetLib {
                 let url = match &args[0] { Value::String(s) => s.clone(), _ => return Err(RuntimeError::new("http_timeout: url must be a string".to_string())) };
                 let method = match &args[1] { Value::String(s) => s.clone(), _ => return Err(RuntimeError::new("http_timeout: method must be a string".to_string())) };
                 let body: Option<String> = match &args[2] {
-                    Value::String(s) => Some(s.clone()),
+                    Value::String(s) => Some(s.to_string()),
                     Value::Null => None,
                     _ => return Err(RuntimeError::new("http_timeout: body must be a string or null".to_string())),
                 };
@@ -185,7 +185,7 @@ impl NetLib {
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
                     let hostname = Self::extract_hostname(&url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                 }
                 Self::http_timeout_sync(&url, &method, body.as_deref(), timeout_ms)
             }
@@ -198,7 +198,7 @@ impl NetLib {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
                             let hostname = Self::extract_hostname(url).ok_or_else(|| RuntimeError::new(format!("Malformed URL '{}': cannot determine hostname for permission check", url)))?;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(hostname.as_ref()))?;
                         }
                         // Synchronous context: no real streaming, returns full body like http_get
                         Self::http_get_sync(url)
@@ -217,9 +217,9 @@ impl NetLib {
                     Value::Float(f) => *f as i64,
                     _ => return Err(RuntimeError::new("http_response: status must be an integer".to_string())),
                 };
-                let body = match &args[1] {
+                let body: std::sync::Arc<str> = match &args[1] {
                     Value::String(s) => s.clone(),
-                    other => other.to_string(),
+                    other => std::sync::Arc::from(other.to_string()),
                 };
                 let headers = if args.len() == 3 {
                     match &args[2] {
@@ -231,28 +231,28 @@ impl NetLib {
                 };
                 let mut result = IndexMap::new();
                 result.insert("status".to_string(), Value::Integer(status));
-                result.insert("body".to_string(), Value::String(body));
+                result.insert("body".to_string(), Value::String(Arc::from(body)));
                 result.insert("headers".to_string(), Value::Map(headers));
                 Ok(Value::Map(result))
             }
             "http_request_method" => {
                 if args.len() != 1 { return Err(RuntimeError::new("http_request_method requires 1 argument (request)".to_string())); }
                 match &args[0] {
-                    Value::Map(m) => Ok(m.get("method").cloned().unwrap_or(Value::String("GET".to_string()))),
+                    Value::Map(m) => Ok(m.get("method").cloned().unwrap_or(Value::String(std::sync::Arc::from("GET")))),
                     _ => Err(RuntimeError::new("http_request_method: argument must be a request map".to_string())),
                 }
             }
             "http_request_path" => {
                 if args.len() != 1 { return Err(RuntimeError::new("http_request_path requires 1 argument (request)".to_string())); }
                 match &args[0] {
-                    Value::Map(m) => Ok(m.get("path").cloned().unwrap_or(Value::String("/".to_string()))),
+                    Value::Map(m) => Ok(m.get("path").cloned().unwrap_or(Value::String(std::sync::Arc::from("/")))),
                     _ => Err(RuntimeError::new("http_request_path: argument must be a request map".to_string())),
                 }
             }
             "http_request_body" => {
                 if args.len() != 1 { return Err(RuntimeError::new("http_request_body requires 1 argument (request)".to_string())); }
                 match &args[0] {
-                    Value::Map(m) => Ok(m.get("body").cloned().unwrap_or(Value::String(String::new()))),
+                    Value::Map(m) => Ok(m.get("body").cloned().unwrap_or(Value::String(std::sync::Arc::from("")))),
                     _ => Err(RuntimeError::new("http_request_body: argument must be a request map".to_string())),
                 }
             }
@@ -269,14 +269,14 @@ impl NetLib {
                     return Err(RuntimeError::new("ws_connect requires 1 argument (url)".to_string()));
                 }
                 let url = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => return Err(RuntimeError::new("ws_connect: url must be a string".to_string())),
                 };
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
                     let host = Self::extract_hostname(&url).ok_or_else(||
                         RuntimeError::new(format!("ws_connect: cannot extract hostname from '{}'", url)))?;
-                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                 }
                 Self::ws_connect_impl(&url)
             }
@@ -288,8 +288,8 @@ impl NetLib {
                     Value::Integer(n) => *n,
                     _ => return Err(RuntimeError::new("ws_send: id must be an integer".to_string())),
                 };
-                let msg = match &args[1] {
-                    Value::String(s) => s.clone(),
+                let msg: String = match &args[1] {
+                    Value::String(s) => s.to_string(),
                     other => other.to_string(),
                 };
                 Self::ws_send_impl(id, &msg)
@@ -320,14 +320,14 @@ impl NetLib {
                     return Err(RuntimeError::new("ws_connect requires 1 argument (url)".to_string()));
                 }
                 let url = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => return Err(RuntimeError::new("ws_connect: url must be a string".to_string())),
                 };
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
                     let host = Self::extract_hostname(&url).ok_or_else(||
                         RuntimeError::new(format!("ws_connect: cannot extract hostname from '{}'", url)))?;
-                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                 }
                 Self::ws_connect_impl(&url)
             }
@@ -346,7 +346,7 @@ impl NetLib {
                     (Value::String(host), Value::Integer(port)) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                         }
                         if *port < 1 || *port > 65535 {
                             return Err(RuntimeError::new("Port must be between 1 and 65535".to_string()));
@@ -356,7 +356,7 @@ impl NetLib {
                     (Value::String(host), Value::Float(port)) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                         }
                         let port_int = *port as i64;
                         if !(1..=65535).contains(&port_int) {
@@ -375,7 +375,7 @@ impl NetLib {
                     (Value::String(host), Value::Integer(port), Value::String(data)) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                         }
                         if *port < 1 || *port > 65535 {
                             return Err(RuntimeError::new("Port must be between 1 and 65535".to_string()));
@@ -393,7 +393,7 @@ impl NetLib {
                     Value::String(domain) => {
                         if let Some(checker) = permission_checker {
                             use crate::runtime::permissions::PermissionResource;
-                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(domain.as_str()))?;
+                            checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(domain.as_ref()))?;
                         }
                         Self::resolve_dns_sync(domain)
                     }
@@ -413,7 +413,7 @@ impl NetLib {
                 };
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
-                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                 }
                 Self::resolve_dns_sync(&host)
             }
@@ -444,7 +444,7 @@ impl NetLib {
                 } else { 3000 };
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
-                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                 }
                 Ok(Value::Boolean(Self::tcp_probe(&host, port as u16, timeout_ms)))
             }
@@ -468,7 +468,7 @@ impl NetLib {
                 } else { 3000 };
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
-                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                 }
                 // Probe ports 80 and 443; reachable if either succeeds.
                 let reachable = Self::tcp_probe(&host, 80, timeout_ms)
@@ -495,7 +495,7 @@ impl NetLib {
                 }
                 if let Some(checker) = permission_checker {
                     use crate::runtime::permissions::PermissionResource;
-                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_str()))?;
+                    checker.check_permission(&PermissionResource::Network("connect".to_string()), Some(host.as_ref()))?;
                 }
                 Self::tls_connect_sync(&host, port as u16)
             }
@@ -518,7 +518,7 @@ impl NetLib {
             if let Ok(val_str) = value.to_str() {
                 map.insert(
                     name.as_str().to_string(),
-                    Value::String(val_str.to_string()),
+                    Value::String(Arc::from(val_str.to_string())),
                 );
             }
         }
@@ -544,7 +544,7 @@ impl NetLib {
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
-        result.insert("body".to_string(), Value::String(body));
+        result.insert("body".to_string(), Value::String(Arc::from(body)));
         result.insert("headers".to_string(), Value::Map(headers_map));
         Ok(Value::Map(result))
     }
@@ -569,7 +569,7 @@ impl NetLib {
         if let Some(headers_map) = headers {
             for (key, value) in headers_map {
                 if let Value::String(val_str) = value {
-                    request = request.header(key, val_str);
+                    request = request.header(key.as_str(), val_str.as_ref());
                 }
             }
         }
@@ -585,7 +585,7 @@ impl NetLib {
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
-        result.insert("body".to_string(), Value::String(response_body));
+        result.insert("body".to_string(), Value::String(Arc::from(response_body)));
         result.insert("headers".to_string(), Value::Map(headers_map));
         Ok(Value::Map(result))
     }
@@ -614,7 +614,7 @@ impl NetLib {
         if let Some(headers_map) = headers {
             for (key, value) in headers_map {
                 if let Value::String(val_str) = value {
-                    request = request.header(key, val_str);
+                    request = request.header(key.as_str(), val_str.as_ref());
                 }
             }
         }
@@ -630,7 +630,7 @@ impl NetLib {
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
-        result.insert("body".to_string(), Value::String(response_body));
+        result.insert("body".to_string(), Value::String(Arc::from(response_body)));
         result.insert("headers".to_string(), Value::Map(headers_map));
         Ok(Value::Map(result))
     }
@@ -658,7 +658,7 @@ impl NetLib {
         if let Some(headers_map) = headers {
             for (key, value) in headers_map {
                 if let Value::String(val_str) = value {
-                    request = request.header(key, val_str);
+                    request = request.header(key.as_str(), val_str.as_ref());
                 }
             }
         }
@@ -674,7 +674,7 @@ impl NetLib {
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
-        result.insert("body".to_string(), Value::String(response_body));
+        result.insert("body".to_string(), Value::String(Arc::from(response_body)));
         result.insert("headers".to_string(), Value::Map(headers_map));
         Ok(Value::Map(result))
     }
@@ -702,7 +702,7 @@ impl NetLib {
         if let Some(headers_map) = headers {
             for (key, value) in headers_map {
                 if let Value::String(val_str) = value {
-                    request = request.header(key, val_str);
+                    request = request.header(key.as_str(), val_str.as_ref());
                 }
             }
         }
@@ -718,7 +718,7 @@ impl NetLib {
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
-        result.insert("body".to_string(), Value::String(response_body));
+        result.insert("body".to_string(), Value::String(Arc::from(response_body)));
         result.insert("headers".to_string(), Value::Map(headers_map));
         Ok(Value::Map(result))
     }
@@ -831,7 +831,7 @@ impl NetLib {
             .timeout(Duration::from_millis(timeout_ms))
             .build()
             .map_err(|e| RuntimeError::new(format!("Failed to create HTTP client: {}", e)))?;
-        let response = match method.to_uppercase().as_str() {
+        let response = match method.to_uppercase().as_ref() {
             "GET" => client.get(url).send().await,
             "POST" => {
                 let rb = client.post(url);
@@ -875,7 +875,7 @@ impl NetLib {
             .map_err(|e| RuntimeError::new(format!("Failed to read response body: {}", e)))?;
         let mut result = IndexMap::new();
         result.insert("status".to_string(), Value::Integer(status as i64));
-        result.insert("body".to_string(), Value::String(response_body));
+        result.insert("body".to_string(), Value::String(Arc::from(response_body)));
         result.insert("headers".to_string(), Value::Map(headers_map));
         Ok(Value::Map(result))
     }
@@ -898,7 +898,7 @@ impl NetLib {
             .await
             .map_err(|e| RuntimeError::new(format!("TCP connection failed: {}", e)))?;
         let mut result = IndexMap::new();
-        result.insert("host".to_string(), Value::String(host.to_string()));
+        result.insert("host".to_string(), Value::String(Arc::from(host.to_string())));
         result.insert("port".to_string(), Value::Integer(port as i64));
         result.insert("connected".to_string(), Value::Boolean(true));
         Ok(Value::Map(result))
@@ -934,7 +934,7 @@ impl NetLib {
         let addresses: Vec<_> = lookup_host((domain, 0))
             .await
             .map_err(|e| RuntimeError::new(format!("DNS resolution failed: {}", e)))?
-            .map(|addr| Value::String(addr.ip().to_string()))
+            .map(|addr| Value::String(Arc::from(addr.ip().to_string())))
             .collect();
         Ok(Value::Array(addresses))
     }
@@ -966,7 +966,7 @@ impl NetLib {
             .map_err(|e| RuntimeError::new(format!("tls_connect: TLS handshake failed: {}", e)))?;
 
         let mut result = IndexMap::new();
-        result.insert("host".to_string(), Value::String(host.to_string()));
+        result.insert("host".to_string(), Value::String(Arc::from(host.to_string())));
         result.insert("port".to_string(), Value::Integer(port as i64));
         result.insert("connected".to_string(), Value::Boolean(true));
         result.insert("tls".to_string(), Value::Boolean(true));
@@ -1040,10 +1040,10 @@ impl NetLib {
             .read()
             .map_err(|e| RuntimeError::new(format!("ws_recv: failed to receive: {}", e)))?;
         match msg {
-            Message::Text(t) => Ok(Value::String(t.to_string())),
-            Message::Binary(b) => Ok(Value::String(String::from_utf8_lossy(&b).to_string())),
+            Message::Text(t) => Ok(Value::String(Arc::from(t.to_string()))),
+            Message::Binary(b) => Ok(Value::String(Arc::from(String::from_utf8_lossy(&b).to_string()))),
             Message::Close(_) => Ok(Value::Null),
-            Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(Value::String(String::new())),
+            Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(Value::String(std::sync::Arc::from(""))),
         }
     }
 
@@ -1124,10 +1124,10 @@ impl NetLib {
                     };
                     let mut req = IndexMap::new();
                     req.insert("id".to_string(), Value::Integer(conn_id));
-                    req.insert("message".to_string(), Value::String(text));
+                    req.insert("message".to_string(), Value::String(Arc::from(text)));
                     let reply = executor.call_function_value(&handler_fn, &[Value::Map(req)])?;
-                    let reply_str = match reply {
-                        Value::String(s) => s,
+                    let reply_str: String = match reply {
+                        Value::String(s) => s.to_string(),
                         Value::Null => break,
                         other => other.to_string(),
                     };
@@ -1168,7 +1168,7 @@ impl NetLib {
 
         if let Some(checker) = permission_checker {
             checker.check_permission(
-                &crate::runtime::permissions::PermissionResource::Network("bind".to_string()),
+                &crate::runtime::permissions::PermissionResource::Network("listen".to_string()),
                 Some(&format!("0.0.0.0:{}", port)),
             )?;
         }
@@ -1186,15 +1186,23 @@ impl NetLib {
                 Ok(req) => req,
                 Err(_) => continue,
             };
-            // Call the handler
-            let response_val = executor.call_function_value(&handler_fn, &[Value::Map(request_map)])?;
+            // Call the handler; on error return HTTP 500 instead of propagating.
+            let response_val = match executor.call_function_value(&handler_fn, &[Value::Map(request_map)]) {
+                Ok(v) => v,
+                Err(e) => {
+                    let mut m = IndexMap::new();
+                    m.insert("status".to_string(), Value::Integer(500));
+                    m.insert("body".to_string(), Value::String(Arc::from(format!("Internal Server Error: {}", e))));
+                    Value::Map(m)
+                }
+            };
             // Write the HTTP response
             let _ = Self::write_http_response(&mut stream, response_val);
         }
         Ok(Value::Null)
     }
 
-    fn parse_http_request(stream: &mut std::net::TcpStream) -> Result<IndexMap<String, Value>, RuntimeError> {
+    pub fn parse_http_request(stream: &mut std::net::TcpStream) -> Result<IndexMap<String, Value>, RuntimeError> {
         use std::io::{BufRead, BufReader, Read};
         let mut reader = BufReader::new(stream.try_clone().map_err(|e| RuntimeError::new(e.to_string()))?);
 
@@ -1219,7 +1227,7 @@ impl NetLib {
                 if key == "content-length" {
                     content_length = val.parse().unwrap_or(0);
                 }
-                headers.insert(key, Value::String(val));
+                headers.insert(key, Value::String(Arc::from(val)));
             }
         }
 
@@ -1233,25 +1241,25 @@ impl NetLib {
         };
 
         let mut req = IndexMap::new();
-        req.insert("method".to_string(), Value::String(method));
-        req.insert("path".to_string(), Value::String(path));
-        req.insert("body".to_string(), Value::String(body));
+        req.insert("method".to_string(), Value::String(Arc::from(method)));
+        req.insert("path".to_string(), Value::String(Arc::from(path)));
+        req.insert("body".to_string(), Value::String(Arc::from(body)));
         req.insert("headers".to_string(), Value::Map(headers));
         Ok(req)
     }
 
-    fn write_http_response(stream: &mut std::net::TcpStream, response: Value) -> std::io::Result<()> {
+    pub fn write_http_response(stream: &mut std::net::TcpStream, response: Value) -> std::io::Result<()> {
         use std::io::Write;
         let (status, body, extra_headers) = match response {
             Value::Map(ref m) => {
                 let status = m.get("status").and_then(|v| if let Value::Integer(n) = v { Some(*n as u16) } else { None }).unwrap_or(200);
-                let body = m.get("body").map(|v| match v { Value::String(s) => s.clone(), other => other.to_string() }).unwrap_or_default();
+                let body: String = m.get("body").map(|v| match v { Value::String(s) => s.to_string(), other => other.to_string() }).unwrap_or_default();
                 let headers: Vec<String> = m.get("headers").and_then(|v| if let Value::Map(h) = v { Some(h) } else { None })
                     .map(|h| h.iter().map(|(k, v)| format!("{}: {}", k, v)).collect())
                     .unwrap_or_default();
                 (status, body, headers)
             }
-            Value::String(s) => (200, s, vec![]),
+            Value::String(s) => (200, s.to_string(), vec![]),
             _ => (200, response.to_string(), vec![]),
         };
         let status_text = match status {

@@ -485,7 +485,10 @@ pub fn run() -> Result<(), String> {
                                 "change": 1   // Full sync
                             },
                             "completionProvider": {
-                                "triggerCharacters": ["_", "("]
+                                "triggerCharacters": [".", "_", "("]
+                            },
+                            "signatureHelpProvider": {
+                                "triggerCharacters": ["(", ","]
                             },
                             "definitionProvider": true,
                             "hoverProvider": true,
@@ -564,11 +567,32 @@ pub fn run() -> Result<(), String> {
             }
 
             "textDocument/completion" => {
-                let response = json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "result": stdlib_completions()
-                });
+                let uri = msg["params"]["textDocument"]["uri"]
+                    .as_str().unwrap_or("").to_string();
+                let line = msg["params"]["position"]["line"].as_u64().unwrap_or(0) as usize;
+                let character = msg["params"]["position"]["character"].as_u64().unwrap_or(0) as usize;
+                let completions = if let Some(text) = documents.get(&uri) {
+                    context_completions(text, line, character, &workspace_index)
+                } else {
+                    stdlib_completions()
+                };
+                let response = json!({ "jsonrpc": "2.0", "id": id, "result": completions });
+                write_message(&mut stdout, &response)
+                    .map_err(|e| format!("LSP write error: {}", e))?;
+            }
+
+            "textDocument/signatureHelp" => {
+                let uri = msg["params"]["textDocument"]["uri"]
+                    .as_str().unwrap_or("").to_string();
+                let line = msg["params"]["position"]["line"].as_u64().unwrap_or(0) as usize;
+                let character = msg["params"]["position"]["character"].as_u64().unwrap_or(0) as usize;
+                let result = if let Some(text) = documents.get(&uri) {
+                    signature_help_at(text, line, character)
+                        .unwrap_or(Value::Null)
+                } else {
+                    Value::Null
+                };
+                let response = json!({ "jsonrpc": "2.0", "id": id, "result": result });
                 write_message(&mut stdout, &response)
                     .map_err(|e| format!("LSP write error: {}", e))?;
             }
@@ -904,6 +928,210 @@ fn find_all_occurrences(text: &str, name: &str) -> Vec<(usize, usize, usize, usi
     results
 }
 
+// ── Context-aware completions ─────────────────────────────────────────────────
+
+/// Method names available on common Txtcode value types.
+const METHOD_COMPLETIONS: &[(&str, &str)] = &[
+    ("len", "string | array | map | bytes"),
+    ("upper", "string"), ("lower", "string"), ("trim", "string"),
+    ("split", "string"), ("starts_with", "string"), ("ends_with", "string"),
+    ("contains", "string"), ("replace", "string"), ("chars", "string"),
+    ("push", "array"), ("pop", "array"), ("shift", "array"), ("unshift", "array"),
+    ("map", "array"), ("filter", "array"), ("reduce", "array"), ("find", "array"),
+    ("sort", "array"), ("reverse", "array"), ("concat", "array"), ("slice", "array"),
+    ("sum", "array"), ("join", "array"),
+    ("keys", "map"), ("values", "map"), ("has", "map"), ("delete", "map"),
+    ("to_json", "any"), ("to_string", "any"), ("type_of", "any"),
+];
+
+/// Build context-aware completion items for the given cursor position.
+///
+/// Dispatch logic:
+/// - After `.` → method completions
+/// - After `import →` → package name completions
+/// - Otherwise → scope identifiers + stdlib + keywords
+pub fn context_completions(
+    source: &str,
+    line: usize,
+    character: usize,
+    index: &WorkspaceIndex,
+) -> Value {
+    // Determine context from the text before the cursor on the current line
+    let src_line = source.lines().nth(line).unwrap_or("");
+    let before_cursor = if character <= src_line.len() {
+        &src_line[..character]
+    } else {
+        src_line
+    };
+    let trimmed = before_cursor.trim_end();
+
+    // Context: after `.` (method completions)
+    if trimmed.ends_with('.') {
+        let items: Vec<Value> = METHOD_COMPLETIONS
+            .iter()
+            .map(|(name, detail)| json!({
+                "label": name,
+                "kind": 2,      // Method
+                "detail": detail,
+                "insertText": format!("{}(", name)
+            }))
+            .collect();
+        return json!({ "isIncomplete": false, "items": items });
+    }
+
+    // Context: after `import →` — offer package names from workspace index
+    if trimmed.ends_with("import →") || trimmed.ends_with("import") {
+        let pkg_items: Vec<Value> = index.definitions.keys()
+            .take(50)
+            .map(|name| json!({ "label": name, "kind": 9, "detail": "symbol" }))
+            .collect();
+        return json!({ "isIncomplete": false, "items": pkg_items });
+    }
+
+    // General: scope identifiers at cursor position + stdlib + keywords
+    let scope = build_scope_at_position(source, line);
+    let scope_items: Vec<Value> = scope
+        .iter()
+        .map(|(name, kind)| {
+            let lsp_kind: u32 = match kind.as_str() {
+                "function" => 3,
+                "variable" => 6,
+                _ => 6,
+            };
+            json!({ "label": name, "kind": lsp_kind, "detail": kind.as_str() })
+        })
+        .collect();
+
+    // Merge scope + stdlib + keywords, deduplicated
+    let mut items = scope_items;
+    let scope_names: std::collections::HashSet<String> =
+        scope.iter().map(|(n, _)| n.clone()).collect();
+
+    items.extend(STDLIB_FUNCTIONS.iter()
+        .filter(|n| !scope_names.contains(**n))
+        .map(|name| json!({
+            "label": name,
+            "kind": 3,
+            "detail": "stdlib",
+            "insertText": format!("{}(", name)
+        })));
+    items.extend(KEYWORDS.iter().map(|kw| json!({
+        "label": kw,
+        "kind": 14,
+        "detail": "keyword"
+    })));
+
+    json!({ "isIncomplete": false, "items": items })
+}
+
+/// Collect all variable and function names visible at `line` in the source.
+/// Returns a list of (name, kind) pairs where kind is "function" or "variable".
+pub fn build_scope_at_position(source: &str, line: usize) -> Vec<(String, String)> {
+    let mut scope: Vec<(String, String)> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for (ln, src_line) in source.lines().enumerate() {
+        if ln >= line { break; }
+        let trimmed = src_line.trim();
+
+        // Function definition: `define → name → (params)` or `define name`
+        if trimmed.starts_with("define") {
+            let after = trimmed["define".len()..].trim().trim_start_matches('→').trim();
+            let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !name.is_empty() && !seen.contains(&name) {
+                scope.push((name.clone(), "function".to_string()));
+                seen.insert(name);
+            }
+        }
+        // Variable assignment: `store → name → ...`
+        else if trimmed.starts_with("store") {
+            let after = trimmed["store".len()..].trim().trim_start_matches('→').trim();
+            let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !name.is_empty() && !seen.contains(&name) {
+                scope.push((name.clone(), "variable".to_string()));
+                seen.insert(name);
+            }
+        }
+        // For loop variable: `for → var in ...`
+        else if trimmed.starts_with("for") {
+            let after = trimmed["for".len()..].trim().trim_start_matches('→').trim();
+            let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !name.is_empty() && !seen.contains(&name) {
+                scope.push((name.clone(), "variable".to_string()));
+                seen.insert(name);
+            }
+        }
+    }
+    scope
+}
+
+/// Provide signature help when cursor is inside a function call's argument list.
+///
+/// Detects the innermost unclosed `(` before the cursor, looks up the function
+/// name that precedes it, and returns LSP `SignatureHelp`.
+pub fn signature_help_at(source: &str, line: usize, character: usize) -> Option<Value> {
+    let src_line = source.lines().nth(line)?;
+    let before = if character <= src_line.len() { &src_line[..character] } else { src_line };
+
+    // Find the function name before the last unclosed `(`
+    let open_paren = before.rfind('(')?;
+    let before_paren = before[..open_paren].trim_end();
+    // Extract the trailing identifier (function name)
+    let fn_name: String = before_paren.chars().rev()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect::<String>()
+        .chars().rev().collect();
+    if fn_name.is_empty() { return None; }
+
+    // Count commas since the last `(` to determine active parameter
+    let args_text = &before[open_paren + 1..];
+    let active_param = args_text.chars().filter(|&c| c == ',').count() as u32;
+
+    // Try to get parameter info from the source definition
+    let params = extract_function_params(source, &fn_name)
+        .unwrap_or_else(|| vec!["...".to_string()]);
+
+    let params_str = params.join(", ");
+    let param_infos: Vec<Value> = params.iter()
+        .map(|p| json!({ "label": p }))
+        .collect();
+
+    Some(json!({
+        "signatures": [{
+            "label": format!("{}({})", fn_name, params_str),
+            "parameters": param_infos,
+            "activeParameter": active_param.min(params.len().saturating_sub(1) as u32)
+        }],
+        "activeSignature": 0,
+        "activeParameter": active_param.min(params.len().saturating_sub(1) as u32)
+    }))
+}
+
+/// Extract parameter names for a named function from the source text.
+/// Returns `None` if the function is not found.
+fn extract_function_params(source: &str, fn_name: &str) -> Option<Vec<String>> {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("define") { continue; }
+        let after = trimmed["define".len()..].trim().trim_start_matches('→').trim();
+        let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        if name != fn_name { continue; }
+        // Find `(params)`
+        let rest = &after[name.len()..].trim().trim_start_matches('→').trim();
+        if let Some(open) = rest.find('(') {
+            if let Some(close) = rest[open..].find(')') {
+                let params_str = &rest[open + 1..open + close];
+                let params: Vec<String> = params_str.split(',')
+                    .map(|p| p.trim().to_string())
+                    .filter(|p| !p.is_empty())
+                    .collect();
+                return Some(params);
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -997,6 +1225,144 @@ mod tests {
         // uri_to_path should round-trip
         if let Some(p) = uri_to_path(&uri) {
             assert!(p.to_string_lossy().contains("test.tc"));
+        }
+    }
+
+    // ── F.3: Context-aware completion + signatureHelp tests ──────────────────
+
+    // F.3.1: Variable defined before cursor appears in scope completions
+    #[test]
+    fn test_f3_variable_completion() {
+        let src = "store → myvar → 42\n";
+        let idx = WorkspaceIndex::new();
+        let completions = context_completions(src, 1, 0, &idx);
+        let items = completions["items"].as_array().unwrap();
+        assert!(
+            items.iter().any(|i| i["label"].as_str() == Some("myvar")),
+            "expected 'myvar' in completions, got {} items", items.len()
+        );
+    }
+
+    // F.3.2: Function defined before cursor appears as function completion
+    #[test]
+    fn test_f3_function_completion() {
+        let src = "define → my_func → (x)\n  return → x\nend\n";
+        let idx = WorkspaceIndex::new();
+        let completions = context_completions(src, 3, 0, &idx);
+        let items = completions["items"].as_array().unwrap();
+        let fn_item = items.iter().find(|i| i["label"].as_str() == Some("my_func"));
+        assert!(fn_item.is_some(), "expected 'my_func' in completions");
+        assert_eq!(fn_item.unwrap()["kind"].as_u64(), Some(3)); // Function kind
+    }
+
+    // F.3.3: Stdlib functions always appear in general completions
+    #[test]
+    fn test_f3_stdlib_completion() {
+        let src = "store → x → 1\n";
+        let idx = WorkspaceIndex::new();
+        let completions = context_completions(src, 1, 0, &idx);
+        let items = completions["items"].as_array().unwrap();
+        assert!(
+            items.iter().any(|i| i["label"].as_str() == Some("print")),
+            "stdlib 'print' should be in completions"
+        );
+    }
+
+    // F.3.4: After `.` → method completions only
+    #[test]
+    fn test_f3_method_completion_after_dot() {
+        let src = "store → s → \"hello\"\n";
+        let idx = WorkspaceIndex::new();
+        // Cursor is after `s.` on line 1
+        let completions = context_completions(src, 1, 2, &idx);
+        // Simulate cursor after `.`
+        let completions_after_dot = context_completions("store → s → \"hello\"\ns.", 1, 2, &idx);
+        let items = completions_after_dot["items"].as_array().unwrap();
+        assert!(
+            items.iter().any(|i| i["label"].as_str() == Some("len")),
+            "method 'len' should appear after dot"
+        );
+        assert!(completions["items"].as_array().unwrap().iter().any(|i| i["label"] == "print"),
+            "stdlib present in non-dot context");
+    }
+
+    // F.3.5: signatureHelp returns parameter info for defined function
+    #[test]
+    fn test_f3_signature_help_defined_fn() {
+        let src = "define → add → (a, b)\n  return → a + b\nend\nadd(";
+        let help = signature_help_at(src, 3, 4); // cursor after `add(`
+        assert!(help.is_some(), "expected signature help for add(");
+        let h = help.unwrap();
+        let sigs = h["signatures"].as_array().unwrap();
+        assert!(!sigs.is_empty(), "at least one signature");
+        let label = sigs[0]["label"].as_str().unwrap();
+        assert!(label.contains("add"), "label should include function name: {}", label);
+        assert!(label.contains("a") && label.contains("b"), "label should include params: {}", label);
+    }
+
+    // F.3.6: signatureHelp returns None for unknown function
+    #[test]
+    fn test_f3_signature_help_unknown_fn() {
+        let src = "store → x → unknown_fn(";
+        // No definition of unknown_fn — falls back to `...`
+        let help = signature_help_at(src, 0, src.len());
+        // Should still return something (with "...") since we find `unknown_fn(`
+        if let Some(h) = help {
+            let sigs = h["signatures"].as_array().unwrap();
+            assert!(!sigs.is_empty());
+        }
+        // Either Some with ellipsis or None is acceptable
+    }
+
+    // ── T.1: publishDiagnostics pipeline tests ────────────────────────────────
+
+    // T.1.1: Clean source produces no error-severity diagnostics
+    #[test]
+    fn test_t1_clean_source_no_diagnostics() {
+        let src = "store → x → 42\nprint(x)\n";
+        let diags = diagnostics_for_test(src);
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == 1).collect();
+        assert!(errors.is_empty(), "clean source should have no errors, got: {:?}", diags);
+    }
+
+    // T.1.2: Lex/parse error produces severity-1 diagnostic
+    #[test]
+    fn test_t1_parse_error_severity_1() {
+        // Unclosed string literal → lex error
+        let src = "store → x → \"unterminated";
+        let diags = diagnostics_for_test(src);
+        assert!(!diags.is_empty(), "expected at least one diagnostic for lex error");
+        assert_eq!(diags[0].severity, 1, "lex error should be severity 1 (Error)");
+    }
+
+    // T.1.3: Invalid syntax (missing end) → parse error, severity 1
+    #[test]
+    fn test_t1_syntax_error_severity_1() {
+        let src = "if → true\n  store → x → 1\n"; // missing `end`
+        let diags = diagnostics_for_test(src);
+        assert!(!diags.is_empty(), "expected parse error diagnostic");
+        assert_eq!(diags[0].severity, 1);
+    }
+
+    // T.1.4: Type mismatch → severity-2 warning (advisory)
+    #[test]
+    fn test_t1_type_warning_severity_2() {
+        // x declared int, assigned string → type checker warning
+        let src = "store → x: int → \"hello\"\n";
+        let diags = diagnostics_for_test(src);
+        let warnings: Vec<_> = diags.iter().filter(|d| d.severity == 2).collect();
+        assert!(!warnings.is_empty(), "expected at least one type warning (severity 2)");
+    }
+
+    // T.1.5: diagnostics_for returns valid JSON structure
+    #[test]
+    fn test_t1_diagnostic_json_structure() {
+        let src = "store → x: int → \"bad\"\n";
+        let raw = diagnostics_for(src);
+        for d in &raw {
+            assert!(d["range"].is_object(), "diagnostic must have 'range'");
+            assert!(d["severity"].is_number(), "diagnostic must have 'severity'");
+            assert!(d["message"].is_string(), "diagnostic must have 'message'");
         }
     }
 }

@@ -107,7 +107,7 @@ unsafe impl Send for FutureSender {}
 pub enum Value {
     Integer(i64),
     Float(f64),
-    String(String),
+    String(Arc<str>),
     Char(char),
     Boolean(bool),
     Null,

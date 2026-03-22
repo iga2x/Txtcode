@@ -94,7 +94,23 @@ pub enum Statement {
     },
     Struct {
         name: String,
+        /// Task E.2: Generic type parameters, e.g. `<T, U>`.
+        type_params: Vec<String>,
         fields: Vec<(String, crate::typecheck::types::Type)>,
+        /// Protocols this struct declares itself to implement (Task E.1).
+        implements: Vec<String>,
+        span: Span,
+    },
+    /// Task E.4 — Placeholder node inserted during error recovery so parsing can continue.
+    Error {
+        message: String,
+        span: Span,
+    },
+    /// Task E.1 — Protocol declaration: a named set of required method signatures.
+    Protocol {
+        name: String,
+        /// (method_name, param_types, return_type)
+        methods: Vec<(String, Vec<String>, Option<String>)>,
         span: Span,
     },
     Match {
@@ -188,7 +204,9 @@ impl Statement {
             | Statement::NamedError { span, .. }
             | Statement::Impl { span, .. }
             | Statement::Yield { span, .. }
-            | Statement::Nursery { span, .. } => Some(span),
+            | Statement::Nursery { span, .. }
+            | Statement::Protocol { span, .. }
+            | Statement::Error { span, .. } => Some(span),
             Statement::Expression(_) => None,
         };
         span.map(|s| (s.line, s.column))

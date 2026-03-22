@@ -25,8 +25,8 @@
 /// - `null`  → 0
 ///
 /// Up to 4 arguments are supported in this version.
+use std::sync::Arc;
 use crate::runtime::{RuntimeError, Value};
-use crate::runtime::permissions::PermissionResource;
 use crate::stdlib::PermissionChecker;
 
 #[cfg(feature = "ffi")]
@@ -42,6 +42,8 @@ lazy_static::lazy_static! {
     static ref LIBRARY_REGISTRY: Mutex<HashMap<i64, Library>> = Mutex::new(HashMap::new());
     /// Monotonically increasing handle counter.
     static ref NEXT_HANDLE: Mutex<i64> = Mutex::new(1);
+    /// Plugin path → Library map (for plugin_load / plugin_call).
+    pub static ref PLUGIN_LIBRARY_REGISTRY: Mutex<HashMap<String, Library>> = Mutex::new(HashMap::new());
 }
 
 pub struct FfiLib;
@@ -63,8 +65,8 @@ impl FfiLib {
     // ── ffi_load ──────────────────────────────────────────────────────────────
 
     fn ffi_load(
-        args: &[Value],
-        permission_checker: Option<&dyn PermissionChecker>,
+        _args: &[Value],
+        _permission_checker: Option<&dyn PermissionChecker>,
     ) -> Result<Value, RuntimeError> {
         #[cfg(not(feature = "ffi"))]
         return Err(RuntimeError::new(
@@ -118,7 +120,7 @@ impl FfiLib {
 
     // ── ffi_call ──────────────────────────────────────────────────────────────
 
-    fn ffi_call(args: &[Value]) -> Result<Value, RuntimeError> {
+    fn ffi_call(_args: &[Value]) -> Result<Value, RuntimeError> {
         #[cfg(not(feature = "ffi"))]
         return Err(RuntimeError::new(
             "ffi_call requires the 'ffi' feature. Rebuild with: cargo build --features ffi"
@@ -189,7 +191,7 @@ impl FfiLib {
 
     // ── ffi_close ─────────────────────────────────────────────────────────────
 
-    fn ffi_close(args: &[Value]) -> Result<Value, RuntimeError> {
+    fn ffi_close(_args: &[Value]) -> Result<Value, RuntimeError> {
         #[cfg(not(feature = "ffi"))]
         return Err(RuntimeError::new(
             "ffi_close requires the 'ffi' feature. Rebuild with: cargo build --features ffi"
@@ -216,18 +218,6 @@ impl FfiLib {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Coerce a Value to an i64 for passing in a C integer register.
-fn value_to_ffi_int(v: &Value) -> i64 {
-    match v {
-        Value::Integer(i) => *i,
-        Value::Boolean(b) => i64::from(*b),
-        // Bit-cast f64 → i64 so the float bits land in the integer register.
-        Value::Float(f) => f.to_bits() as i64,
-        Value::Null => 0,
-        _ => 0,
-    }
-}
 
 /// Dispatch a C function call with 0–4 i64 arguments and the given return type.
 ///
@@ -366,7 +356,7 @@ mod tests {
     #[test]
     fn ffi_load_nonexistent_path() {
         let result =
-            FfiLib::call_function("ffi_load", &[Value::String("/no/such/lib.so".to_string())], None);
+            FfiLib::call_function("ffi_load", &[Value::String(Arc::from("/no/such/lib.so"))], None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         // With ffi: "ffi_load: could not load..."; without: "requires the 'ffi' feature"
@@ -389,8 +379,8 @@ mod tests {
             "ffi_call",
             &[
                 Value::Integer(8888),
-                Value::String("add".to_string()),
-                Value::String("int".to_string()),
+                Value::String(Arc::from("add")),
+                Value::String(Arc::from("int")),
                 Value::Null,
             ],
             None,
@@ -411,8 +401,8 @@ mod tests {
             "ffi_call",
             &[
                 Value::Integer(0),
-                Value::String("f".to_string()),
-                Value::String("void".to_string()),
+                Value::String(Arc::from("f")),
+                Value::String(Arc::from("void")),
                 big_array,
             ],
             None,
@@ -443,7 +433,7 @@ mod tests {
         let checker: &dyn PermissionChecker = &AllowAll;
 
         let load_result =
-            FfiLib::call_function("ffi_load", &[Value::String("libc.so.6".to_string())], Some(checker));
+            FfiLib::call_function("ffi_load", &[Value::String(Arc::from("libc.so.6"))], Some(checker));
         match load_result {
             Err(_) => return, // libc not directly loadable on this system — skip
             Ok(Value::Integer(handle)) => {
@@ -451,8 +441,8 @@ mod tests {
                     "ffi_call",
                     &[
                         Value::Integer(handle),
-                        Value::String("abs".to_string()),
-                        Value::String("int".to_string()),
+                        Value::String(Arc::from("abs")),
+                        Value::String(Arc::from("int")),
                         Value::Array(vec![Value::Integer(-7)]),
                     ],
                     Some(checker),

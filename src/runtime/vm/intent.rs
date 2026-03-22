@@ -1,4 +1,5 @@
 use super::VirtualMachine;
+use std::sync::Arc;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::intent::{IntentChecker, IntentDeclaration};
@@ -48,7 +49,7 @@ impl VirtualMachine {
             || function_name == "list_dir"
         {
             if let Some(Value::String(path)) = args.first() {
-                return Some(("fs.read".to_string(), path.clone()));
+                return Some(("fs.read".to_string(), path.to_string()));
             }
         }
         if function_name == "write_file"
@@ -58,7 +59,7 @@ impl VirtualMachine {
             || function_name == "rmdir"
         {
             if let Some(Value::String(path)) = args.first() {
-                return Some(("fs.write".to_string(), path.clone()));
+                return Some(("fs.write".to_string(), path.to_string()));
             }
         }
 
@@ -68,14 +69,14 @@ impl VirtualMachine {
             || function_name == "tcp_connect"
         {
             if let Some(Value::String(url)) = args.first() {
-                return Some(("net.connect".to_string(), url.clone()));
+                return Some(("net.connect".to_string(), url.to_string()));
             }
         }
 
         // Map system functions
         if function_name == "exec" {
             if let Some(Value::String(cmd)) = args.first() {
-                return Some(("sys.exec".to_string(), cmd.clone()));
+                return Some(("sys.exec".to_string(), cmd.to_string()));
             }
         }
 

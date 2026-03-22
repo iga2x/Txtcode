@@ -2,7 +2,7 @@
 //
 // LAYER ORDER (never reorder — order matters for security):
 //   1. Max execution time check (policy engine)
-//   2. AI metadata allowance check (if AI metadata is present)
+//   2. AI metadata allowance check (skipped — B.1: ai_metadata removed)
 //   3. Intent check (declared intent vs. requested action)
 //   4. Capability token check (deny-wins, rate-limit still applies on grant)
 //   5. Rate limit check (applies even when capability grants access — Phase 2.4 fix)
@@ -93,9 +93,6 @@ pub trait SecurityPipelineContext {
     /// Name of the currently executing function (for intent check context).
     fn current_function_name(&self) -> Option<&str>;
 
-    /// Whether AI metadata is present in the current context.
-    fn has_ai_metadata(&self) -> bool;
-
     /// Log an audit event (best-effort; errors are silently ignored).
     fn log_audit(
         &mut self,
@@ -122,12 +119,7 @@ pub fn run_pipeline(
         return PipelineResult::Denied(e);
     }
 
-    // Layer 2: AI allowance
-    if ctx.has_ai_metadata() {
-        if let Err(e) = ctx.check_ai_allowed() {
-            return PipelineResult::Denied(e);
-        }
-    }
+    // Layer 2: AI allowance — skipped (B.1: ai_metadata always None)
 
     // Layer 3: Intent check
     if let Some(fn_name) = ctx.current_function_name() {

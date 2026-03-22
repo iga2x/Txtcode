@@ -19,7 +19,7 @@ pub fn is_keyword(word: &str) -> bool {
         // Literals
         "true" | "false" | "null" |
         // Type system
-        "enum" | "struct" | "impl" |
+        "enum" | "struct" | "impl" | "protocol" | "implements" |
         // Module system
         "import" | "use" | "from" | "as" | "export" |
         // Permissions

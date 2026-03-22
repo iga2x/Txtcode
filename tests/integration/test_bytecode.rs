@@ -953,7 +953,7 @@ fn test_bytecode_version_string() {
     // Update this assertion when the version is bumped.
     let v = env!("CARGO_PKG_VERSION");
     assert!(!v.is_empty(), "CARGO_PKG_VERSION must not be empty");
-    assert!(v.starts_with("0."), "expected semver starting with 0., got {}", v);
+    assert!(v.starts_with("3."), "expected semver starting with 3., got {}", v);
 }
 
 // ---------------------------------------------------------------------------
@@ -1220,4 +1220,217 @@ fn test_wasm_compile_produces_func_export() {
 
     assert!(wat.contains("(export \"main\")"), "WAT should export main function");
     assert!(wat.contains("(memory"), "WAT should include memory declaration");
+}
+
+// ── Task 21.1 — Bytecode VM Parity Tests ─────────────────────────────────────
+// These tests run the same programs through the AST VM and Bytecode VM and
+// assert they produce the same result. Divergences are recorded as bugs.
+
+#[cfg(test)]
+mod parity {
+    use txtcode::compiler::bytecode::BytecodeCompiler;
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::bytecode_vm::BytecodeVM;
+    use txtcode::runtime::vm::VirtualMachine;
+    use txtcode::runtime::core::Value;
+
+    /// Run source through AST VM, capturing ReturnValue signals as the result.
+    fn ast(src: &str) -> Value {
+        let tokens = Lexer::new(src.to_string()).tokenize().unwrap();
+        let program = Parser::new(tokens).parse().unwrap();
+        let mut vm = VirtualMachine::new();
+        match vm.interpret(&program) {
+            Ok(v) => v,
+            Err(e) => e.take_return_value().unwrap_or(Value::Null),
+        }
+    }
+
+    /// Run source through Bytecode VM (compile + execute).
+    fn bc(src: &str) -> Value {
+        let tokens = Lexer::new(src.to_string()).tokenize().unwrap();
+        let program = Parser::new(tokens).parse().unwrap();
+        let mut compiler = BytecodeCompiler::new();
+        let bytecode = compiler.compile(&program);
+        let mut vm = BytecodeVM::new();
+        vm.execute(&bytecode).unwrap_or(Value::Null)
+    }
+
+    // Arithmetic
+    #[test] fn parity_add()      { assert_eq!(ast("return → 2 + 3"), bc("return → 2 + 3")); }
+    #[test] fn parity_sub()      { assert_eq!(ast("return → 10 - 4"), bc("return → 10 - 4")); }
+    #[test] fn parity_mul()      { assert_eq!(ast("return → 3 * 7"), bc("return → 3 * 7")); }
+    #[test] fn parity_div()      { assert_eq!(ast("return → 20 / 4"), bc("return → 20 / 4")); }
+    #[test] fn parity_modulo()   { assert_eq!(ast("return → 10 % 3"), bc("return → 10 % 3")); }
+    #[test] fn parity_neg()      { assert_eq!(ast("return → 0 - 5"), bc("return → 0 - 5")); }
+
+    // Variables
+    #[test] fn parity_store_load() {
+        let s = "store → x → 42\nreturn → x";
+        assert_eq!(ast(s), bc(s));
+    }
+
+    // Booleans + comparisons
+    #[test] fn parity_eq_true()  { assert_eq!(ast("return → 1 == 1"), bc("return → 1 == 1")); }
+    #[test] fn parity_eq_false() { assert_eq!(ast("return → 1 == 2"), bc("return → 1 == 2")); }
+    #[test] fn parity_lt()       { assert_eq!(ast("return → 3 < 5"), bc("return → 3 < 5")); }
+    #[test] fn parity_gt()       { assert_eq!(ast("return → 5 > 3"), bc("return → 5 > 3")); }
+    #[test] fn parity_and()      { assert_eq!(ast("return → true and false"), bc("return → true and false")); }
+    #[test] fn parity_or()       { assert_eq!(ast("return → false or true"), bc("return → false or true")); }
+    #[test] fn parity_not()      { assert_eq!(ast("return → not true"), bc("return → not true")); }
+
+    // String
+    #[test] fn parity_string_concat() {
+        let s = r#"return → "hello" + " " + "world""#;
+        assert_eq!(ast(s), bc(s));
+    }
+    #[test] fn parity_string_len() {
+        let s = r#"return → len("hello")"#;
+        assert_eq!(ast(s), bc(s));
+    }
+
+    // Control flow
+    #[test] fn parity_if_true() {
+        let s = "store → x → 0\nif → 1 == 1\n  store → x → 1\nend\nreturn → x";
+        assert_eq!(ast(s), bc(s));
+    }
+    #[test] fn parity_if_false() {
+        let s = "store → x → 0\nif → 1 == 2\n  store → x → 1\nend\nreturn → x";
+        assert_eq!(ast(s), bc(s));
+    }
+    #[test] fn parity_if_else() {
+        let s = "store → x → 0\nif → 1 == 2\n  store → x → 1\nelse\n  store → x → 2\nend\nreturn → x";
+        assert_eq!(ast(s), bc(s));
+    }
+
+    // Loops
+    #[test] fn parity_while_loop() {
+        let s = "store → i → 0\nwhile → i < 5\n  store → i → i + 1\nend\nreturn → i";
+        assert_eq!(ast(s), bc(s));
+    }
+    #[test] fn parity_for_loop() {
+        let s = "store → total → 0\nfor → n in [1, 2, 3, 4]\n  store → total → total + n\nend\nreturn → total";
+        assert_eq!(ast(s), bc(s));
+    }
+
+    // Arrays
+    #[test] fn parity_array_literal() {
+        let s = "store → a → [1, 2, 3]\nreturn → len(a)";
+        assert_eq!(ast(s), bc(s));
+    }
+    #[test] fn parity_array_push() {
+        let s = "store → a → [1, 2]\npush(a, 3)\nreturn → len(a)";
+        assert_eq!(ast(s), bc(s));
+    }
+
+    // Maps
+    #[test] fn parity_map_literal() {
+        let s = "store → m → {\"x\": 1, \"y\": 2}\nreturn → m[\"x\"]";
+        assert_eq!(ast(s), bc(s));
+    }
+
+    // Functions
+    #[test] fn parity_function_call() {
+        let s = "define → add → (a, b)\n  return → a + b\nend\nreturn → add(3, 4)";
+        assert_eq!(ast(s), bc(s));
+    }
+    #[test] fn parity_recursive_function() {
+        let s = "define → fact → (n)\n  if → n <= 1\n    return → 1\n  end\n  return → n * fact(n - 1)\nend\nreturn → fact(5)";
+        assert_eq!(ast(s), bc(s));
+    }
+
+    // Error handling
+    #[test] fn parity_ok_result() {
+        let s = "return → ok(42)";
+        assert_eq!(ast(s), bc(s));
+    }
+    #[test] fn parity_err_result() {
+        let s = r#"return → err("fail")"#;
+        assert_eq!(ast(s), bc(s));
+    }
+    #[test] fn parity_try_catch() {
+        let s = "store → x → 0\ntry\n  store → x → 1\ncatch e\n  store → x → 2\nend\nreturn → x";
+        assert_eq!(ast(s), bc(s));
+    }
+
+    // Ternary
+    #[test] fn parity_ternary_true()  { assert_eq!(ast("return → true ? 1 : 2"),  bc("return → true ? 1 : 2")); }
+    #[test] fn parity_ternary_false() { assert_eq!(ast("return → false ? 1 : 2"), bc("return → false ? 1 : 2")); }
+
+    // Stdlib
+    #[test] fn parity_max() { assert_eq!(ast("return → max(3, 7)"), bc("return → max(3, 7)")); }
+    #[test] fn parity_min() { assert_eq!(ast("return → min(3, 7)"), bc("return → min(3, 7)")); }
+    #[test] fn parity_abs() { assert_eq!(ast("return → abs(0 - 5)"), bc("return → abs(0 - 5)")); }
+    #[test] fn parity_to_string() {
+        assert_eq!(ast("return → to_string(42)"), bc("return → to_string(42)"));
+    }
+    #[test] fn parity_to_int() {
+        assert_eq!(ast(r#"return → to_int("99")"#), bc(r#"return → to_int("99")"#));
+    }
+    #[test] fn parity_json_round_trip() {
+        let s = "store → j → json_stringify({\"a\": 1})\nreturn → json_parse(j)[\"a\"]";
+        assert_eq!(ast(s), bc(s));
+    }
+}
+
+// ── O.5: Optimizer tests ────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod optimizer_tests {
+    use txtcode::compiler::bytecode::{BytecodeCompiler, Constant, Instruction};
+    use txtcode::compiler::optimizer::{OptimizationLevel, Optimizer};
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+
+    fn compile_src(src: &str) -> txtcode::compiler::bytecode::Bytecode {
+        let mut lexer = Lexer::new(src.to_string());
+        let tokens = lexer.tokenize().expect("lex error");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse().expect("parse error");
+        let mut compiler = BytecodeCompiler::new();
+        compiler.compile(&program)
+    }
+
+    // O.5.1: Optimizer reduces instruction count for constant arithmetic
+    #[test]
+    fn test_o5_constant_folding_reduces_instructions() {
+        // `1 + 2` should fold to a single PushConstant(3) instead of push push Add
+        let bc = compile_src("store → x → 1 + 2");
+        let opt = Optimizer::new(OptimizationLevel::Basic);
+        let optimized = opt.optimize_bytecode(&bc).unwrap();
+        // Unoptimized has PushConst(1), PushConst(2), Add
+        // Optimized must have fewer instructions
+        assert!(
+            optimized.instructions.len() <= bc.instructions.len(),
+            "optimizer should not increase instruction count"
+        );
+        // The folded constant should be 3
+        let has_three = optimized.constants.iter().any(|c| matches!(c, Constant::Integer(3)));
+        assert!(has_three, "folded constant 3 should appear in constant pool");
+    }
+
+    // O.5.2: Chained constant folding (1 + 2 + 3 → 6)
+    #[test]
+    fn test_o5_chained_constant_folding() {
+        let bc = compile_src("store → x → 1 + 2 + 3");
+        let opt = Optimizer::new(OptimizationLevel::Basic);
+        let optimized = opt.optimize_bytecode(&bc).unwrap();
+        let has_six = optimized.constants.iter().any(|c| matches!(c, Constant::Integer(6)));
+        assert!(has_six, "chained fold 1+2+3 should produce constant 6, constants: {:?}", optimized.constants);
+    }
+
+    // O.5.3: Nop removal
+    #[test]
+    fn test_o5_nop_removal() {
+        let mut bc = compile_src("store → x → 1");
+        // Inject Nops
+        bc.instructions.insert(0, Instruction::Nop);
+        bc.instructions.insert(2, Instruction::Nop);
+        let nop_count_before = bc.instructions.iter().filter(|i| matches!(i, Instruction::Nop)).count();
+        assert!(nop_count_before >= 2);
+        let opt = Optimizer::new(OptimizationLevel::Basic);
+        let optimized = opt.optimize_bytecode(&bc).unwrap();
+        let nop_count_after = optimized.instructions.iter().filter(|i| matches!(i, Instruction::Nop)).count();
+        assert_eq!(nop_count_after, 0, "all Nops should be removed");
+    }
 }

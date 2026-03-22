@@ -13,13 +13,13 @@ mod policy;
 use crate::capability::CapabilityManager;
 use crate::parser::ast::*;
 use crate::policy::PolicyEngine;
-use crate::runtime::audit::{AIMetadata, AuditTrail};
+use crate::runtime::audit::AuditTrail;
 use crate::runtime::core::{CallFrame, CallStack, ScopeManager, Value};
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::execution::{
     ControlFlowExecutor, ControlFlowVM, StatementExecutor, StatementVM,
 };
-use crate::runtime::gc::GarbageCollector;
+use crate::runtime::gc::MemoryTracker;
 use crate::runtime::intent::IntentChecker;
 use crate::runtime::module::ModuleResolver;
 use crate::runtime::permissions::{PermissionManager, PermissionResource};
@@ -41,7 +41,7 @@ pub struct VirtualMachine {
     /// Struct method registry: struct_name → method_name → Function value
     struct_methods: HashMap<String, HashMap<String, Value>>,
     call_stack: CallStack,
-    gc: GarbageCollector,
+    memory: MemoryTracker,
     module_resolver: ModuleResolver,
     current_file: Option<PathBuf>,
     import_stack: Vec<PathBuf>, // Track imports to detect circular dependencies
@@ -52,9 +52,9 @@ pub struct VirtualMachine {
     strict_types: bool,
     exec_allowed: bool, // Keep for backward compatibility, but deprecate
     permission_manager: PermissionManager,
-    audit_trail: AuditTrail,               // NEW: Audit trail for all actions
-    ai_metadata: AIMetadata,               // NEW: AI metadata tracking
-    policy_engine: PolicyEngine, // NEW: Policy engine for rate limiting and execution control
+    audit_trail: AuditTrail,  // Audit trail for all actions
+    // B.1: ai_metadata removed — was always empty; AIMetadata struct kept in audit.rs for future use
+    policy_engine: PolicyEngine, // Policy engine for rate limiting and execution control
     intent_checker: IntentChecker, // NEW: Intent enforcement system
     capability_manager: CapabilityManager, // NEW: Capability token system
     active_capability: Option<String>, // NEW: Active capability token in current scope
@@ -70,6 +70,9 @@ pub struct VirtualMachine {
     pub covered_lines: HashSet<u32>,
     /// Whether line coverage tracking is active.
     coverage_enabled: bool,
+    /// O.3: Current statement's source location (line, column) for error reporting.
+    /// Updated at the start of each `execute_statement` call.
+    pub(crate) current_span: Option<(usize, usize)>,
 }
 
 impl VirtualMachine {
@@ -138,11 +141,6 @@ impl VirtualMachine {
         // Start execution timer for max execution time checking
         self.policy_engine.start_execution();
 
-        // Check AI allowance before execution if AI metadata is present
-        if !self.ai_metadata.is_empty() {
-            self.check_ai_allowed()?;
-        }
-
         for statement in &program.statements {
             // Check max execution time and external cancellation flag periodically.
             self.check_max_execution_time()?;
@@ -163,7 +161,7 @@ impl VirtualMachine {
             // Note: scopes() returns a slice, but collect expects a Vec reference
             // We need to pass the scopes as a reference to a Vec
             let scopes_vec: Vec<_> = self.scope_manager.scopes().to_vec();
-            self.gc
+            self.memory
                 .collect_checked(&self.stack, self.scope_manager.globals(), &scopes_vec)
                 .map_err(|e| RuntimeError::new(e).with_code(crate::runtime::errors::ErrorCode::E0021))?;
         }
@@ -203,9 +201,6 @@ impl VirtualMachine {
                 .map_err(RuntimeError::new)?;
         }
         self.policy_engine.start_execution();
-        if !self.ai_metadata.is_empty() {
-            self.check_ai_allowed()?;
-        }
         let mut last = Value::Null;
         for statement in &program.statements {
             self.check_max_execution_time()?;
@@ -223,7 +218,7 @@ impl VirtualMachine {
                 last = val;
             }
             let scopes_vec: Vec<_> = self.scope_manager.scopes().to_vec();
-            self.gc
+            self.memory
                 .collect_checked(&self.stack, self.scope_manager.globals(), &scopes_vec)
                 .map_err(|e| RuntimeError::new(e).with_code(crate::runtime::errors::ErrorCode::E0021))?;
         }
@@ -231,9 +226,11 @@ impl VirtualMachine {
     }
 
     fn execute_statement(&mut self, stmt: &Statement) -> Result<Value, RuntimeError> {
+        // O.3: Track current statement span for runtime error location reporting.
         // Coverage tracking: record the source line before executing each statement.
-        if let Some((line, _)) = stmt.source_location() {
-            self.record_line(line);
+        if let Some(loc) = stmt.source_location() {
+            self.current_span = Some(loc);
+            self.record_line(loc.0);
         }
         // Route control flow statements to ControlFlowExecutor
         match stmt {
@@ -373,6 +370,14 @@ impl StatementVM for VirtualMachine {
         self.execute_statement(stmt)
     }
 
+    fn is_in_local_scope(&self) -> bool {
+        VirtualMachine::is_in_local_scope(self)
+    }
+
+    fn snapshot_local_vars(&self) -> std::collections::HashMap<String, Value> {
+        VirtualMachine::snapshot_local_vars(self)
+    }
+
     fn execute_import(
         &mut self,
         modules: &[String],
@@ -479,7 +484,6 @@ impl crate::stdlib::capabilities::CapabilityExecutor for VirtualMachine {
         scope: Option<String>,
         expires_in: Option<std::time::Duration>,
         granted_by: Option<String>,
-        ai_metadata: Option<AIMetadata>,
     ) -> String {
         VirtualMachine::grant_capability(
             self,
@@ -488,7 +492,6 @@ impl crate::stdlib::capabilities::CapabilityExecutor for VirtualMachine {
             scope,
             expires_in,
             granted_by,
-            ai_metadata,
         )
     }
 
@@ -652,6 +655,19 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
         VirtualMachine::get_variable(self, name)
     }
 
+    fn list_variables(&self) -> Vec<String> {
+        let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (k, _) in self.scope_manager.globals() {
+            names.insert(k.clone());
+        }
+        for scope in self.scope_manager.scopes() {
+            for k in scope.keys() {
+                names.insert(k.clone());
+            }
+        }
+        names.into_iter().collect()
+    }
+
     fn set_variable(&mut self, name: String, value: Value) -> Result<(), RuntimeError> {
         VirtualMachine::set_variable(self, name, value)
     }
@@ -720,19 +736,14 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
         resource: String,
         context: Option<String>,
         result: crate::runtime::audit::AuditResult,
-        ai_metadata: Option<&crate::runtime::audit::AIMetadata>,
     ) {
         let _ = self.audit_trail.log_action(
             action,
             resource,
             context.as_deref().map(|s| s.to_string()),
             result,
-            ai_metadata,
+            None, // B.1: ai_metadata removed
         );
-    }
-
-    fn ai_metadata(&self) -> &crate::runtime::audit::AIMetadata {
-        &self.ai_metadata
     }
 
     fn struct_defs(&self) -> &HashMap<String, Vec<(String, Type)>> {
@@ -751,7 +762,7 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
     }
 
     fn gc_register_allocation(&mut self, value: &Value) {
-        self.gc.register_allocation(value)
+        self.memory.register_allocation(value)
     }
 
     fn debug(&self) -> bool {
@@ -864,10 +875,10 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
         match handle.resolve_with_timeout(timeout) {
             None => Ok(Value::Result(
                 false,
-                Box::new(Value::String("timeout".to_string())),
+                Box::new(Value::String(Arc::from("timeout".to_string()))),
             )),
             Some(Ok(v)) => Ok(Value::Result(true, Box::new(v))),
-            Some(Err(e)) => Ok(Value::Result(false, Box::new(Value::String(e)))),
+            Some(Err(e)) => Ok(Value::Result(false, Box::new(Value::String(Arc::from(e))))),
         }
     }
 
@@ -884,15 +895,20 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
 
         let globals = self.scope_manager.globals().clone();
         let exec_allowed = self.exec_allowed;
+        // D.2: Snapshot permission state at submission time so post-submission
+        // deny() calls on the parent VM do not affect already-queued tasks.
+        let permission_snapshot = self.snapshot_permissions();
 
         let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
 
-        std::thread::spawn(move || {
+        let task = move || {
             use crate::runtime::execution::expressions::call_user_function;
             use crate::parser::ast::{Expression, Literal};
 
             let mut child_vm = VirtualMachine::new();
             child_vm.set_exec_allowed(exec_allowed);
+            // Restore the permission snapshot captured at task submission time.
+            child_vm.set_permission_manager(permission_snapshot);
             for (k, v) in globals {
                 child_vm.define_global(k, v);
             }
@@ -908,7 +924,181 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
             )
             .map_err(|e: RuntimeError| e.to_string());
             sender.send(result);
+        };
+
+        // Task 26.1: use the event loop worker thread when enabled, otherwise fall back
+        // to spawning a dedicated OS thread (original behavior).
+        if crate::runtime::event_loop::is_enabled() {
+            if !crate::runtime::event_loop::submit(Box::new(task)) {
+                let cap = crate::runtime::event_loop::max_concurrent_tasks();
+                return Err(RuntimeError::new(format!(
+                    "async task queue full (max {} concurrent tasks)", cap
+                ))
+                .with_code(crate::runtime::errors::ErrorCode::E0053));
+            }
+        } else {
+            std::thread::spawn(task);
+        }
+
+        Ok(Value::Future(handle))
+    }
+
+    /// D.2: async_run_scoped — like async_run but with a restricted permission set.
+    ///
+    /// `allowed` is a `Value::Array` of permission name strings (e.g. `["fs.read", "net.connect"]`).
+    /// The child VM only gets the intersection of the parent's grants and this list.
+    fn async_run_scoped(&mut self, func: Value, allowed: Value) -> Result<Value, RuntimeError> {
+        let (name, params, body, captured_env) = match func {
+            Value::Function(n, p, b, e) => (n, p, b, e),
+            _ => return Err(RuntimeError::new(
+                "async_run_scoped expects a function as first argument".to_string(),
+            )),
+        };
+
+        let allowed_names: Vec<String> = match allowed {
+            Value::Array(items) => items.into_iter().filter_map(|v| {
+                if let Value::String(s) = v { Some(s.to_string()) } else { None }
+            }).collect(),
+            _ => vec![],
+        };
+
+        let globals = self.scope_manager.globals().clone();
+        let exec_allowed = self.exec_allowed;
+        let permission_snapshot = self.snapshot_permissions();
+
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+
+        let task = move || {
+            use crate::runtime::execution::expressions::call_user_function;
+            use crate::parser::ast::{Expression, Literal};
+            use crate::runtime::permissions::{Permission, PermissionResource};
+
+            let mut child_vm = VirtualMachine::new();
+            child_vm.set_exec_allowed(exec_allowed);
+
+            // Build a scoped permission manager from the snapshot filtered by `allowed_names`.
+            let mut scoped_pm = crate::runtime::permissions::PermissionManager::new();
+            for perm_name in &allowed_names {
+                // Map string names to PermissionResource for grant check.
+                let resource = match perm_name.as_str() {
+                    "fs.read" | "fs.write" | "fs" =>
+                        PermissionResource::FileSystem("*".to_string()),
+                    "net.connect" | "net" =>
+                        PermissionResource::Network("*".to_string()),
+                    "process.exec" | "exec" =>
+                        PermissionResource::Process(vec![]),
+                    s if s.starts_with("sys.") =>
+                        PermissionResource::System(s["sys.".len()..].to_string()),
+                    s =>
+                        PermissionResource::System(s.to_string()),
+                };
+                // Only grant if parent had it
+                if permission_snapshot.check(&resource, None).is_ok() {
+                    scoped_pm.grant(Permission::new(resource, None));
+                }
+            }
+            child_vm.set_permission_manager(scoped_pm);
+
+            for (k, v) in globals {
+                child_vm.define_global(k, v);
+            }
+            let dummy_expr = Expression::Literal(Literal::Null);
+            let result = call_user_function(
+                &mut child_vm,
+                &name,
+                &params,
+                &body,
+                &captured_env,
+                &[],
+                &dummy_expr,
+            )
+            .map_err(|e: RuntimeError| e.to_string());
+            sender.send(result);
+        };
+
+        if crate::runtime::event_loop::is_enabled() {
+            if !crate::runtime::event_loop::submit(Box::new(task)) {
+                let cap = crate::runtime::event_loop::max_concurrent_tasks();
+                return Err(RuntimeError::new(format!(
+                    "async task queue full (max {} concurrent tasks)", cap
+                ))
+                .with_code(crate::runtime::errors::ErrorCode::E0053));
+            }
+        } else {
+            std::thread::spawn(task);
+        }
+
+        Ok(Value::Future(handle))
+    }
+
+    /// O.4: async_run_timeout(closure, timeout_ms) — like async_run but cancels
+    /// the task after `timeout_ms` milliseconds if it hasn't completed.
+    /// Cancelled tasks return E0020 (timeout) via the future.
+    fn async_run_timeout(&mut self, func: Value, timeout_ms: i64) -> Result<Value, RuntimeError> {
+        let (name, params, body, captured_env) = match func {
+            Value::Function(n, p, b, e) => (n, p, b, e),
+            _ => return Err(RuntimeError::new(
+                "async_run_timeout expects a function (closure) as first argument".to_string(),
+            )),
+        };
+
+        if timeout_ms <= 0 {
+            return Err(RuntimeError::new(
+                "async_run_timeout: timeout_ms must be a positive integer".to_string(),
+            ));
+        }
+
+        let globals = self.scope_manager.globals().clone();
+        let exec_allowed = self.exec_allowed;
+        let permission_snapshot = self.snapshot_permissions();
+
+        let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
+
+        // Spawn a timeout thread that cancels the task after `timeout_ms`.
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cancel_clone = std::sync::Arc::clone(&cancel);
+        let duration_ms = timeout_ms as u64;
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(duration_ms));
+            cancel_clone.store(true, std::sync::atomic::Ordering::Relaxed);
         });
+
+        let task = move || {
+            use crate::runtime::execution::expressions::call_user_function;
+            use crate::parser::ast::{Expression, Literal};
+
+            let mut child_vm = VirtualMachine::new();
+            child_vm.set_exec_allowed(exec_allowed);
+            child_vm.set_permission_manager(permission_snapshot);
+            child_vm.set_cancel_flag(cancel);
+            for (k, v) in globals {
+                child_vm.define_global(k, v);
+            }
+            let dummy_expr = Expression::Literal(Literal::Null);
+            let result = call_user_function(
+                &mut child_vm,
+                &name,
+                &params,
+                &body,
+                &captured_env,
+                &[],
+                &dummy_expr,
+            )
+            .map_err(|e: RuntimeError| e.to_string());
+            sender.send(result);
+        };
+
+        if crate::runtime::event_loop::is_enabled() {
+            if !crate::runtime::event_loop::submit(Box::new(task)) {
+                let cap = crate::runtime::event_loop::max_concurrent_tasks();
+                return Err(RuntimeError::new(format!(
+                    "async task queue full (max {} concurrent tasks)", cap
+                ))
+                .with_code(crate::runtime::errors::ErrorCode::E0053));
+            }
+        } else {
+            std::thread::spawn(task);
+        }
 
         Ok(Value::Future(handle))
     }
@@ -1042,9 +1232,6 @@ impl VirtualMachine {
             self.check_permission(&PermissionResource::System("exec".to_string()), None)?;
         }
 
-        // Clone ai_metadata by-value so we can then take &mut borrows on the other fields.
-        let ai_meta = self.ai_metadata.clone();
-
         // Pass None for permission_checker: the check was already enforced above.
         // ToolExecutor's permission_checker path is bypassed intentionally — the upfront
         // check_permission call above covers the exec gate.
@@ -1053,7 +1240,7 @@ impl VirtualMachine {
             args,
             None,
             Some(&mut self.audit_trail),
-            Some(&ai_meta),
+            None, // B.1: ai_metadata removed
             Some(&mut self.policy_engine),
         )
     }

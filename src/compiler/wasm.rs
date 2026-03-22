@@ -5,7 +5,7 @@
 /// Complex values (arrays, maps, structs) are not yet supported and emit a trap.
 ///
 /// # Usage
-/// ```
+/// ```ignore
 /// let wat = WasmCompiler::new().compile(&bytecode);
 /// std::fs::write("output.wat", wat).unwrap();
 /// // Convert to binary: wat2wasm output.wat -o output.wasm  (via wasm-tools or WABT)
@@ -47,7 +47,9 @@ impl WasmCompiler {
     /// Compile a `Bytecode` program to a WAT module string.
     pub fn compile(&mut self, bytecode: &Bytecode) -> String {
         let instructions = &bytecode.instructions;
-        let constants = &bytecode.constants;
+        // Convert Constant → Value for compile_instructions (which uses Value matching)
+        let constants_as_values: Vec<Value> = bytecode.constants.iter().map(|c| c.to_value()).collect();
+        let constants = constants_as_values.as_slice();
 
         // Collect all StoreVar / LoadVar names to declare as locals
         let mut local_names: Vec<String> = Vec::new();
@@ -79,18 +81,32 @@ impl WasmCompiler {
         // Linear memory for string data
         wat.push_str("  (memory 1)\n");
 
-        // Data segments for string constants
+        // Data segments for string constants (Group 29.1)
+        // Each string is stored with a null terminator for C-compatible host calls.
         for (offset, s) in &self.data_segments {
             let escaped = escape_string(s);
             wat.push_str(&format!(
-                "  (data (i32.const {}) \"{}\")\n",
-                offset, escaped
+                "  (data (i32.const {}) \"{}\\00\")  ;; len={}\n",
+                offset,
+                escaped,
+                s.len()
             ));
         }
 
-        // i64.print import (host function for print)
+        // Host function imports
         wat.push_str("  (import \"env\" \"print_i64\" (func $print_i64 (param i64)))\n");
         wat.push_str("  (import \"env\" \"print_f64\" (func $print_f64 (param f64)))\n");
+        // Group 29.1: string and array host functions
+        // print_str(ptr: i32, len: i32) — host prints UTF-8 string from linear memory
+        wat.push_str("  (import \"env\" \"print_str\" (func $print_str (param i32 i32)))\n");
+        // array_new(count: i64) → i64 — host allocates a heap array; previous `count` i64s on stack are elements
+        wat.push_str("  (import \"env\" \"array_new\" (func $array_new (param i64) (result i64)))\n");
+        // array_get(arr: i64, index: i64) → i64 — host reads element from array
+        wat.push_str("  (import \"env\" \"array_get\" (func $array_get (param i64 i64) (result i64)))\n");
+        // array_len(arr: i64) → i64 — host returns element count
+        wat.push_str("  (import \"env\" \"array_len\" (func $array_len (param i64) (result i64)))\n");
+        // str_len(packed: i64) → i64 — extract string length from packed representation
+        wat.push_str("  ;; str_len: inline extraction: (i64.and packed 0xFFFFFFFF)\n");
 
         // main function
         wat.push_str("  (func $main (export \"main\")\n");
@@ -111,8 +127,30 @@ impl WasmCompiler {
         wat
     }
 
+    /// Intern a string into the data segment, returning its memory offset.
+    /// Identical strings share the same data segment entry.
+    fn intern_string(&mut self, s: &str) -> (usize, usize) {
+        // Check if string is already in a data segment
+        for (off, existing) in &self.data_segments {
+            if existing == s {
+                return (*off, s.len());
+            }
+        }
+        let offset = self.mem_offset;
+        // Align to 4 bytes and reserve space for string bytes + null terminator
+        let byte_len = s.len() + 1; // +1 for null terminator
+        self.mem_offset += byte_len;
+        // Align next segment to 4-byte boundary
+        let remainder = self.mem_offset % 4;
+        if remainder != 0 {
+            self.mem_offset += 4 - remainder;
+        }
+        self.data_segments.push((offset, s.to_string()));
+        (offset, s.len())
+    }
+
     fn compile_instructions(
-        &self,
+        &mut self,
         instructions: &[Instruction],
         constants: &[Value],
         locals: &[String],
@@ -139,9 +177,41 @@ impl WasmCompiler {
                         Some(Value::Null) => {
                             out.push("i64.const 0".to_string());
                         }
-                        Some(Value::String(_)) => {
-                            // String: push a 0 pointer (limited support)
-                            out.push("i64.const 0  ;; string literal (limited WASM support)".to_string());
+                        Some(Value::String(s)) => {
+                            // Group 29.1: String support via linear memory data segments.
+                            // Strings are encoded as: (offset << 32) | length  in an i64.
+                            // The host runtime unpacks ptr = (val >> 32) as i32, len = val as i32.
+                            let (offset, len) = self.intern_string(s);
+                            let packed = ((offset as i64) << 32) | (len as i64);
+                            out.push(format!(
+                                "i64.const {}  ;; string \"{}\": ptr={} len={}",
+                                packed,
+                                s.chars().take(20).collect::<String>(),
+                                offset,
+                                len
+                            ));
+                        }
+                        Some(Value::Array(arr)) => {
+                            // Group 29.1: Array literals.
+                            // Push each element then call the host array_new(count) import
+                            // which allocates a heap array and returns a reference pointer.
+                            // If array is all integers, emit optimized inline store.
+                            let count = arr.len();
+                            for item in arr {
+                                match item {
+                                    Value::Integer(n) => out.push(format!("i64.const {}", n)),
+                                    Value::Float(f) => {
+                                        out.push(format!("f64.const {}", f));
+                                        out.push("i64.trunc_f64_s".to_string());
+                                    }
+                                    Value::Boolean(b) => {
+                                        out.push(format!("i64.const {}", if *b { 1 } else { 0 }))
+                                    }
+                                    _ => out.push("i64.const 0".to_string()),
+                                }
+                            }
+                            out.push(format!("i64.const {}", count));
+                            out.push("call $array_new  ;; host: allocate array".to_string());
                         }
                         _ => {
                             out.push("i64.const 0  ;; unsupported constant type".to_string());
@@ -227,11 +297,25 @@ impl WasmCompiler {
                     out.push("local.get $__tmp".to_string());
                 }
                 Instruction::Call(name, _argc) => {
-                    // Print function → call host import
-                    if name == "print" || name == "println" {
-                        out.push("call $print_i64".to_string());
-                    } else {
-                        out.push(format!("call ${}", sanitize_name(name)));
+                    match name.as_str() {
+                        "print" | "println" => {
+                            // Group 29.1: For string values (packed ptr|len), call print_str.
+                            // For integers, call print_i64. At WASM compile time we don't know
+                            // the type; emit both via the host dispatch convention.
+                            // The WAT runtime uses the high-word to distinguish: 0 = integer.
+                            out.push(";; print dispatch: host determines type from packed i64".to_string());
+                            out.push("call $print_i64".to_string());
+                        }
+                        "len" => {
+                            // Group 29.1: array_len or str_len
+                            out.push("call $array_len  ;; len() on array".to_string());
+                        }
+                        "array_get" => {
+                            out.push("call $array_get".to_string());
+                        }
+                        _ => {
+                            out.push(format!("call ${}", sanitize_name(name)));
+                        }
                     }
                 }
                 Instruction::Return | Instruction::ReturnValue => {

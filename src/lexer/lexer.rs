@@ -518,6 +518,29 @@ impl Lexer {
         }
     }
 
+    /// V.1: Parse \uXXXX (4 hex) or \UXXXXXXXX (8 hex) Unicode escape.
+    /// Returns Some(char) on success, None if fewer valid hex digits found.
+    fn parse_unicode_escape(&mut self, digit_count: usize) -> Option<char> {
+        let saved_pos = self.position;
+        let saved_line = self.line;
+        let saved_col = self.column;
+        let mut hex = String::with_capacity(digit_count);
+        for _ in 0..digit_count {
+            let rem = &self.source[self.position..];
+            match rem.chars().next() {
+                Some(h) if h.is_ascii_hexdigit() => { hex.push(h); self.advance(); }
+                _ => {
+                    // rewind — partial hex, not a valid Unicode escape
+                    self.position = saved_pos;
+                    self.line = saved_line;
+                    self.column = saved_col;
+                    return None;
+                }
+            }
+        }
+        u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32)
+    }
+
     fn peek(&self) -> Option<char> {
         if self.position < self.source.len() {
             // Get the character at the next position after current
@@ -595,16 +618,27 @@ impl Lexer {
                 Some(c) => c,
                 None => return Err("Unterminated escape sequence".to_string()),
             };
-            let char_value = match escaped {
-                'n' => '\n',
-                't' => '\t',
-                'r' => '\r',
-                '\\' => '\\',
-                '\'' => '\'',
-                '"' => '"',
-                _ => escaped,
+            // V.1: Unicode escape sequences
+            let char_value = if escaped == 'u' || escaped == 'U' {
+                let digit_count = if escaped == 'u' { 4 } else { 8 };
+                self.advance(); // consume 'u'/'U'
+                match self.parse_unicode_escape(digit_count) {
+                    Some(uc) => uc,
+                    None => escaped, // fallback: literal 'u'/'U'
+                }
+            } else {
+                let cv = match escaped {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    '\'' => '\'',
+                    '"' => '"',
+                    _ => escaped,
+                };
+                self.advance();
+                cv
             };
-            self.advance();
 
             // Check for closing quote
             let closing_remaining = &self.source[self.position..];
@@ -691,18 +725,30 @@ impl Lexer {
                         Some(c) => c,
                         None => break,
                     };
-                    let escaped_char = match escaped {
-                        'n' => '\n',
-                        't' => '\t',
-                        'r' => '\r',
-                        '\\' => '\\',
-                        '"' => '"',
-                        '\'' => '\'',
-                        // In f-strings, use sentinels so the parser can distinguish
-                        // \{ (literal brace) from { (interpolation start).
-                        '{' => if is_f_string { '\x01' } else { '{' },
-                        '}' => if is_f_string { '\x02' } else { '}' },
-                        _ => escaped,
+                    // V.1: Unicode escape sequences
+                    let escaped_char = if escaped == 'u' || escaped == 'U' {
+                        let digit_count = if escaped == 'u' { 4 } else { 8 };
+                        self.advance(); // consume 'u'/'U'
+                        match self.parse_unicode_escape(digit_count) {
+                            Some(uc) => uc,
+                            None => escaped, // fallback: literal 'u'/'U'
+                        }
+                    } else {
+                        let cv = match escaped {
+                            'n' => '\n',
+                            't' => '\t',
+                            'r' => '\r',
+                            '\\' => '\\',
+                            '"' => '"',
+                            '\'' => '\'',
+                            // In f-strings, use sentinels so the parser can distinguish
+                            // \{ (literal brace) from { (interpolation start).
+                            '{' => if is_f_string { '\x01' } else { '{' },
+                            '}' => if is_f_string { '\x02' } else { '}' },
+                            _ => escaped,
+                        };
+                        self.advance();
+                        cv
                     };
                     // Mark as interpolated so parse_interpolated_string processes
                     // the sentinels back into literal braces.
@@ -710,7 +756,6 @@ impl Lexer {
                         has_interpolation = true;
                     }
                     value.push(escaped_char);
-                    self.advance();
                 }
             } else {
                 value.push(ch);

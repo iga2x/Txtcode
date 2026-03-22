@@ -250,6 +250,35 @@ pub fn parse_call(parser: &mut Parser) -> Result<Expression, String> {
                 };
             }
         } else if parser.check(crate::lexer::token::TokenKind::QuestionMark) {
+            // W.2: Check for `?[` — optional index without `?.` token.
+            // Peek past `?` (skipping whitespace) to see if `[` follows.
+            let after_q = {
+                let mut p = parser.position + 1;
+                while p < parser.tokens.len()
+                    && parser.tokens[p].kind == crate::lexer::token::TokenKind::Whitespace
+                { p += 1; }
+                p
+            };
+            if after_q < parser.tokens.len()
+                && parser.tokens[after_q].kind == crate::lexer::token::TokenKind::LeftBracket
+            {
+                // Consume `?` and `[`
+                let token = parser.peek().clone();
+                let span = token_span_to_ast_span(&token);
+                parser.advance(); // consume `?`
+                // Skip whitespace
+                while parser.check(crate::lexer::token::TokenKind::Whitespace) { parser.advance(); }
+                parser.advance(); // consume `[`
+                let index = crate::parser::expressions::operators::parse_expression(parser)?;
+                parser.expect(crate::lexer::token::TokenKind::RightBracket)?;
+                expr = Expression::OptionalIndex {
+                    target: Box::new(expr),
+                    index: Box::new(index),
+                    span,
+                };
+                continue;
+            }
+
             // Postfix `?` — error propagation operator.
             // Disambiguate from ternary: ternary `?` is always followed by an expression starter.
             // Propagate `?` is followed by newline, comma, closing bracket, or another operator.

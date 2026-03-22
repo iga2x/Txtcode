@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use std::sync::Arc;
 use indexmap::IndexMap;
 
 /// Minimal Mustache-compatible string template engine.
@@ -19,7 +20,7 @@ impl TemplateLib {
                     ));
                 }
                 let template = match &args[0] {
-                    Value::String(s) => s.clone(),
+                    Value::String(s) => s.to_string(),
                     _ => return Err(RuntimeError::new("template_render: template must be a string".to_string())),
                 };
                 let context = match &args[1] {
@@ -28,7 +29,7 @@ impl TemplateLib {
                 };
                 let result = render(&template, &context)
                     .map_err(|e| RuntimeError::new(format!("template_render: {}", e)))?;
-                Ok(Value::String(result))
+                Ok(Value::String(Arc::from(result)))
             }
             _ => Err(RuntimeError::new(format!("Unknown template function: {}", name))),
         }
@@ -203,7 +204,7 @@ fn value_to_string(v: &Value) -> String {
         Value::Boolean(b) => b.to_string(),
         Value::Integer(n) => n.to_string(),
         Value::Float(f) => f.to_string(),
-        Value::String(s) => s.clone(),
+        Value::String(s) => s.to_string(),
         other => other.to_string(),
     }
 }

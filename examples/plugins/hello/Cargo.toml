@@ -1,0 +1,13 @@
+[package]
+name = "txtcode-hello-plugin"
+version = "0.1.0"
+edition = "2021"
+description = "Hello-world example plugin for Txtcode"
+license = "MIT"
+
+[lib]
+name = "txtcode_hello_plugin"
+crate-type = ["cdylib"]
+
+[dependencies]
+txtcode-plugin-sdk = { path = "../../../crates/plugin-sdk" }

@@ -1,6 +1,6 @@
 use super::VirtualMachine;
 use crate::capability::CapabilityManager;
-use crate::runtime::audit::{AIMetadata, AuditResult};
+use crate::runtime::audit::AuditResult;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::permissions::PermissionResource;
 
@@ -14,17 +14,13 @@ impl VirtualMachine {
         scope: Option<String>,
         expires_in: Option<std::time::Duration>,
         granted_by: Option<String>,
-        ai_metadata: Option<AIMetadata>,
     ) -> String {
-        let ai_meta_for_log = ai_metadata.as_ref().filter(|meta| !meta.is_empty());
-
         let token_id = self.capability_manager.grant(
             resource,
             action.clone(),
             scope.clone(),
             expires_in,
             granted_by,
-            ai_metadata.clone(),
         );
 
         // Log capability grant to audit trail
@@ -33,13 +29,7 @@ impl VirtualMachine {
             scope.clone().unwrap_or("".to_string()),
             Some(format!("capability:{}", token_id)),
             AuditResult::Allowed,
-            if let Some(meta) = ai_meta_for_log {
-                Some(meta)
-            } else if !self.ai_metadata.is_empty() {
-                Some(&self.ai_metadata)
-            } else {
-                None
-            },
+            None, // B.1: ai_metadata removed
         );
 
         token_id
@@ -89,11 +79,7 @@ impl VirtualMachine {
             token_id.to_string(),
             Some("capability".to_string()),
             AuditResult::Denied,
-            if self.ai_metadata.is_empty() {
-                None
-            } else {
-                Some(&self.ai_metadata)
-            },
+            None, // B.1: ai_metadata removed
         );
 
         Ok(())

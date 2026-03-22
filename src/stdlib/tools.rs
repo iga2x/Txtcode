@@ -2,6 +2,7 @@
 // Replaces raw exec() with permission-checked tool execution
 
 use crate::policy::PolicyEngine;
+use std::sync::Arc;
 use crate::runtime::audit::{AIMetadata, AuditTrail};
 use crate::runtime::tools::{ToolContext, ToolExecutor};
 use crate::runtime::{RuntimeError, Value};
@@ -90,7 +91,7 @@ impl ToolLib {
                             policy,
                         )?;
                         if result.success {
-                            Ok(Value::String(result.output.stdout))
+                            Ok(Value::String(Arc::from(result.output.stdout)))
                         } else {
                             Err(RuntimeError::new(format!(
                                 "Tool '{}' failed with exit code {}: {}",
@@ -118,7 +119,7 @@ impl ToolLib {
                             policy,
                         )?;
                         if result.success {
-                            Ok(Value::String(result.output.stdout))
+                            Ok(Value::String(Arc::from(result.output.stdout)))
                         } else {
                             Err(RuntimeError::new(format!(
                                 "Tool '{}' failed with exit code {}: {}",
@@ -135,7 +136,7 @@ impl ToolLib {
                 let tools = executor.registry().list();
                 let tool_names: Vec<Value> = tools
                     .iter()
-                    .map(|t| Value::String(t.name.clone()))
+                    .map(|t| Value::String(Arc::from(t.name.clone())))
                     .collect();
                 Ok(Value::Array(tool_names))
             }
@@ -159,11 +160,11 @@ impl ToolLib {
                 let executor = ToolExecutor::new();
                 if let Some(tool) = executor.registry().get(&tool_name) {
                     let mut info = indexmap::IndexMap::new();
-                    info.insert("name".to_string(), Value::String(tool.name.clone()));
-                    info.insert("command".to_string(), Value::String(tool.command.clone()));
+                    info.insert("name".to_string(), Value::String(Arc::from(tool.name.clone())));
+                    info.insert("command".to_string(), Value::String(Arc::from(tool.command.clone())));
                     info.insert(
                         "description".to_string(),
-                        Value::String(tool.description.clone()),
+                        Value::String(Arc::from(tool.description.clone())),
                     );
                     info.insert(
                         "requires_sudo".to_string(),
@@ -178,7 +179,7 @@ impl ToolLib {
                         Value::Array(
                             tool.allowed_actions
                                 .iter()
-                                .map(|a| Value::String(a.clone()))
+                                .map(|a| Value::String(Arc::from(a.clone())))
                                 .collect(),
                         ),
                     );

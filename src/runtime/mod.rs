@@ -17,6 +17,8 @@ pub mod module_metadata;
 pub mod operators;
 pub mod permission_map;
 pub mod permissions;
+pub mod event_loop;
+pub mod sandbox;
 pub mod security;
 pub mod tools;
 pub mod vm;

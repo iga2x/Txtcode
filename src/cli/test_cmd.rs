@@ -235,7 +235,7 @@ pub fn run_tests_with_coverage(
         name: String,
         total_lines: usize,
         covered: std::collections::HashSet<u32>,
-        passed: bool,
+        #[allow(dead_code)] passed: bool,
     }
 
     let mut file_coverages: Vec<FileCoverage> = Vec::new();

@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use std::sync::Arc;
 use std::path::{Path, PathBuf};
 
 /// Path manipulation library
@@ -17,7 +18,7 @@ impl PathLib {
                 let paths: Vec<String> = args
                     .iter()
                     .map(|v| match v {
-                        Value::String(s) => Ok(s.clone()),
+                        Value::String(s) => Ok(s.to_string()),
                         _ => Err(RuntimeError::new(
                             "path_join requires string arguments".to_string(),
                         )),
@@ -110,14 +111,14 @@ impl PathLib {
                     ));
                 }
                 match &args[0] {
-                    Value::String(path) => Ok(Value::Boolean(Path::new(path).is_absolute())),
+                    Value::String(path) => Ok(Value::Boolean(Path::new(path.as_ref()).is_absolute())),
                     _ => Err(RuntimeError::new(
                         "path_is_abs requires a string argument".to_string(),
                     )),
                 }
             }
             "path_sep" | "path_separator" => {
-                Ok(Value::String(std::path::MAIN_SEPARATOR.to_string()))
+                Ok(Value::String(Arc::from(std::path::MAIN_SEPARATOR.to_string())))
             }
             _ => Err(RuntimeError::new(format!(
                 "Unknown path function: {}",
@@ -128,7 +129,7 @@ impl PathLib {
 
     fn path_join(paths: &[String]) -> Result<Value, RuntimeError> {
         if paths.is_empty() {
-            return Ok(Value::String(String::new()));
+            return Ok(Value::String(Arc::from(String::new())));
         }
 
         let mut result = PathBuf::from(&paths[0]);
@@ -136,54 +137,54 @@ impl PathLib {
             result = result.join(path);
         }
 
-        Ok(Value::String(result.to_string_lossy().to_string()))
+        Ok(Value::String(Arc::from(result.to_string_lossy().to_string())))
     }
 
     fn path_dir(path: &str) -> Result<Value, RuntimeError> {
         let p = Path::new(path);
         if let Some(parent) = p.parent() {
-            Ok(Value::String(parent.to_string_lossy().to_string()))
+            Ok(Value::String(Arc::from(parent.to_string_lossy().to_string())))
         } else {
-            Ok(Value::String(".".to_string()))
+            Ok(Value::String(Arc::from(".".to_string())))
         }
     }
 
     fn path_base(path: &str) -> Result<Value, RuntimeError> {
         let p = Path::new(path);
         if let Some(file_name) = p.file_name() {
-            Ok(Value::String(file_name.to_string_lossy().to_string()))
+            Ok(Value::String(Arc::from(file_name.to_string_lossy().to_string())))
         } else {
-            Ok(Value::String(String::new()))
+            Ok(Value::String(Arc::from(String::new())))
         }
     }
 
     fn path_ext(path: &str) -> Result<Value, RuntimeError> {
         let p = Path::new(path);
         if let Some(ext) = p.extension() {
-            Ok(Value::String(format!(".{}", ext.to_string_lossy())))
+            Ok(Value::String(Arc::from(format!(".{}", ext.to_string_lossy()))))
         } else {
-            Ok(Value::String(String::new()))
+            Ok(Value::String(Arc::from(String::new())))
         }
     }
 
     fn path_stem(path: &str) -> Result<Value, RuntimeError> {
         let p = Path::new(path);
         if let Some(stem) = p.file_stem() {
-            Ok(Value::String(stem.to_string_lossy().to_string()))
+            Ok(Value::String(Arc::from(stem.to_string_lossy().to_string())))
         } else {
-            Ok(Value::String(String::new()))
+            Ok(Value::String(Arc::from(String::new())))
         }
     }
 
     fn path_abs(path: &str) -> Result<Value, RuntimeError> {
         let p = Path::new(path);
         match p.canonicalize() {
-            Ok(abs_path) => Ok(Value::String(abs_path.to_string_lossy().to_string())),
+            Ok(abs_path) => Ok(Value::String(Arc::from(abs_path.to_string_lossy().to_string()))),
             Err(_) => {
                 // If canonicalize fails, try to make it absolute relative to current dir
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 let abs_path = current_dir.join(p);
-                Ok(Value::String(abs_path.to_string_lossy().to_string()))
+                Ok(Value::String(Arc::from(abs_path.to_string_lossy().to_string())))
             }
         }
     }
@@ -219,6 +220,6 @@ impl PathLib {
             normalized.join(std::path::MAIN_SEPARATOR_STR)
         };
 
-        Ok(Value::String(result))
+        Ok(Value::String(Arc::from(result)))
     }
 }

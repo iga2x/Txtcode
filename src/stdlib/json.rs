@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use std::sync::Arc;
 use indexmap::IndexMap;
 
 /// JSON library for parsing and encoding JSON
@@ -23,7 +24,10 @@ impl JsonLib {
                     ));
                 }
                 match &args[0] {
-                    Value::String(json_str) => Self::json_decode(json_str),
+                    Value::String(json_str) => Self::json_decode(json_str).or_else(|e| {
+                        // Return typed ParseError instead of a plain RuntimeError
+                        Ok(crate::stdlib::errors::parse_error(json_str, &e.message()))
+                    }),
                     _ => Err(RuntimeError::new(
                         "json_decode requires a string argument".to_string(),
                     )),
@@ -61,7 +65,7 @@ impl JsonLib {
                     .map(|v| {
                         let encoded = Self::json_encode(v)?;
                         match encoded {
-                            Value::String(s) => Ok(s),
+                            Value::String(s) => Ok(s.to_string()),
                             _ => Ok(encoded.to_string()),
                         }
                     })
@@ -75,7 +79,7 @@ impl JsonLib {
                         let key = format!("\"{}\"", Self::escape_json_string(k));
                         let encoded = Self::json_encode(v)?;
                         let val = match encoded {
-                            Value::String(s) => s,
+                            Value::String(s) => s.to_string(),
                             _ => encoded.to_string(),
                         };
                         Ok(format!("{}: {}", key, val))
@@ -88,38 +92,38 @@ impl JsonLib {
                 let arr: Vec<Value> = set.to_vec();
                 let encoded = Self::json_encode(&Value::Array(arr))?;
                 match encoded {
-                    Value::String(s) => s,
+                    Value::String(s) => s.to_string(),
                     _ => encoded.to_string(),
                 }
             }
             Value::Struct(name, fields) => {
                 // Structs are encoded as objects
                 let mut map = IndexMap::new();
-                map.insert("_type".to_string(), Value::String(name.clone()));
+                map.insert("_type".to_string(), Value::String(Arc::from(name.clone())));
                 for (k, v) in fields {
                     map.insert(k.clone(), v.clone());
                 }
                 let encoded = Self::json_encode(&Value::Map(map))?;
                 match encoded {
-                    Value::String(s) => s,
+                    Value::String(s) => s.to_string(),
                     _ => encoded.to_string(),
                 }
             }
             Value::Enum(name, variant, payload) => {
                 // Enums are encoded as objects
                 let mut map = IndexMap::new();
-                map.insert("_type".to_string(), Value::String(name.clone()));
-                map.insert("_variant".to_string(), Value::String(variant.clone()));
+                map.insert("_type".to_string(), Value::String(Arc::from(name.clone())));
+                map.insert("_variant".to_string(), Value::String(Arc::from(variant.clone())));
                 if let Some(inner) = payload {
                     let inner_encoded = match Self::json_encode(inner)? {
-                        Value::String(s) => s,
+                        Value::String(s) => s.to_string(),
                         other => other.to_string(),
                     };
-                    map.insert("_payload".to_string(), Value::String(inner_encoded));
+                    map.insert("_payload".to_string(), Value::String(Arc::from(inner_encoded)));
                 }
                 let encoded = Self::json_encode(&Value::Map(map))?;
                 match encoded {
-                    Value::String(s) => s,
+                    Value::String(s) => s.to_string(),
                     _ => encoded.to_string(),
                 }
             }
@@ -133,7 +137,7 @@ impl JsonLib {
             }
             Value::Result(ok, inner) => {
                 let inner_str = match Self::json_encode(inner)? {
-                    Value::String(s) => s,
+                    Value::String(s) => s.to_string(),
                     other => other.to_string(),
                 };
                 if *ok {
@@ -153,7 +157,7 @@ impl JsonLib {
 
         // If the result is already a JSON string (starts with "), return it as-is
         // Otherwise wrap it
-        Ok(Value::String(json_str))
+        Ok(Value::String(Arc::from(json_str)))
     }
 
     /// Decode a JSON string to Txtcode value
@@ -186,7 +190,7 @@ impl JsonLib {
         // Parse string
         if trimmed.starts_with('"') && trimmed.ends_with('"') {
             let unescaped = Self::unescape_json_string(&trimmed[1..trimmed.len() - 1]);
-            return Ok(Value::String(unescaped));
+            return Ok(Value::String(Arc::from(unescaped)));
         }
 
         // Parse array

@@ -101,7 +101,6 @@ impl CapabilityManager {
         scope: Option<String>,
         expires_in: Option<Duration>,
         granted_by: Option<String>,
-        ai_metadata: Option<AIMetadata>,
     ) -> String {
         let resource_str = resource.to_string();
         let token_id = self.generate_token_id(&resource, &action);
@@ -116,7 +115,7 @@ impl CapabilityManager {
             expires_at,
             revoked: false,
             granted_by,
-            ai_metadata,
+            ai_metadata: None, // B.1: ai_metadata removed
         };
 
         self.tokens.insert(token_id.clone(), capability);

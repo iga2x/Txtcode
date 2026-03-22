@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use std::sync::Arc;
 
 /// Testing framework library
 pub struct TestLib;
@@ -25,7 +26,7 @@ impl TestLib {
                 };
                 let message = if args.len() == 2 {
                     match &args[1] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         v => v.to_string(),
                     }
                 } else {
@@ -49,7 +50,7 @@ impl TestLib {
                 let actual = &args[1];
                 let message = if args.len() == 3 {
                     match &args[2] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         v => v.to_string(),
                     }
                 } else {
@@ -72,7 +73,7 @@ impl TestLib {
                 let b = &args[1];
                 let message = if args.len() == 3 {
                     match &args[2] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         v => v.to_string(),
                     }
                 } else {
@@ -101,7 +102,7 @@ impl TestLib {
                 };
                 let message = if args.len() == 2 {
                     match &args[1] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         v => v.to_string(),
                     }
                 } else {
@@ -130,7 +131,7 @@ impl TestLib {
                 };
                 let message = if args.len() == 2 {
                     match &args[1] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         v => v.to_string(),
                     }
                 } else {
@@ -150,7 +151,7 @@ impl TestLib {
             "test_failed" => {
                 if !args.is_empty() {
                     let message = match &args[0] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         v => v.to_string(),
                     };
                     eprintln!("❌ Test failed: {}", message);
@@ -158,6 +159,141 @@ impl TestLib {
                     eprintln!("❌ Test failed");
                 }
                 Ok(Value::Boolean(false))
+            }
+            "assert_error" => {
+                // assert_error(value, expected_type?) — fails if value is NOT an error result.
+                // `value` is expected to be Value::Result(false, ...) or a RuntimeError return.
+                if args.is_empty() || args.len() > 2 {
+                    return Err(RuntimeError::new(
+                        "assert_error requires 1 or 2 arguments (value, expected_type?)".to_string(),
+                    ));
+                }
+                let expected_type = if args.len() == 2 {
+                    match &args[1] {
+                        Value::String(s) => Some(s.clone()),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                let (is_error, error_msg) = match &args[0] {
+                    Value::Result(false, inner) => (true, inner.to_string()),
+                    Value::Result(true, _) => (false, String::new()),
+                    Value::Null => (false, String::new()),
+                    _ => (false, args[0].to_string()),
+                };
+                if !is_error {
+                    let msg = "assert_error: expected an error but got a success value".to_string();
+                    eprintln!("❌ ASSERTION FAILED: {}", msg);
+                    return Err(RuntimeError::new(format!("Assertion failed: {}", msg)));
+                }
+                if let Some(expected) = expected_type {
+                    if !error_msg.contains(expected.as_ref()) {
+                        let msg = format!(
+                            "assert_error: expected error containing '{}' but got '{}'",
+                            expected, error_msg
+                        );
+                        eprintln!("❌ ASSERTION FAILED: {}", msg);
+                        return Err(RuntimeError::new(format!("Assertion failed: {}", msg)));
+                    }
+                }
+                Ok(Value::Null)
+            }
+            "assert_type" => {
+                // assert_type(value, type_name) — fails if value is not the expected type.
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "assert_type requires 2 arguments (value, type_name)".to_string(),
+                    ));
+                }
+                let expected_type = match &args[1] {
+                    Value::String(s) => s.to_string(),
+                    v => v.to_string(),
+                };
+                let actual_type = match &args[0] {
+                    Value::Integer(_) => "int",
+                    Value::Float(_) => "float",
+                    Value::String(_) => "string",
+                    Value::Boolean(_) => "bool",
+                    Value::Null => "null",
+                    Value::Array(_) => "array",
+                    Value::Map(_) => "map",
+                    Value::Set(_) => "set",
+                    Value::Function(_, _, _, _) => "function",
+                    Value::Result(true, _) => "ok",
+                    Value::Result(false, _) => "error",
+                    Value::Future(_) => "future",
+                    Value::Struct(name, _) => name.as_ref(),
+                    _ => "unknown",
+                };
+                if actual_type != expected_type.as_str() {
+                    let msg = format!(
+                        "assert_type: expected type '{}' but got type '{}'",
+                        expected_type, actual_type
+                    );
+                    eprintln!("❌ ASSERTION FAILED: {}", msg);
+                    return Err(RuntimeError::new(format!("Assertion failed: {}", msg)));
+                }
+                Ok(Value::Null)
+            }
+            "assert_contains" => {
+                // assert_contains(haystack, needle) — array/string contains check.
+                if args.len() != 2 {
+                    return Err(RuntimeError::new(
+                        "assert_contains requires 2 arguments (haystack, needle)".to_string(),
+                    ));
+                }
+                let contains = match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(needle)) => s.contains(needle.as_ref()),
+                    (Value::Array(arr), needle) => arr.contains(needle),
+                    _ => {
+                        return Err(RuntimeError::new(
+                            "assert_contains: haystack must be a string or array".to_string(),
+                        ))
+                    }
+                };
+                if !contains {
+                    let msg = format!(
+                        "assert_contains: '{}' does not contain '{}'",
+                        args[0], args[1]
+                    );
+                    eprintln!("❌ ASSERTION FAILED: {}", msg);
+                    return Err(RuntimeError::new(format!("Assertion failed: {}", msg)));
+                }
+                Ok(Value::Null)
+            }
+            "assert_approx" => {
+                // assert_approx(actual, expected, epsilon) — float comparison with tolerance.
+                if args.len() != 3 {
+                    return Err(RuntimeError::new(
+                        "assert_approx requires 3 arguments (actual, expected, epsilon)".to_string(),
+                    ));
+                }
+                let to_f64 = |v: &Value| -> Option<f64> {
+                    match v {
+                        Value::Float(f) => Some(*f),
+                        Value::Integer(i) => Some(*i as f64),
+                        _ => None,
+                    }
+                };
+                let actual = to_f64(&args[0]).ok_or_else(|| {
+                    RuntimeError::new("assert_approx: actual must be a number".to_string())
+                })?;
+                let expected = to_f64(&args[1]).ok_or_else(|| {
+                    RuntimeError::new("assert_approx: expected must be a number".to_string())
+                })?;
+                let epsilon = to_f64(&args[2]).ok_or_else(|| {
+                    RuntimeError::new("assert_approx: epsilon must be a number".to_string())
+                })?;
+                if (actual - expected).abs() > epsilon {
+                    let msg = format!(
+                        "assert_approx: |{} - {}| = {} > epsilon {}",
+                        actual, expected, (actual - expected).abs(), epsilon
+                    );
+                    eprintln!("❌ ASSERTION FAILED: {}", msg);
+                    return Err(RuntimeError::new(format!("Assertion failed: {}", msg)));
+                }
+                Ok(Value::Null)
             }
             "expect_error" => {
                 // expect_error(result, expected_pattern)
@@ -174,7 +310,7 @@ impl TestLib {
                 }
                 let expected_pattern = if args.len() == 2 {
                     match &args[1] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         v => v.to_string(),
                     }
                 } else {
@@ -184,7 +320,7 @@ impl TestLib {
                 let (is_error, error_msg) = match &args[0] {
                     Value::Result(false, inner) => (true, inner.to_string()),
                     Value::Result(true, _) => (false, String::new()),
-                    Value::String(s) => (true, s.clone()), // raw error string
+                    Value::String(s) => (true, s.to_string()), // raw error string
                     Value::Null => (false, String::new()),
                     other => (false, other.to_string()),
                 };

@@ -5,3 +5,4 @@ mod test_lsp;
 mod test_obfuscator;
 mod test_parser;
 mod test_typecheck;
+mod test_wasm_binary;

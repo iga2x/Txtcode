@@ -1321,6 +1321,62 @@ pub fn list_dependencies() -> Result<(), Box<dyn std::error::Error>> {
 const DEFAULT_REGISTRY: &str = "https://registry.txtcode.dev";
 const CREDENTIALS_FILE: &str = ".txtcode/credentials";
 
+/// Download and install a named package directly from the registry.
+///
+/// Unlike `install_dependencies()` (which reads `Txtcode.toml`), this command
+/// downloads a specific package by name and version, analogous to
+/// `pip install <pkg>` or `npm install <pkg>`.
+pub fn get_package(
+    name: &str,
+    version: &str,
+    registry: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let registry_url = registry
+        .map(str::to_string)
+        .or_else(|| std::env::var("TXTCODE_REGISTRY").ok())
+        .unwrap_or_else(|| DEFAULT_REGISTRY.to_string());
+
+    println!("Fetching {}@{} from {}", name, version, registry_url);
+
+    // Reuse the local PackageRegistry pointing at ~/.txtcode/packages
+    let packages_dir = dirs_home()?.join(".txtcode/packages");
+    fs::create_dir_all(&packages_dir)?;
+    let reg = PackageRegistry::new(packages_dir.clone());
+
+    let dest = packages_dir.join(name).join(version);
+    if dest.exists() {
+        println!("  → Already installed: {}@{}", name, version);
+        return Ok(());
+    }
+
+    // Point the registry at the local index file if available (offline mode)
+    if PathBuf::from("registry/index.json").exists() {
+        std::env::set_var("TXTCODE_REGISTRY_INDEX_FILE", "registry/index.json");
+    } else {
+        // Point at the live registry
+        std::env::set_var(
+            "TXTCODE_REGISTRY_INDEX_FILE",
+            format!("{}/api/v1/index.json", registry_url.trim_end_matches('/'))
+        );
+    }
+
+    match reg.download_package(name, version) {
+        Ok(true) => {
+            println!("  ✓ Installed {}@{}", name, version);
+            Ok(())
+        }
+        Ok(false) => {
+            println!("  → Already installed: {}@{}", name, version);
+            Ok(())
+        }
+        Err(e) => Err(format!(
+            "Failed to install {}@{}: {}\n\
+             Tip: run `txtcode package search {}` to check available versions.",
+            name, version, e, name
+        ).into()),
+    }
+}
+
 /// Store a registry API token in `~/.txtcode/credentials`.
 pub fn login(
     token: Option<&str>,

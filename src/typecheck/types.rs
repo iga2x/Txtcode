@@ -4,6 +4,9 @@ use std::collections::HashSet;
 /// Type system representation
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
+    /// No annotation provided — skip type enforcement, accept any value.
+    /// This replaces the old incorrect default of Type::Int for unannotated params.
+    Unknown,
     Int,
     Float,
     String,
@@ -27,6 +30,8 @@ impl Type {
     /// Check if this type is compatible with another type
     pub fn is_compatible_with(&self, other: &Type) -> bool {
         match (self, other) {
+            // Unknown means "unannotated" — always compatible with anything
+            (Type::Unknown, _) | (_, Type::Unknown) => true,
             (Type::Int, Type::Int)
             | (Type::Float, Type::Float)
             | (Type::String, Type::String)
@@ -96,6 +101,8 @@ pub fn type_constraint_name(ty: &Type) -> Option<&'static str> {
 pub struct TypeContext {
     variables: HashMap<String, Type>,
     functions: HashMap<String, FunctionType>,
+    /// K.3: Enum variant registry — enum_name → [variant1, variant2, ...]
+    pub enum_variants: HashMap<String, Vec<String>>,
 }
 
 impl TypeContext {
@@ -103,6 +110,7 @@ impl TypeContext {
         Self {
             variables: HashMap::new(),
             functions: HashMap::new(),
+            enum_variants: HashMap::new(),
         }
     }
 
@@ -120,6 +128,15 @@ impl TypeContext {
 
     pub fn get_function(&self, name: &str) -> Option<&FunctionType> {
         self.functions.get(name)
+    }
+
+    // K.3: Enum variant registry
+    pub fn define_enum(&mut self, name: String, variants: Vec<String>) {
+        self.enum_variants.insert(name, variants);
+    }
+
+    pub fn get_enum_variants(&self, name: &str) -> Option<&Vec<String>> {
+        self.enum_variants.get(name)
     }
 }
 

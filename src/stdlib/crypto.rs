@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use std::sync::Arc;
 use base64::{engine::general_purpose, Engine as _};
 use hex;
 use ring::rand::{SecureRandom, SystemRandom};
@@ -21,7 +22,7 @@ impl CryptoLib {
                         let mut hasher = Sha256::new();
                         hasher.update(s.as_bytes());
                         let hash = hasher.finalize();
-                        Ok(Value::String(hex::encode(hash)))
+                        Ok(Value::String(Arc::from(hex::encode(hash))))
                     }
                     _ => Err(RuntimeError::new("sha256 requires a string".to_string())),
                 }
@@ -35,7 +36,7 @@ impl CryptoLib {
                         let mut hasher = Sha512::new();
                         hasher.update(s.as_bytes());
                         let hash = hasher.finalize();
-                        Ok(Value::String(hex::encode(hash)))
+                        Ok(Value::String(Arc::from(hex::encode(hash))))
                     }
                     _ => Err(RuntimeError::new("sha512 requires a string".to_string())),
                 }
@@ -60,7 +61,7 @@ impl CryptoLib {
                         rng.fill(&mut bytes).map_err(|e| {
                             RuntimeError::new(format!("Failed to generate random bytes: {}", e))
                         })?;
-                        Ok(Value::String(hex::encode(bytes)))
+                        Ok(Value::String(Arc::from(hex::encode(bytes))))
                     }
                     _ => Err(RuntimeError::new(
                         "crypto_random_bytes requires an integer".to_string(),
@@ -107,7 +108,7 @@ impl CryptoLib {
                         for (i, byte) in data.bytes().enumerate() {
                             encrypted.push(byte ^ key_bytes[i % key_bytes.len()]);
                         }
-                        Ok(Value::String(hex::encode(encrypted)))
+                        Ok(Value::String(Arc::from(hex::encode(encrypted))))
                     }
                     _ => Err(RuntimeError::new("encrypt requires strings".to_string())),
                 }
@@ -120,16 +121,16 @@ impl CryptoLib {
                 }
                 match (&args[0], &args[1]) {
                     (Value::String(data_hex), Value::String(key)) => {
-                        let data = hex::decode(data_hex)
+                        let data = hex::decode(data_hex.as_ref())
                             .map_err(|_| RuntimeError::new("Invalid hex string".to_string()))?;
                         let key_bytes = key.as_bytes();
                         let mut decrypted = Vec::new();
                         for (i, byte) in data.iter().enumerate() {
                             decrypted.push(byte ^ key_bytes[i % key_bytes.len()]);
                         }
-                        Ok(Value::String(String::from_utf8(decrypted).map_err(
+                        Ok(Value::String(Arc::from(String::from_utf8(decrypted).map_err(
                             |_| RuntimeError::new("Invalid UTF-8 in decrypted data".to_string()),
-                        )?))
+                        )?)))
                     }
                     _ => Err(RuntimeError::new("decrypt requires strings".to_string())),
                 }
@@ -141,7 +142,7 @@ impl CryptoLib {
                 match &args[0] {
                     Value::String(s) => {
                         let hash = md5::compute(s.as_bytes());
-                        Ok(Value::String(hex::encode(hash.0)))
+                        Ok(Value::String(Arc::from(hex::encode(hash.0))))
                     }
                     _ => Err(RuntimeError::new("md5 requires a string".to_string())),
                 }
@@ -153,9 +154,9 @@ impl CryptoLib {
                     ));
                 }
                 match &args[0] {
-                    Value::String(s) => Ok(Value::String(
+                    Value::String(s) => Ok(Value::String(Arc::from(
                         general_purpose::STANDARD.encode(s.as_bytes()),
-                    )),
+                    ))),
                     _ => Err(RuntimeError::new(
                         "base64_encode requires a string".to_string(),
                     )),
@@ -170,11 +171,11 @@ impl CryptoLib {
                 match &args[0] {
                     Value::String(s) => {
                         let decoded = general_purpose::STANDARD
-                            .decode(s)
+                            .decode(s.as_ref())
                             .map_err(|e| RuntimeError::new(format!("Invalid base64: {}", e)))?;
-                        Ok(Value::String(String::from_utf8(decoded).map_err(|_| {
+                        Ok(Value::String(Arc::from(String::from_utf8(decoded).map_err(|_| {
                             RuntimeError::new("Invalid UTF-8 in decoded data".to_string())
-                        })?))
+                        })?)))
                     }
                     _ => Err(RuntimeError::new(
                         "base64_decode requires a string".to_string(),
@@ -192,7 +193,7 @@ impl CryptoLib {
                         use ring::hmac;
                         let key = hmac::Key::new(hmac::HMAC_SHA256, key.as_bytes());
                         let tag = hmac::sign(&key, data.as_bytes());
-                        Ok(Value::String(hex::encode(tag.as_ref())))
+                        Ok(Value::String(Arc::from(hex::encode(tag.as_ref()))))
                     }
                     _ => Err(RuntimeError::new(
                         "hmac_sha256 requires string arguments".to_string(),
@@ -220,7 +221,7 @@ impl CryptoLib {
                     bytes[8], bytes[9],
                     bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
                 );
-                Ok(Value::String(uuid))
+                Ok(Value::String(Arc::from(uuid)))
             }
             "secure_compare" => {
                 if args.len() != 2 {
@@ -286,7 +287,7 @@ impl CryptoLib {
                             password.as_bytes(),
                             &mut derived,
                         );
-                        Ok(Value::String(hex::encode(derived)))
+                        Ok(Value::String(Arc::from(hex::encode(derived))))
                     }
                     _ => Err(RuntimeError::new(
                         "pbkdf2 requires (string, string, int) arguments".to_string(),
@@ -369,7 +370,7 @@ impl CryptoLib {
                 match (&args[0], &args[1]) {
                     (Value::String(seed_hex), Value::String(message)) => {
                         use ring::signature;
-                        let seed = hex::decode(seed_hex).map_err(|_| {
+                        let seed = hex::decode(seed_hex.as_ref()).map_err(|_| {
                             RuntimeError::new(
                                 "ed25519_sign: seed_hex must be valid hex".to_string(),
                             )
@@ -381,7 +382,7 @@ impl CryptoLib {
                                 )
                             })?;
                         let sig = key_pair.sign(message.as_bytes());
-                        Ok(Value::String(hex::encode(sig.as_ref())))
+                        Ok(Value::String(Arc::from(hex::encode(sig.as_ref()))))
                     }
                     _ => Err(RuntimeError::new(
                         "ed25519_sign requires string arguments".to_string(),
@@ -398,12 +399,12 @@ impl CryptoLib {
                 match (&args[0], &args[1], &args[2]) {
                     (Value::String(pubkey_hex), Value::String(message), Value::String(sig_hex)) => {
                         use ring::signature;
-                        let pubkey_bytes = hex::decode(pubkey_hex).map_err(|_| {
+                        let pubkey_bytes = hex::decode(pubkey_hex.as_ref()).map_err(|_| {
                             RuntimeError::new(
                                 "ed25519_verify: pubkey_hex must be valid hex".to_string(),
                             )
                         })?;
-                        let sig_bytes = hex::decode(sig_hex).map_err(|_| {
+                        let sig_bytes = hex::decode(sig_hex.as_ref()).map_err(|_| {
                             RuntimeError::new(
                                 "ed25519_verify: signature_hex must be valid hex".to_string(),
                             )
@@ -461,9 +462,9 @@ impl CryptoLib {
                     let mut map = std::collections::HashMap::new();
                     map.insert(
                         "private_key".to_string(),
-                        Value::String(priv_pem.to_string()),
+                        Value::String(Arc::from(priv_pem.to_string())),
                     );
-                    map.insert("public_key".to_string(), Value::String(pub_pem.to_string()));
+                    map.insert("public_key".to_string(), Value::String(Arc::from(pub_pem.to_string())));
                     Ok(Value::Map(map))
                 }
             }
@@ -498,7 +499,7 @@ impl CryptoLib {
                             let signing_key = SigningKey::<Sha256>::new(private_key);
                             let sig = signing_key.sign(message.as_bytes());
                             use rsa::signature::SignatureEncoding;
-                            Ok(Value::String(hex::encode(sig.to_bytes())))
+                            Ok(Value::String(Arc::from(hex::encode(sig.to_bytes()))))
                         }
                         _ => Err(RuntimeError::new(
                             "rsa_sign requires string arguments".to_string(),
@@ -569,7 +570,7 @@ impl CryptoLib {
                     Value::String(s) => {
                         let mut hasher = Sha256::new();
                         hasher.update(s.as_bytes());
-                        Ok(Value::String(hex::encode(hasher.finalize())))
+                        Ok(Value::String(Arc::from(hex::encode(hasher.finalize()))))
                     }
                     _ => Err(RuntimeError::new("crypto_sha256 requires a string".to_string())),
                 }
@@ -587,7 +588,7 @@ impl CryptoLib {
                         use ring::hmac;
                         let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, key.as_bytes());
                         let tag = hmac::sign(&hmac_key, data.as_bytes());
-                        Ok(Value::String(hex::encode(tag.as_ref())))
+                        Ok(Value::String(Arc::from(hex::encode(tag.as_ref()))))
                     }
                     _ => Err(RuntimeError::new(
                         "crypto_hmac_sha256 requires string arguments".to_string(),
@@ -607,7 +608,7 @@ impl CryptoLib {
                     (Value::String(key_str), Value::String(plaintext)) => {
                         use aes_gcm::{
                             aead::{Aead, AeadCore, KeyInit, OsRng},
-                            Aes256Gcm, Key, Nonce,
+                            Aes256Gcm, Key,
                         };
                         // Derive 32-byte key: try hex-decode first, otherwise SHA-256 the string.
                         let key_bytes = Self::derive_aes_key(key_str);
@@ -620,7 +621,7 @@ impl CryptoLib {
                         // Encode as nonce (12 bytes) || ciphertext, base64-encoded.
                         let mut combined = nonce.to_vec();
                         combined.extend_from_slice(&ciphertext);
-                        Ok(Value::String(general_purpose::STANDARD.encode(&combined)))
+                        Ok(Value::String(Arc::from(general_purpose::STANDARD.encode(&combined))))
                     }
                     _ => Err(RuntimeError::new(
                         "crypto_aes_encrypt requires string arguments".to_string(),
@@ -656,11 +657,11 @@ impl CryptoLib {
                         let plaintext = cipher
                             .decrypt(nonce, &combined[12..])
                             .map_err(|e| RuntimeError::new(format!("AES decrypt failed: {}", e)))?;
-                        Ok(Value::String(
+                        Ok(Value::String(Arc::from(
                             String::from_utf8(plaintext).map_err(|_| {
                                 RuntimeError::new("Decrypted data is not valid UTF-8".to_string())
                             })?,
-                        ))
+                        )))
                     }
                     _ => Err(RuntimeError::new(
                         "crypto_aes_decrypt requires string arguments".to_string(),
@@ -678,16 +679,16 @@ impl CryptoLib {
                         "jwt_sign requires 2-3 arguments (payload, secret, algorithm?)".to_string(),
                     ));
                 }
-                let algorithm = if args.len() == 3 {
+                let algorithm: String = if args.len() == 3 {
                     match &args[2] {
-                        Value::String(s) => s.clone(),
+                        Value::String(s) => s.to_string(),
                         _ => return Err(RuntimeError::new("jwt_sign: algorithm must be a string".to_string())),
                     }
                 } else {
                     "HS256".to_string()
                 };
-                let secret = match &args[1] {
-                    Value::String(s) => s.clone(),
+                let secret: String = match &args[1] {
+                    Value::String(s) => s.to_string(),
                     _ => return Err(RuntimeError::new("jwt_sign: secret must be a string".to_string())),
                 };
                 let payload_json = Self::value_to_json(&args[0]);
@@ -741,7 +742,7 @@ impl CryptoLib {
         let key = EncodingKey::from_secret(secret.as_bytes());
         let token = encode(&header, payload_json, &key)
             .map_err(|e| RuntimeError::new(format!("jwt_sign: {}", e)))?;
-        Ok(Value::String(token))
+        Ok(Value::String(Arc::from(token)))
     }
 
     fn jwt_verify_impl(token: &str, secret: &str) -> Result<Value, RuntimeError> {
@@ -758,11 +759,12 @@ impl CryptoLib {
             }
             Err(e) => Ok(Value::Result(
                 false,
-                Box::new(Value::String(e.to_string())),
+                Box::new(Value::String(Arc::from(e.to_string()))),
             )),
         }
     }
 
+    #[allow(deprecated)]
     fn jwt_decode_impl(token: &str) -> Result<Value, RuntimeError> {
         use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
         use std::collections::HashSet;
@@ -784,7 +786,7 @@ impl CryptoLib {
             Value::Boolean(b) => serde_json::Value::Bool(*b),
             Value::Integer(n) => serde_json::Value::Number((*n).into()),
             Value::Float(f) => serde_json::json!(*f),
-            Value::String(s) => serde_json::Value::String(s.clone()),
+            Value::String(s) => serde_json::Value::String(s.to_string()),
             Value::Array(arr) => serde_json::Value::Array(arr.iter().map(Self::value_to_json).collect()),
             Value::Map(m) => {
                 let obj: serde_json::Map<String, serde_json::Value> =
@@ -807,7 +809,7 @@ impl CryptoLib {
                     Value::Float(n.as_f64().unwrap_or(0.0))
                 }
             }
-            serde_json::Value::String(s) => Value::String(s.clone()),
+            serde_json::Value::String(s) => Value::String(Arc::from(s.clone())),
             serde_json::Value::Array(arr) => Value::Array(arr.iter().map(Self::json_to_value).collect()),
             serde_json::Value::Object(obj) => {
                 let mut map = indexmap::IndexMap::new();

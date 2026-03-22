@@ -47,7 +47,15 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
     // Check for old syntax (deprecated): "define name (" without arrow
     let has_arrow_after_define = parser.check(crate::lexer::token::TokenKind::Arrow);
     parser.skip_optional_arrow(); // Optional arrow after define
-    let name = parser.expect_identifier()?;
+    let base_name = parser.expect_identifier()?;
+    // W.4: Support dotted method definition: `define → Type.method → (self)`
+    let name = if parser.check(crate::lexer::token::TokenKind::Dot) {
+        parser.advance(); // consume '.'
+        let method = parser.expect_identifier()?;
+        format!("{}.{}", base_name, method)
+    } else {
+        base_name
+    };
 
     // Warn about old syntax: "define name (" should be "define -> name -> ("
     if !has_arrow_after_define {
@@ -715,7 +723,7 @@ pub fn parse_define(parser: &mut Parser) -> Result<Option<Statement>, String> {
 
 /// Parse `yield → expr`
 pub fn parse_yield(parser: &mut Parser) -> Result<Option<Statement>, String> {
-    use crate::parser::ast::Span;
+    
     let start_token = parser.peek().clone();
     parser.expect_keyword("yield")?;
     parser.skip_optional_arrow();

@@ -24,6 +24,20 @@ pub enum Constant {
     FunctionRef(String),
 }
 
+impl Constant {
+    /// Convert to a runtime `Value` for use in the WASM compiler.
+    pub fn to_value(&self) -> crate::runtime::Value {
+        match self {
+            Constant::Integer(n) => crate::runtime::Value::Integer(*n),
+            Constant::Float(f) => crate::runtime::Value::Float(*f),
+            Constant::String(s) => crate::runtime::Value::String(s.clone()),
+            Constant::Boolean(b) => crate::runtime::Value::Boolean(*b),
+            Constant::Null => crate::runtime::Value::Null,
+            Constant::FunctionRef(s) => crate::runtime::Value::String(s.clone()),
+        }
+    }
+}
+
 impl std::hash::Hash for Constant {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {

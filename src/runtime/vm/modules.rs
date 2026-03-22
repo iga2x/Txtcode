@@ -40,7 +40,7 @@ impl VirtualMachine {
                 module_path.to_string_lossy().to_string(),
                 None,
                 AuditResult::Denied,
-                if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+                None, // B.1: ai_metadata removed
             );
             return Err(self.create_error(format!("Module import denied: {}", e)));
         }
@@ -56,6 +56,13 @@ impl VirtualMachine {
         // After execution we restore this snapshot so the module cannot pollute
         // the caller's global namespace (e.g. define → foo writes to globals).
         let pre_globals: HashMap<String, Value> = self.scope_manager.globals().clone();
+
+        // ── O.2: Permission isolation ──────────────────────────────────────────
+        // Security note: each imported module runs with a SNAPSHOT of the
+        // importer's permissions. Modules cannot grant or revoke permissions
+        // for the importing scope. This is intentional and security-critical.
+        // A malicious or buggy module cannot escalate the importer's permissions.
+        let saved_permissions = self.permission_manager.clone();
 
         // Clear exported symbols for this module's execution
         self.exported_symbols.clear();
@@ -118,6 +125,9 @@ impl VirtualMachine {
         // ── Restore caller globals (undo any pollution from the module) ────────
         *self.scope_manager.globals_mut() = pre_globals;
 
+        // ── O.2: Restore parent permissions (prevent module permission escalation) ─
+        self.permission_manager = saved_permissions;
+
         self.import_stack.pop();
 
         // Propagate any execution error AFTER cleanup
@@ -129,7 +139,7 @@ impl VirtualMachine {
             module_path.to_string_lossy().to_string(),
             None,
             AuditResult::Allowed,
-            if self.ai_metadata.is_empty() { None } else { Some(&self.ai_metadata) },
+            None, // B.1: ai_metadata removed
         );
 
         // Determine the import name

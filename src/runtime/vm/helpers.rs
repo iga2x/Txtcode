@@ -1,4 +1,5 @@
-use crate::parser::ast::{Expression, Pattern};
+use crate::parser::ast::{Expression, Literal, Pattern};
+use std::sync::Arc;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use indexmap::IndexMap;
@@ -102,7 +103,7 @@ impl VirtualMachine {
                         };
 
                         match value {
-                            Value::String(v) if v == string_val => {
+                            Value::String(v) if v.as_ref() == string_val => {
                                 return Ok(());
                             }
                             _ => {
@@ -376,6 +377,24 @@ impl VirtualMachine {
                     return Err(self.create_error(format!(
                         "No branch of or-pattern matched {:?}",
                         value
+                    )));
+                }
+            }
+            // N.1: Typed literal pattern — matches a specific literal value directly.
+            Pattern::Literal(lit) => {
+                let matches = match (lit, value) {
+                    (Literal::Integer(n), Value::Integer(v)) => v == n,
+                    (Literal::Float(f), Value::Float(v)) => (v - f).abs() < f64::EPSILON,
+                    (Literal::String(s), Value::String(v)) => v.as_ref() == s.as_str(),
+                    (Literal::Char(c), Value::Char(v)) => v == c,
+                    (Literal::Boolean(b), Value::Boolean(v)) => v == b,
+                    (Literal::Null, Value::Null) => true,
+                    _ => false,
+                };
+                if !matches {
+                    return Err(self.create_error(format!(
+                        "Literal pattern mismatch: expected {:?}, got {:?}",
+                        lit, value
                     )));
                 }
             }

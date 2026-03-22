@@ -1,4 +1,5 @@
 use crate::runtime::{RuntimeError, Value};
+use std::sync::Arc;
 use chrono::{DateTime, Local, TimeZone};
 
 /// Time standard library functions
@@ -51,7 +52,7 @@ impl TimeLib {
                 };
                 let format_str = if args.len() == 2 {
                     match &args[1] {
-                        Value::String(f) => f.as_str(),
+                        Value::String(f) => f.as_ref(),
                         _ => {
                             return Err(RuntimeError::new(
                                 "format_time format must be a string".to_string(),
@@ -70,7 +71,7 @@ impl TimeLib {
                     ));
                 }
                 let time_str = match &args[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => {
                         return Err(RuntimeError::new(
                             "parse_time time_string must be a string".to_string(),
@@ -78,7 +79,7 @@ impl TimeLib {
                     }
                 };
                 let format_str = match &args[1] {
-                    Value::String(f) => f.as_str(),
+                    Value::String(f) => f.as_ref(),
                     _ => {
                         return Err(RuntimeError::new(
                             "parse_time format must be a string".to_string(),
@@ -89,10 +90,10 @@ impl TimeLib {
             }
             "now_utc" => {
                 use chrono::Utc;
-                Ok(Value::String(Utc::now().to_rfc3339()))
+                Ok(Value::String(Arc::from(Utc::now().to_rfc3339())))
             }
             "now_local" => {
-                Ok(Value::String(Local::now().to_rfc3339()))
+                Ok(Value::String(Arc::from(Local::now().to_rfc3339())))
             }
             "parse_datetime" => {
                 if args.len() != 2 {
@@ -101,11 +102,11 @@ impl TimeLib {
                     ));
                 }
                 let s = match &args[0] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => return Err(RuntimeError::new("parse_datetime: first argument must be a string".to_string())),
                 };
                 let fmt = match &args[1] {
-                    Value::String(f) => f.as_str(),
+                    Value::String(f) => f.as_ref(),
                     _ => return Err(RuntimeError::new("parse_datetime: second argument must be a string".to_string())),
                 };
                 Self::parse_time(s, fmt)
@@ -127,18 +128,18 @@ impl TimeLib {
                 };
                 let tz = if args.len() == 3 {
                     match &args[2] {
-                        Value::String(z) => z.as_str(),
+                        Value::String(z) => z.as_ref(),
                         _ => return Err(RuntimeError::new("format_datetime: tz must be a string".to_string())),
                     }
                 } else {
                     "local"
                 };
-                match tz.to_lowercase().as_str() {
+                match tz.to_lowercase().as_ref() {
                     "utc" => {
                         use chrono::{TimeZone, Utc};
                         match Utc.timestamp_opt(ts, 0) {
                             chrono::LocalResult::Single(dt) | chrono::LocalResult::Ambiguous(dt, _) => {
-                                Ok(Value::String(dt.format(&fmt).to_string()))
+                                Ok(Value::String(Arc::from(dt.format(&fmt).to_string())))
                             }
                             chrono::LocalResult::None => Err(RuntimeError::new("format_datetime: invalid timestamp".to_string())),
                         }
@@ -163,7 +164,7 @@ impl TimeLib {
                     _ => return Err(RuntimeError::new("datetime_add: amount must be a number".to_string())),
                 };
                 let unit = match &args[2] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => return Err(RuntimeError::new("datetime_add: unit must be a string".to_string())),
                 };
                 let delta_secs: i64 = match unit {
@@ -193,7 +194,7 @@ impl TimeLib {
                     _ => return Err(RuntimeError::new("datetime_diff: ts2 must be a number".to_string())),
                 };
                 let unit = match &args[2] {
-                    Value::String(s) => s.as_str(),
+                    Value::String(s) => s.as_ref(),
                     _ => return Err(RuntimeError::new("datetime_diff: unit must be a string".to_string())),
                 };
                 let diff_secs = ts1 - ts2;
@@ -222,7 +223,7 @@ impl TimeLib {
                 return Err(RuntimeError::new("Invalid timestamp".to_string()));
             }
         };
-        Ok(Value::String(dt.format(format).to_string()))
+        Ok(Value::String(Arc::from(dt.format(format).to_string())))
     }
 
     fn parse_time(time_str: &str, format: &str) -> Result<Value, RuntimeError> {

@@ -1,6 +1,7 @@
 // Binary and unary operator evaluation
 
 use super::ExpressionVM;
+use std::sync::Arc;
 use crate::parser::ast::{BinaryOperator, Expression, UnaryOperator};
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
@@ -38,7 +39,7 @@ fn pipe_call<VM: ExpressionVM>(
         Value::String(ref func_name) => {
             // Lambda/function stored as name string — look it up in scope
             if let Some(Value::Function(ref n, ref params, ref body, ref env)) =
-                vm.get_variable(func_name.as_str())
+                vm.get_variable(func_name.as_ref())
             {
                 let (n, params, body, env) = (n.clone(), params.clone(), body.clone(), env.clone());
                 call_user_function(vm, &n, &params, &body, &env, &[arg], func_expr)

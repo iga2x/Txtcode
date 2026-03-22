@@ -39,9 +39,19 @@ impl Version {
         Self::from_string(ver).unwrap_or(Self::new(0, 4, 0))
     }
 
-    /// Check if this version is compatible with another
+    /// Check if this version (runtime) is compatible with `other` (source).
+    ///
+    /// - Runtime newer major → BackwardCompatible (migration needed)
+    /// - Runtime older major → Incompatible (source too new for this runtime)
+    /// - Same major, runtime newer minor → BackwardCompatible
+    /// - Same major, runtime older minor → Incompatible
+    /// - Same major.minor → FullyCompatible
     pub fn is_compatible_with(&self, other: &Self) -> CompatibilityResult {
-        if self.major != other.major {
+        if self.major > other.major {
+            // Runtime is newer: migration needed
+            CompatibilityResult::BackwardCompatible
+        } else if self.major < other.major {
+            // Source is newer than runtime: cannot run
             CompatibilityResult::Incompatible {
                 reason: format!("Major version mismatch: {} vs {}", self.major, other.major),
             }
