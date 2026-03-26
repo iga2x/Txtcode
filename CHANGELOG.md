@@ -7,6 +7,37 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — 3.0.0
+
+**Note on version gap:** The Cargo.toml version is `3.0.0` as of 2026-03-25. The intermediate
+releases (v1.1.0 through v2.7.0) were developed iteratively across multiple sessions and were not
+individually tagged in this changelog. The full development history is available via `git log`.
+Key completed work in that range is summarised in `docs/archive/README.md`.
+
+805 tests passing (628 integration + 177 unit) as of 2026-03-26.
+
+Current active work: `docs/dev-plan.md` Milestones 4–5.
+
+### Pipeline integrity fix (2026-03-26)
+
+- **P1** — Bench runner now runs Validator + uses `Builder::create_vm()` (was bypassing both)
+- **P2** — REPL normal input path already had Validator; confirmed correct
+- **P3** — `Builder::create_vm(config)` factory added; all CLI/embed entry points use it
+- **P4** — REPL `:type` command redirected to `TypeChecker` (was using separate `TypeInference` engine)
+- **P5** — Critical type errors (`Return type mismatch`, `null dereference in arithmetic`) halt execution even in advisory mode
+- **P6** — Global `NATIVE_REGISTRY` removed from `src/embed/mod.rs`; per-engine registry only
+
+### Deep integrity audit (2026-03-26)
+
+- **AUDIT-1** — `Builder::load_and_validate(path)` added; REPL `:load` uses it (was inline Lex+Parse+Validate)
+- **AUDIT-2** — REPL `block_depth` underflow guard: stray `end` no longer sends depth negative
+- **AUDIT-3** — Bytecode VM hot loop: instruction `.clone()` eliminated; `&instructions[ip]` passed directly
+- **AUDIT-4** — 7 permission-map coverage tests added to `test_security.rs`
+- **AUDIT-5** — Linter tests added for rules L014, L015, L016, L018 (were missing)
+- **AUDIT-6** — Bytecode VM `ImportModule` verified fully wired (false alarm; no change needed)
+
+---
+
 ## [1.0.0] — 2026-03-20
 
 **v1.0.0 — Production Release.** 465 tests passing.

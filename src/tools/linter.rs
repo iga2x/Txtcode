@@ -2092,6 +2092,91 @@ mod tests {
         assert!(!issues.iter().any(|i| i.rule_id.as_deref() == Some("L019")));
     }
 
+    // ── L014: Missing return on typed function ───────────────────────────────
+
+    #[test]
+    fn test_l014_missing_return_on_typed_fn() {
+        // Function has return type annotation (→ int) but body doesn't end with return
+        let src = "define → f → () → int\n  store → x → 1\nend";
+        let issues = lint(src);
+        assert!(
+            issues.iter().any(|i| i.rule_id.as_deref() == Some("L014")),
+            "expected L014 for typed fn without return, got: {:?}", issues
+        );
+    }
+
+    #[test]
+    fn test_l014_no_warn_when_return_present() {
+        let src = "define → f → () → int\n  return → 1\nend";
+        let issues = lint(src);
+        assert!(!issues.iter().any(|i| i.rule_id.as_deref() == Some("L014")));
+    }
+
+    #[test]
+    fn test_l014_no_warn_without_return_type() {
+        // No return type annotation — L014 should not fire
+        let src = "define → f → ()\n  store → x → 1\nend";
+        let issues = lint(src);
+        assert!(!issues.iter().any(|i| i.rule_id.as_deref() == Some("L014")));
+    }
+
+    // ── L015: Negated condition without else ─────────────────────────────────
+
+    #[test]
+    fn test_l015_negated_condition_no_else() {
+        let src = "store → x → true\nif → not x\n  print → 0\nend";
+        let issues = lint(src);
+        assert!(
+            issues.iter().any(|i| i.rule_id.as_deref() == Some("L015")),
+            "expected L015 for negated if without else, got: {:?}", issues
+        );
+    }
+
+    #[test]
+    fn test_l015_no_warn_when_else_present() {
+        let src = "store → x → true\nif → not x\n  print → 0\nelse\n  print → 1\nend";
+        let issues = lint(src);
+        assert!(!issues.iter().any(|i| i.rule_id.as_deref() == Some("L015")));
+    }
+
+    // ── L016: String concatenation in loop ───────────────────────────────────
+
+    #[test]
+    fn test_l016_string_concat_in_for_loop() {
+        let src = "store → s → \"\"\nfor → item in [1, 2, 3]\n  store → s → s + item\nend";
+        let issues = lint(src);
+        assert!(
+            issues.iter().any(|i| i.rule_id.as_deref() == Some("L016")),
+            "expected L016 for string concat in loop, got: {:?}", issues
+        );
+    }
+
+    #[test]
+    fn test_l016_no_warn_outside_loop() {
+        let src = "store → s → \"\"\nstore → s → s + \"hello\"";
+        let issues = lint(src);
+        assert!(!issues.iter().any(|i| i.rule_id.as_deref() == Some("L016")));
+    }
+
+    // ── L018: Overly broad permission grant ──────────────────────────────────
+
+    #[test]
+    fn test_l018_broad_fs_permission() {
+        let src = "grant_permission(\"fs\")";
+        let issues = lint(src);
+        assert!(
+            issues.iter().any(|i| i.rule_id.as_deref() == Some("L018")),
+            "expected L018 for broad 'fs' permission, got: {:?}", issues
+        );
+    }
+
+    #[test]
+    fn test_l018_no_warn_for_scoped_permission() {
+        let src = "grant_permission(\"fs.read\")";
+        let issues = lint(src);
+        assert!(!issues.iter().any(|i| i.rule_id.as_deref() == Some("L018")));
+    }
+
     // ── rule_id field is included in issues ──────────────────────────────────
 
     #[test]

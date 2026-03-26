@@ -103,6 +103,7 @@ postgres        = ["dep:postgres"]
 mysql           = ["dep:mysql"]
 net             = ["dep:tokio", "dep:reqwest", "dep:native-tls", "dep:tungstenite"]
 bytecode        = ["dep:bincode"]
+ir              = []                # Backend-agnostic IR layer (experimental, opt-in)
 crypto-advanced = ["dep:bcrypt", "dep:rsa"]
 ffi             = ["dep:libloading"] # Native shared-library FFI (experimental, opt-in)
 wasm            = ["dep:wasm-encoder", "dep:wasmparser", "bytecode"] # WASM binary output

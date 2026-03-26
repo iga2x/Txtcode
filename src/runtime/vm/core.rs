@@ -37,6 +37,7 @@ impl VirtualMachine {
             covered_lines: std::collections::HashSet::new(),
             coverage_enabled: false,
             current_span: None,
+            native_registry: std::collections::HashMap::new(),
         }
     }
 
@@ -75,6 +76,7 @@ impl VirtualMachine {
             covered_lines: std::collections::HashSet::new(),
             coverage_enabled: false,
             current_span: None,
+            native_registry: std::collections::HashMap::new(),
         };
 
         // If safe_mode is enabled, deny exec by default
@@ -83,6 +85,17 @@ impl VirtualMachine {
         }
 
         vm
+    }
+
+    /// Register a host-provided native function callable from scripts.
+    ///
+    /// The function is stored per-VM so multiple engine instances don't share
+    /// a global registry and cannot overwrite each other's functions.
+    pub fn register_native_fn<F>(&mut self, name: &str, f: F)
+    where
+        F: Fn(&[crate::runtime::core::Value]) -> crate::runtime::core::Value + Send + Sync + 'static,
+    {
+        self.native_registry.insert(name.to_string(), Box::new(f));
     }
 
     pub(super) fn create_error(&self, message: String) -> RuntimeError {

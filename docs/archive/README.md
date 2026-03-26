@@ -8,6 +8,12 @@ To view: `git log --oneline docs/dev-plan.md` — commits up to `1b9cb0d` contai
 The plan was replaced on 2026-03-21 with `docs/dev-plan.md` (Groups A–J, v3.0 audit-driven rewrite)
 after a senior technical audit identified broken implementations, dead code, and scope creep.
 
+## dev-plan-v3.0-groups-A-J.md
+
+The v3.0 plan (Groups A–J) is also superseded. All groups A–J confirmed complete as of 2026-03-25.
+The current active plan is v3.1 (Groups P–V) in `docs/dev-plan.md`, targeting stabilization:
+embed security gap, IR layer, backend decision, and test restructuring.
+
 ### Summary of what was completed in the old plan (Groups 1–29)
 
 - Groups 1–22: Core language, stdlib, tooling, security, WASM, async — implemented

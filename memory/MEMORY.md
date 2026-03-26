@@ -1,6 +1,11 @@
 # NPL / Txt-code Project Memory
 
-## Version: 1.0.0-release (ALL GROUPS COMPLETE) — 465 tests (128 unit + 337 integration)
+## Version: 3.0.0 — Pipeline audit + doc update complete; 805 tests (628 integration + 177 unit); 0 failures (2026-03-26)
+## Builder: COMPLETE — run.rs/compile.rs/check.rs all delegate to Builder; no Lexer/Parser/VM imports remain
+## ALL GROUPS DONE: U, S.1, S.2, P.1+P.2, Q.1+Q.2, V, W.1–W.4, T.1, R.1+R.2+R.3, T.2, S.3
+## IR layer: src/ir/ (4 files) — feature `ir`; IrBuilder::lower() + const-fold + dead-branch-elim + CapabilityCall wrapping
+## WASM IR backend: WasmCompiler::compile_from_ir() added (structured WAT control flow from IR); used when `ir+bytecode` features active
+## Golden tests: tests/golden/ — 5 .tc programs + expected/ + test_golden.rs runner
 
 ## Dev Plan Status — COMPLETE
 - Full plan at `docs/dev-plan.md`

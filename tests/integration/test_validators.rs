@@ -200,3 +200,94 @@ fn test_validator_catches_eval_before_vm_runs() {
     // VM may or may not error on eval() — but the validator must catch it first.
     drop(vm_result);
 }
+
+// ── Q.1 + Q.2: Advisory warning checks ───────────────────────────────────────
+
+/// Helper: collect advisory warnings for source without halting.
+fn advisory_warnings(source: &str) -> Vec<String> {
+    let prog = parse(source);
+    txtcode::validator::SemanticsValidator::collect_advisory_warnings(&prog.statements)
+}
+
+#[test]
+fn test_advisory_undefined_variable_flagged() {
+    // `xyz` is not defined anywhere.
+    let warnings = advisory_warnings("xyz + 1");
+    assert!(
+        warnings.iter().any(|w| w.contains("xyz")),
+        "expected warning for undefined 'xyz', got: {:?}", warnings
+    );
+}
+
+#[test]
+fn test_advisory_in_scope_variable_not_flagged() {
+    // `n` is brought into scope by the assignment before use.
+    let warnings = advisory_warnings("store → n → 10\nn + 1");
+    assert!(
+        !warnings.iter().any(|w| w.contains("'n'")),
+        "in-scope variable 'n' should not be flagged, got: {:?}", warnings
+    );
+}
+
+#[test]
+fn test_advisory_wrong_arity_flagged() {
+    let src = "define → add → (a, b)\n  a + b\nend\nadd(1)";
+    let warnings = advisory_warnings(src);
+    assert!(
+        warnings.iter().any(|w| w.contains("add") && w.contains("2") && w.contains("1")),
+        "expected arity warning for 'add', got: {:?}", warnings
+    );
+}
+
+#[test]
+fn test_advisory_correct_arity_not_flagged() {
+    let src = "define → add → (a, b)\n  a + b\nend\nadd(1, 2)";
+    let warnings = advisory_warnings(src);
+    assert!(
+        !warnings.iter().any(|w| w.contains("add") && w.contains("arity") || w.contains("expects")),
+        "correct arity call should not be flagged, got: {:?}", warnings
+    );
+}
+
+// ── Phase 3: stdlib name completeness (no false "undefined variable" warnings) ──
+
+#[test]
+fn test_advisory_db_transaction_not_flagged() {
+    // db_transaction is handled outside STDLIB_DISPATCH (executor-dependent).
+    // It must not produce a false "undefined variable" warning.
+    let warnings = advisory_warnings("store → conn → db_connect(\"sqlite::memory:\")\ndb_transaction(conn, (c) → c)");
+    assert!(
+        !warnings.iter().any(|w| w.contains("db_transaction")),
+        "db_transaction should not be flagged as undefined, got: {:?}", warnings
+    );
+}
+
+#[test]
+fn test_advisory_http_serve_not_flagged() {
+    // http_serve is in the fallthrough branch of the stdlib dispatcher.
+    let warnings = advisory_warnings("http_serve(8080, (req) → req)");
+    assert!(
+        !warnings.iter().any(|w| w.contains("http_serve")),
+        "http_serve should not be flagged as undefined, got: {:?}", warnings
+    );
+}
+
+#[test]
+fn test_advisory_async_run_not_flagged() {
+    // async_run is a well-known async primitive that must always be in scope.
+    let warnings = advisory_warnings("async_run((x) → x + 1, 5)");
+    assert!(
+        !warnings.iter().any(|w| w.contains("async_run")),
+        "async_run should not be flagged as undefined, got: {:?}", warnings
+    );
+}
+
+#[test]
+fn test_advisory_await_all_not_flagged() {
+    // await_all is in STDLIB_DISPATCH; this test ensures it stays recognized.
+    let warnings = advisory_warnings("await_all([])");
+    assert!(
+        !warnings.iter().any(|w| w.contains("await_all")),
+        "await_all should not be flagged as undefined, got: {:?}", warnings
+    );
+}

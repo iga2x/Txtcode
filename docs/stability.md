@@ -1,14 +1,14 @@
 # Stability Guarantees and Semver Policy
 
-Txtcode v1.0.0 establishes clear stability tiers and a semantic versioning policy for the language, standard library, CLI, and internal APIs.
+Txtcode v3.0.0 establishes clear stability tiers and a semantic versioning policy for the language, standard library, CLI, and internal APIs.
 
 ---
 
 ## Stability Tiers
 
-### Stable (guaranteed for v1.x)
+### Stable (guaranteed for v3.x)
 
-The following surfaces are **stable** from v1.0.0 and will not have breaking changes until a v2.0 release:
+The following surfaces are **stable** from v3.0.0 and will not have breaking changes until a v4.0 release:
 
 | Surface | Notes |
 |---------|-------|
@@ -21,7 +21,7 @@ The following surfaces are **stable** from v1.0.0 and will not have breaking cha
 | **Script signature format** | `.sig` files produced by `txtcode sign` are stable. |
 | **Audit log JSON format** | Fields in `--audit-log` output. |
 
-### Unstable (may change in v1.x minor releases with deprecation notice)
+### Unstable (may change in v3.x minor releases with deprecation notice)
 
 | Surface | Notes |
 |---------|-------|
@@ -44,7 +44,7 @@ The following surfaces are **stable** from v1.0.0 and will not have breaking cha
 
 Txtcode follows [Semantic Versioning 2.0.0](https://semver.org/).
 
-### Patch releases (1.0.x)
+### Patch releases (3.0.x)
 
 - Bug fixes
 - Security patches
@@ -52,7 +52,7 @@ Txtcode follows [Semantic Versioning 2.0.0](https://semver.org/).
 - Documentation corrections
 - **No breaking changes to any Stable surface**
 
-### Minor releases (1.x.0)
+### Minor releases (3.x.0)
 
 - New stdlib functions (backwards compatible)
 - New language features (backwards compatible)
@@ -61,7 +61,7 @@ Txtcode follows [Semantic Versioning 2.0.0](https://semver.org/).
 - Deprecation of Unstable surfaces (with one minor release notice)
 - **No breaking changes to any Stable surface**
 
-### Major releases (2.0)
+### Major releases (4.0)
 
 - Breaking changes to language syntax or stdlib API are permitted
 - Must be accompanied by a migration guide
@@ -80,11 +80,11 @@ Txtcode follows [Semantic Versioning 2.0.0](https://semver.org/).
 
 ## Long-Term Support
 
-- **v1.0.x** receives security patches for **24 months** from release date (until March 2028)
-- **v1.x** receives bug fixes for **12 months** after the next minor release
+- **v3.0.x** receives security patches for **24 months** from release date (until March 2028)
+- **v3.x** receives bug fixes for **12 months** after the next minor release
 
 ---
 
 ## Reporting Stability Issues
 
-If a patch or minor release breaks your code in a way that violates this policy, please [file an issue](https://github.com/txtcode/txtcode/issues) with the label `stability-regression`.
+If a patch or minor release breaks your code in a way that violates this policy, please [file an issue](https://github.com/iga2x/txtcode/issues) with the label `stability-regression`.

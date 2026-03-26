@@ -1,8 +1,9 @@
 //! `txtcode bench` — micro-benchmark a Txt-code program.
 
+use crate::builder::{BuildConfig, Builder};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
-use crate::runtime::vm::VirtualMachine;
+use crate::validator::Validator;
 use std::fs;
 use std::path::PathBuf;
 
@@ -41,12 +42,16 @@ pub fn benchmark_file(
     let tokens = lexer.tokenize().map_err(|e| format!("Lex error: {}", e))?;
     let mut parser = Parser::new(tokens);
     let program = parser.parse().map_err(|e| format!("Parse error: {}", e))?;
+    Validator::validate_program(&program)
+        .map_err(|e| format!("Validation error: {}", e))?;
+
+    let bench_config = BuildConfig::default();
 
     println!("Benchmarking: {}", file.display());
     println!("  Warmup: {} run(s), measured: {} run(s)\n", warmup, runs);
 
     for _ in 0..warmup {
-        let mut vm = VirtualMachine::new();
+        let mut vm = Builder::create_vm(&bench_config);
         vm.interpret(&program)
             .map_err(|e| format!("Runtime error: {}", e))?;
     }
@@ -54,7 +59,7 @@ pub fn benchmark_file(
     let mut timings: Vec<f64> = Vec::with_capacity(runs);
     for _ in 0..runs {
         let start = std::time::Instant::now();
-        let mut vm = VirtualMachine::new();
+        let mut vm = Builder::create_vm(&bench_config);
         vm.interpret(&program)
             .map_err(|e| format!("Runtime error: {}", e))?;
         timings.push(start.elapsed().as_micros() as f64);

@@ -12,6 +12,7 @@ use crate::runtime::security_pipeline::{self, PipelineAuditResult, SecurityPipel
 use crate::stdlib::{FunctionExecutor, PermissionChecker, StdLib};
 use indexmap::IndexMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// A catch handler frame on the catch_stack
 #[allow(dead_code)]
@@ -356,8 +357,11 @@ impl BytecodeVM {
 
             let ip = self.ip;
             self.ip += 1;
-            let instruction = bytecode.instructions[ip].clone();
-            match self.execute_instruction(&instruction, &bytecode.constants) {
+            // Pass a reference to avoid cloning heap-allocated instruction data
+            // (String in LoadVar/StoreVar/Call, Vec<String> in RegisterFunction).
+            // Safe: `bytecode` is a separate immutable borrow; `&mut self` is
+            // disjoint and execute_instruction does not access `bytecode.instructions`.
+            match self.execute_instruction(&bytecode.instructions[ip], &bytecode.constants) {
                 Ok(()) => {
                     // Register heap-allocated values for GC tracking
                     if let Some(top) = self.stack.last() {
@@ -382,7 +386,7 @@ impl BytecodeVM {
                         // Bind the error message to the error variable if provided
                         if let Some(var) = frame.error_var {
                             self.variables
-                                .insert(var, Value::String(e.message().to_string()));
+                                .insert(var, Value::String(e.message().into()));
                         }
                         // Jump to catch handler
                         self.ip = frame.catch_ip;
@@ -580,10 +584,10 @@ impl BytecodeVM {
                 // Handle string concatenation in bytecode VM too
                 match (&a, &b) {
                     (Value::String(s), other) => {
-                        self.stack.push(Value::String(format!("{}{}", s, other)));
+                        self.stack.push(Value::String(format!("{}{}", s, other).into()));
                     }
                     (other, Value::String(s)) => {
-                        self.stack.push(Value::String(format!("{}{}", other, s)));
+                        self.stack.push(Value::String(format!("{}{}", other, s).into()));
                     }
                     (Value::Integer(x), Value::Integer(y)) => {
                         let result = x.checked_add(*y).ok_or_else(|| {
@@ -860,7 +864,7 @@ impl BytecodeVM {
                 // Check if a variable holds a lambda (FunctionRef or String → registered function)
                 let lambda_var = self.variables.get(name.as_str()).cloned().and_then(|v| match v {
                     Value::FunctionRef(s) => Some(s),
-                    Value::String(s) if self.functions.contains_key(s.as_str()) => Some(s),
+                    Value::String(s) if self.functions.contains_key(&*s) => Some(s.to_string()),
                     _ => None,
                 });
                 if let Some(func_name) = lambda_var {
@@ -937,7 +941,7 @@ impl BytecodeVM {
                     {
                         args.first()
                             .and_then(|v| match v {
-                                Value::String(p) => Some(p.as_str()),
+                                Value::String(p) => Some(&**p),
                                 _ => None,
                             })
                             .map(|p| (PermissionResource::FileSystem("read".to_string()), Some(p)))
@@ -956,14 +960,14 @@ impl BytecodeVM {
                     {
                         args.first()
                             .and_then(|v| match v {
-                                Value::String(p) => Some(p.as_str()),
+                                Value::String(p) => Some(&**p),
                                 _ => None,
                             })
                             .map(|p| (PermissionResource::FileSystem("write".to_string()), Some(p)))
                     } else if name == "delete" || name == "rmdir" {
                         args.first()
                             .and_then(|v| match v {
-                                Value::String(p) => Some(p.as_str()),
+                                Value::String(p) => Some(&**p),
                                 _ => None,
                             })
                             .map(|p| {
@@ -986,7 +990,7 @@ impl BytecodeVM {
                                     .nth(1)
                                     .and_then(|s| s.split('/').next())
                                     .and_then(|s| s.split(':').next())
-                                    .unwrap_or(url.as_str());
+                                    .unwrap_or(&**url);
                                 if host.is_empty() {
                                     None
                                 } else {
@@ -1008,7 +1012,7 @@ impl BytecodeVM {
                         args.first().and_then(|v| match v {
                             Value::String(cmd) => {
                                 let prog =
-                                    cmd.split_whitespace().next().unwrap_or(cmd.as_str());
+                                    cmd.split_whitespace().next().unwrap_or(&**cmd);
                                 if prog.is_empty() {
                                     None
                                 } else {
@@ -1231,7 +1235,7 @@ impl BytecodeVM {
                     let value = self.pop_value()?;
                     let key_val = self.pop_value()?;
                     if let Value::String(key) = key_val {
-                        map.insert(key, value);
+                        map.insert(key.to_string(), value);
                     } else {
                         return Err(RuntimeError::new("Map keys must be strings".to_string()));
                     }
@@ -1251,7 +1255,7 @@ impl BytecodeVM {
                         }
                     }
                     (Value::Map(map), Value::String(key)) => {
-                        if let Some(val) = map.get(key) {
+                        if let Some(val) = map.get(key.as_ref()) {
                             self.stack.push(val.clone());
                         } else {
                             return Err(RuntimeError::new(format!("Key not found: {}", key)));
@@ -1292,7 +1296,7 @@ impl BytecodeVM {
                     Value::FunctionRef(_) => "function",
                     Value::Bytes(_) => "bytes",
                 };
-                self.stack.push(Value::String(type_name.to_string()));
+                self.stack.push(Value::String(type_name.into()));
             }
             // ?? operator: if top-of-stack is null, use the default (second value)
             Instruction::NullCoalesce => {
@@ -1338,7 +1342,7 @@ impl BytecodeVM {
                     }
                     Value::Map(ref map) => {
                         if let Value::String(key) = index {
-                            let val = map.get(&key).cloned().unwrap_or(Value::Null);
+                            let val = map.get(key.as_ref()).cloned().unwrap_or(Value::Null);
                             self.stack.push(val);
                         } else {
                             return Err(RuntimeError::new("Map index must be string".to_string()));
@@ -1364,7 +1368,7 @@ impl BytecodeVM {
                     Value::String(func_name) => {
                         // Target is a lambda/function name string — look it up and call it
                         if let Some((params, start_ip)) =
-                            self.functions.get(func_name.as_str()).cloned()
+                            self.functions.get(&*func_name).cloned()
                         {
                             const MAX_CALL_DEPTH: usize = crate::runtime::errors::MAX_CALL_DEPTH;
                             if self.call_stack.len() >= MAX_CALL_DEPTH {
@@ -1376,7 +1380,7 @@ impl BytecodeVM {
                             let catch_depth = self.catch_stack.len();
                             let saved_vars = std::mem::take(&mut self.variables);
                             if let Some(closure_env) =
-                                self.closure_envs.get(func_name.as_str()).cloned()
+                                self.closure_envs.get(&*func_name).cloned()
                             {
                                 self.variables = closure_env;
                             }
@@ -1494,7 +1498,7 @@ impl BytecodeVM {
                         self.stack.push(Value::Array(arr));
                     }
                     (Value::Map(mut map), Value::String(key)) => {
-                        map.insert(key.clone(), new_value);
+                        map.insert(key.to_string(), new_value);
                         self.stack.push(Value::Map(map));
                     }
                     _ => {
@@ -1531,7 +1535,7 @@ impl BytecodeVM {
                 let iterable = self.pop_value()?;
                 let items: Vec<Value> = match iterable {
                     Value::Array(arr) => arr,
-                    Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+                    Value::String(s) => s.chars().map(|c| Value::String(c.to_string().into())).collect(),
                     // Materialize built-in iterator structs (lazy in AST VM, eager here)
                     Value::Struct(ref name, ref fields) if name == "__Range__" => {
                         let current = match fields.get("current") { Some(Value::Integer(i)) => *i, _ => 0 };
@@ -1611,7 +1615,7 @@ impl BytecodeVM {
                         )))
                     }
                 };
-                if let Some((params, start_ip)) = self.functions.get(func_name.as_str()).cloned() {
+                if let Some((params, start_ip)) = self.functions.get(&*func_name).cloned() {
                     const MAX_CALL_DEPTH: usize = crate::runtime::errors::MAX_CALL_DEPTH;
                     if self.call_stack.len() >= MAX_CALL_DEPTH {
                         return Err(RuntimeError::new(format!(
@@ -1621,7 +1625,7 @@ impl BytecodeVM {
                     }
                     let catch_depth = self.catch_stack.len();
                     let saved_vars = std::mem::take(&mut self.variables);
-                    if let Some(closure_env) = self.closure_envs.get(func_name.as_str()).cloned() {
+                    if let Some(closure_env) = self.closure_envs.get(&*func_name).cloned() {
                         self.variables = closure_env;
                     }
                     self.call_stack.push((self.ip, saved_vars, catch_depth));
@@ -1774,7 +1778,7 @@ impl BytecodeVM {
                     let val = self.pop_value()?;
                     let key_val = self.pop_value()?;
                     if let Value::String(key) = key_val {
-                        pairs.push((key, val));
+                        pairs.push((key.to_string(), val));
                     } else {
                         return Err(RuntimeError::new(
                             "Struct field key must be a string".to_string(),
@@ -1787,7 +1791,7 @@ impl BytecodeVM {
                 }
                 let name_val = self.pop_value()?;
                 let struct_name = match name_val {
-                    Value::String(s) => s,
+                    Value::String(s) => s.to_string(),
                     _ => {
                         return Err(RuntimeError::new(
                             "Struct name must be a string".to_string(),
@@ -1922,7 +1926,7 @@ impl BytecodeVM {
 
                         if step_raw < 0 {
                             if len == 0 {
-                                self.stack.push(Value::String(String::new()));
+                                self.stack.push(Value::String("".into()));
                             } else {
                                 let abs_step = (-step_raw) as usize;
                                 let s = resolve(&start_val, len - 1)?;
@@ -1945,7 +1949,8 @@ impl BytecodeVM {
                                 if idx == e {
                                     result.push(chars[idx]);
                                 }
-                                self.stack.push(Value::String(result.into_iter().collect()));
+                                let s: String = result.into_iter().collect();
+                                self.stack.push(Value::String(s.into()));
                             }
                         } else {
                             let abs_step = step_raw as usize;
@@ -1965,7 +1970,7 @@ impl BytecodeVM {
                             }
                             let sliced: String =
                                 chars[s..e].iter().step_by(abs_step).collect();
-                            self.stack.push(Value::String(sliced));
+                            self.stack.push(Value::String(sliced.into()));
                         }
                     }
                     _ => {
@@ -1989,12 +1994,12 @@ impl BytecodeVM {
             Value::String(s) => match method {
                 "len" => Ok(Value::Integer(s.chars().count() as i64)),
                 "isEmpty" => Ok(Value::Boolean(s.is_empty())),
-                "toLower" | "to_lower" => Ok(Value::String(s.to_lowercase())),
-                "toUpper" | "to_upper" => Ok(Value::String(s.to_uppercase())),
-                "trim" => Ok(Value::String(s.trim().to_string())),
-                "reverse" => Ok(Value::String(s.chars().rev().collect())),
+                "toLower" | "to_lower" => Ok(Value::String(s.to_lowercase().into())),
+                "toUpper" | "to_upper" => Ok(Value::String(s.to_uppercase().into())),
+                "trim" => Ok(Value::String(s.trim().into())),
+                "reverse" => { let r: String = s.chars().rev().collect(); Ok(Value::String(r.into())) },
                 "chars" => Ok(Value::Array(
-                    s.chars().map(|c| Value::String(c.to_string())).collect(),
+                    s.chars().map(|c| Value::String(c.to_string().into())).collect(),
                 )),
                 "toInt" | "to_int" => s
                     .trim()
@@ -2015,7 +2020,7 @@ impl BytecodeVM {
                             ))
                         }
                     };
-                    Ok(Value::Boolean(s.contains(pat.as_str())))
+                    Ok(Value::Boolean(s.contains(&*pat)))
                 }
                 "startsWith" | "starts_with" => {
                     let pat = match args.first() {
@@ -2026,7 +2031,7 @@ impl BytecodeVM {
                             ))
                         }
                     };
-                    Ok(Value::Boolean(s.starts_with(pat.as_str())))
+                    Ok(Value::Boolean(s.starts_with(&*pat)))
                 }
                 "endsWith" | "ends_with" => {
                     let pat = match args.first() {
@@ -2037,7 +2042,7 @@ impl BytecodeVM {
                             ))
                         }
                     };
-                    Ok(Value::Boolean(s.ends_with(pat.as_str())))
+                    Ok(Value::Boolean(s.ends_with(&*pat)))
                 }
                 "split" => {
                     let sep = match args.first() {
@@ -2049,8 +2054,8 @@ impl BytecodeVM {
                         }
                     };
                     let parts: Vec<Value> = s
-                        .split(sep.as_str())
-                        .map(|p| Value::String(p.to_string()))
+                        .split(&*sep)
+                        .map(|p| Value::String(Arc::from(p)))
                         .collect();
                     Ok(Value::Array(parts))
                 }
@@ -2071,7 +2076,7 @@ impl BytecodeVM {
                             ))
                         }
                     };
-                    Ok(Value::String(s.replace(from.as_str(), to.as_str())))
+                    Ok(Value::String(s.replace(&*from, &*to).into()))
                 }
                 "substring" | "substr" => {
                     let start = match args.first() {
@@ -2084,7 +2089,7 @@ impl BytecodeVM {
                     };
                     let chars: Vec<char> = s.chars().collect();
                     let end = end.min(chars.len());
-                    Ok(Value::String(chars[start..end].iter().collect()))
+                    Ok(Value::String(chars[start..end].iter().collect::<String>().into()))
                 }
                 "indexOf" | "index_of" => {
                     let pat = match args.first() {
@@ -2095,7 +2100,7 @@ impl BytecodeVM {
                             ))
                         }
                     };
-                    match s.find(pat.as_str()) {
+                    match s.find(&*pat) {
                         Some(idx) => Ok(Value::Integer(idx as i64)),
                         None => Ok(Value::Integer(-1)),
                     }
@@ -2109,7 +2114,7 @@ impl BytecodeVM {
                             ))
                         }
                     };
-                    Ok(Value::String(s.repeat(n)))
+                    Ok(Value::String(s.repeat(n).into()))
                 }
                 "padStart" | "pad_start" => {
                     let n = match args.first() {
@@ -2127,9 +2132,8 @@ impl BytecodeVM {
                         return Ok(Value::String(s.clone()));
                     }
                     let pad_n = n - chars.len();
-                    Ok(Value::String(
-                        std::iter::repeat_n(pad, pad_n).chain(chars).collect(),
-                    ))
+                    let result: String = std::iter::repeat_n(pad, pad_n).chain(chars).collect();
+                    Ok(Value::String(result.into()))
                 }
                 "padEnd" | "pad_end" => {
                     let n = match args.first() {
@@ -2145,12 +2149,11 @@ impl BytecodeVM {
                         return Ok(Value::String(s.clone()));
                     }
                     let pad_n = n - chars.len();
-                    Ok(Value::String(
-                        chars
-                            .into_iter()
-                            .chain(std::iter::repeat_n(pad, pad_n))
-                            .collect(),
-                    ))
+                    let result: String = chars
+                        .into_iter()
+                        .chain(std::iter::repeat_n(pad, pad_n))
+                        .collect();
+                    Ok(Value::String(result.into()))
                 }
                 _ => Err(RuntimeError::new(format!(
                     "Unknown string method: {}",
@@ -2184,8 +2187,8 @@ impl BytecodeVM {
                     }
                 }
                 "join" => {
-                    let sep = match args.first() {
-                        Some(Value::String(s)) => s.clone(),
+                    let sep: String = match args.first() {
+                        Some(Value::String(s)) => s.to_string(),
                         _ => ",".to_string(),
                     };
                     let joined = arr
@@ -2193,7 +2196,7 @@ impl BytecodeVM {
                         .map(|v| v.to_string())
                         .collect::<Vec<_>>()
                         .join(&sep);
-                    Ok(Value::String(joined))
+                    Ok(Value::String(joined.into()))
                 }
                 "reverse" => {
                     let mut rev = arr.clone();
@@ -2253,19 +2256,19 @@ impl BytecodeVM {
                 "len" => Ok(Value::Integer(map.len() as i64)),
                 "isEmpty" | "is_empty" => Ok(Value::Boolean(map.is_empty())),
                 "keys" => Ok(Value::Array(
-                    map.keys().cloned().map(Value::String).collect(),
+                    map.keys().map(|k| Value::String(k.as_str().into())).collect(),
                 )),
                 "values" => Ok(Value::Array(map.values().cloned().collect())),
                 "has" | "contains" => {
                     let key = match args.first() {
-                        Some(Value::String(s)) => s.clone(),
+                        Some(Value::String(s)) => s.to_string(),
                         _ => return Err(RuntimeError::new("has: expected string key".to_string())),
                     };
                     Ok(Value::Boolean(map.contains_key(&key)))
                 }
                 "get" => {
                     let key = match args.first() {
-                        Some(Value::String(s)) => s.clone(),
+                        Some(Value::String(s)) => s.to_string(),
                         _ => return Err(RuntimeError::new("get: expected string key".to_string())),
                     };
                     Ok(map.get(&key).cloned().unwrap_or(Value::Null))
@@ -2273,7 +2276,7 @@ impl BytecodeVM {
                 "entries" => {
                     let entries: Vec<Value> = map
                         .iter()
-                        .map(|(k, v)| Value::Array(vec![Value::String(k.clone()), v.clone()]))
+                        .map(|(k, v)| Value::Array(vec![Value::String(k.as_str().into()), v.clone()]))
                         .collect();
                     Ok(Value::Array(entries))
                 }
@@ -2308,7 +2311,7 @@ impl BytecodeVM {
         match constant {
             Constant::Integer(i) => Value::Integer(*i),
             Constant::Float(f) => Value::Float(*f),
-            Constant::String(s) => Value::String(s.clone()),
+            Constant::String(s) => Value::String(s.as_str().into()),
             Constant::Boolean(b) => Value::Boolean(*b),
             Constant::Null => Value::Null,
             Constant::FunctionRef(s) => Value::FunctionRef(s.clone()),

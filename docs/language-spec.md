@@ -1,6 +1,6 @@
-# Txt-code Language Specification — v0.8.0-dev
+# Txt-code Language Specification — v3.0.0
 
-> **Status:** v0.8.0-dev — Group 12 (Platform & Compilation) complete.
+> **Status:** v3.0.0 — language correctness complete (Milestones 1–3 done; M4 active).
 > The public API, permission model, stdlib function names, and core language syntax are **stable**.
 > Breaking changes require a major version bump.
 > All changes are documented in the [CHANGELOG](https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md).
@@ -10,7 +10,7 @@
 > - **`?` error propagation operator** — postfix `?` on a `Result` unwraps `Ok` or early-returns `Err` from the enclosing function; see §1.17 and §7.8
 > - **Or-patterns and range patterns** — `1 | 2 | 3` and `1..=5` in `match` case arms; both VMs; see §1.7 (Pattern Matching) and updated §1.15 grammar
 > - **`await_all` / `await_any`** stdlib functions — parallel resolution of `Future` arrays using existing OS-thread mechanism; see §4.6
-> - **WASM compilation target** — `txtcode compile --target wasm script.tc` produces `.wat` output; see `docs/llvm-backend.md` for the Cranelift / LLVM roadmap
+> - **WASM compilation target** — `txtcode compile --target wasm script.tc` produces `.wat` output; LLVM/Cranelift native backend deferred (see `docs/dev-plan.md` §Deferred)
 >
 > **New in v0.5 (over v0.4):**
 > - **Real async/await** — `async define → fn → (args)` spawns an OS thread; `await` blocks until result; `Value::Future` type; `Instruction::Await` in bytecode VM
@@ -31,7 +31,7 @@
 > - Virtual environment system (`txtcode env`) with 12 subcommands
 > - Bytecode VM: `break`/`continue`, `for x in arr`, `repeat N`, `match`, string interpolation
 > - Integer overflow guards (`checked_*`) in both AST VM and bytecode VM
-> - Recursion depth limit (50) enforced across all VMs
+> - Recursion depth limit (500) enforced across all VMs (raised from 50 in v3.0)
 > - User-defined functions with caller/callee scope isolation in bytecode VM
 > - `?.` / `?[]` / `?()` optional chaining — both VMs (returns `null` on null target)
 >
@@ -40,7 +40,7 @@
 > - `++arr[0]` / `--arr[0]` on non-identifier targets — use `store → arr[0] → arr[0] + 1` instead
 > - WebSocket support — planned for v0.6
 > - macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only
-> - LLVM / native compilation backend — planned for v1.0; see `docs/llvm-backend.md` for Cranelift design
+> - LLVM / native compilation backend — deferred; see `docs/dev-plan.md` §Deferred
 - WASM compilation: basic `.wat` output available (`txtcode compile --target wasm`); full WASM stdlib, binary output, and `wasmtime` execution are planned for v1.0
 
 ---
@@ -1086,10 +1086,10 @@ RuntimeError: Maximum execution time exceeded: N seconds (max: M seconds)
 
 ### 6.3 Call Stack
 
-The call stack depth limit is enforced at **50** across all VMs as of v0.4. Recursion or mutual calls that exceed this depth return a `RuntimeError`:
+The call stack depth limit is enforced at **500** across all VMs (raised from 50 in v3.0 via `stacker::maybe_grow`). Recursion or mutual calls that exceed this depth return a `RuntimeError`:
 
 ```
-RuntimeError: Maximum call depth exceeded (50)
+RuntimeError: Maximum call depth exceeded (500)
 ```
 
 Design functions to stay within this budget. Deeply recursive algorithms should be rewritten iteratively.
@@ -1250,7 +1250,7 @@ r?   ;; RuntimeError [E0034]: ? operator used outside of a function body
 | Permission explicitly denied | `"Permission denied: fs.write"` |
 | Intent violation | `"intent.violation.net.connect logged in audit trail"` |
 | Timeout exceeded | `"Maximum execution time exceeded"` |
-| Call depth exceeded | `"Maximum call depth exceeded (50)"` |
+| Call depth exceeded | `"Maximum call depth exceeded (500)"` |
 | File too large | `"File 'path' is too large"` |
 | Stack overflow (OS) | Process abort — not catchable in v0.4 |
 

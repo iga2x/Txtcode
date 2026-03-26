@@ -23,16 +23,17 @@
 /// txtcode_free(e);
 /// ```
 
+use crate::builder::{BuildConfig, Builder};
 use crate::lexer::lexer::Lexer;
-use std::sync::Arc;
 use crate::parser::parser::Parser;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
-use crate::runtime::vm::VirtualMachine;
+use crate::validator::Validator;
+use std::sync::Arc;
 
 /// High-level embedding API for the Txt-code interpreter.
 pub struct TxtcodeEngine {
-    vm: VirtualMachine,
+    vm: crate::runtime::vm::VirtualMachine,
     /// Error code from the most recent `eval` call (None if last call succeeded).
     last_error_code: Option<u32>,
 }
@@ -41,7 +42,7 @@ impl TxtcodeEngine {
     /// Create a new engine with default (unprivileged) settings.
     pub fn new() -> Self {
         Self {
-            vm: VirtualMachine::new(),
+            vm: Builder::create_vm(&BuildConfig::default()),
             last_error_code: None,
         }
     }
@@ -69,7 +70,28 @@ impl TxtcodeEngine {
         let program = parser
             .parse()
             .map_err(|e| RuntimeError::new(e))?;
+        // P.1: run the full validator pipeline before execution.
+        // Without this, host applications embedding via C ABI received zero
+        // semantic validation and no restriction checking.
+        Validator::validate_program(&program)
+            .map_err(|e| RuntimeError::new(e.to_string()))?;
         self.vm.interpret_repl(&program)
+    }
+
+    /// Create a sandboxed engine (applies OS-level seccomp/prctl hardening).
+    ///
+    /// Use when running untrusted scripts from a host application.
+    /// The sandbox is applied once at construction time. Default [`new()`]
+    /// remains unprivileged but now includes full semantic validation (P.1).
+    pub fn with_sandbox() -> Self {
+        // Non-fatal: language-level permissions still apply if OS sandbox fails.
+        if let Err(e) = crate::runtime::sandbox::apply_sandbox(true) {
+            eprintln!("[txtcode] warning: OS sandbox could not be applied: {}", e);
+        }
+        Self {
+            vm: Builder::create_vm(&BuildConfig::default()),
+            last_error_code: None,
+        }
     }
 
     /// Evaluate source and return the result as a string.
@@ -105,26 +127,18 @@ impl TxtcodeEngine {
     ///
     /// The closure receives evaluated arguments and must return a `Value`.
     /// Errors should be returned as `Value::String(Arc::from(message))` or similar.
+    ///
+    /// Functions are stored per-engine, so multiple engines can register
+    /// different implementations under the same name without collision.
     pub fn register_fn<F>(&mut self, name: &str, f: F)
     where
         F: Fn(&[Value]) -> Value + Send + Sync + 'static,
     {
-        // Wrap in a Value::NativeFunction (stored as a closure in globals)
-        // We represent host functions as Value::Function stubs; at call time
-        // the VM hits the native registry.  A simpler approach: store the fn
-        // in globals under a special key and expose it as a lambda wrapper.
-        //
-        // Implementation: store as a callable in the globals map using a
-        // dedicated NativeFunction value variant path.  Because Value does not
-        // currently have a NativeFunction variant, we use a thread-local
-        // registry keyed by name, and inject a zero-arg Function declaration
-        // that the eval loop will pick up through the stdlib path.
-        //
-        // For now we register into a global table that stdlib's call path
-        // checks before reaching the built-in dispatch.
-        NATIVE_REGISTRY.lock().unwrap().insert(name.to_string(), Box::new(f));
-        // Define a placeholder in the VM scope so the parser/resolver sees
-        // the name as defined.
+        // Store in the per-VM registry so different engine instances don't share
+        // a global table and cannot overwrite each other's functions.
+        self.vm.register_native_fn(name, f);
+        // Define a placeholder in the VM scope so the resolver sees the name as
+        // defined and routes calls through the "__native_fn::" fast path.
         self.vm.define_global(
             name.to_string(),
             Value::String(Arc::from(format!("__native_fn::{}", name))),
@@ -136,21 +150,6 @@ impl Default for TxtcodeEngine {
     fn default() -> Self {
         Self::new()
     }
-}
-
-// ── Native function registry ──────────────────────────────────────────────────
-
-type NativeFn = Box<dyn Fn(&[Value]) -> Value + Send + Sync + 'static>;
-
-lazy_static::lazy_static! {
-    pub(crate) static ref NATIVE_REGISTRY: std::sync::Mutex<std::collections::HashMap<String, NativeFn>> =
-        std::sync::Mutex::new(std::collections::HashMap::new());
-}
-
-/// Look up and call a registered native function.  Returns `None` if not found.
-pub fn call_native(name: &str, args: &[Value]) -> Option<Value> {
-    let guard = NATIVE_REGISTRY.lock().unwrap();
-    guard.get(name).map(|f| f(args))
 }
 
 // ── C-compatible API ──────────────────────────────────────────────────────────

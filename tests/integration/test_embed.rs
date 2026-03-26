@@ -66,7 +66,8 @@ fn test_embed_register_fn_and_call() {
 
 #[test]
 fn test_embed_register_fn_direct_lookup() {
-    // Verify call_native works for direct Rust-side invocation
+    // Verify per-VM dispatch: the function is callable through the engine.
+    // Native functions are stored in the per-VM registry only — no global table.
     let mut engine = TxtcodeEngine::new();
     engine.register_fn("triple", |args| {
         if let Some(Value::Integer(n)) = args.first() {
@@ -75,8 +76,9 @@ fn test_embed_register_fn_direct_lookup() {
             Value::Null
         }
     });
-    let result = txtcode::embed::call_native("triple", &[Value::Integer(10)]);
-    assert_eq!(result, Some(Value::Integer(30)));
+    // Per-VM dispatch works end-to-end.
+    let result = engine.eval("triple(10)").expect("per-VM native fn should be callable");
+    assert_eq!(result, Value::Integer(30));
 }
 
 #[test]
@@ -118,6 +120,37 @@ fn test_embed_last_error_code_cleared_on_success() {
     assert_eq!(engine.last_error_code(), None);
 }
 
+// ── Task P.1: Validator runs inside eval_inner ────────────────────────────────
+
+#[test]
+fn test_embed_rejects_duplicate_function() {
+    let mut engine = TxtcodeEngine::new();
+    let src = "define → foo → ()\n  1\nend\ndefine → foo → ()\n  2\nend";
+    let result = engine.eval(src);
+    assert!(result.is_err(), "duplicate function should be rejected by validator");
+    let msg = result.unwrap_err().message().to_string();
+    assert!(
+        msg.contains("foo") || msg.contains("duplicate") || msg.contains("already"),
+        "error should mention the duplicate: got '{}'", msg
+    );
+}
+
+#[test]
+fn test_embed_rejects_break_outside_loop() {
+    let mut engine = TxtcodeEngine::new();
+    let result = engine.eval("break");
+    assert!(result.is_err(), "break outside loop should be rejected");
+}
+
+#[test]
+fn test_embed_sandbox_constructor_builds() {
+    // with_sandbox() must not panic on Linux (OS sandbox may warn but must not crash).
+    // We only verify construction and a basic eval work.
+    let mut engine = TxtcodeEngine::with_sandbox();
+    let result = engine.eval("1 + 1");
+    assert_eq!(result.ok(), Some(Value::Integer(2)));
+}
+
 // ── Task I.2: txtcode_set_string_n ────────────────────────────────────────────
 
 #[test]
@@ -127,4 +160,40 @@ fn test_embed_set_string_n_via_set() {
     engine.set("msg", Value::String(Arc::from("hello\nworld")));
     let val = engine.get("msg");
     assert_eq!(val, Some(Value::String(Arc::from("hello\nworld"))));
+}
+
+// ── Phase 6: Per-engine native registry (no collision between engines) ─────────
+
+#[test]
+fn test_embed_per_engine_registry_no_collision() {
+    // Two engines register "greet" with different implementations.
+    // Each engine must call its own version, not the other's.
+    let mut engine_a = TxtcodeEngine::new();
+    let mut engine_b = TxtcodeEngine::new();
+
+    engine_a.register_fn("greet", |_args| Value::String(Arc::from("hello from A")));
+    engine_b.register_fn("greet", |_args| Value::String(Arc::from("hello from B")));
+
+    let result_a = engine_a.eval("greet()").expect("engine A eval failed");
+    let result_b = engine_b.eval("greet()").expect("engine B eval failed");
+
+    assert_eq!(result_a, Value::String(Arc::from("hello from A")),
+        "engine A must call its own 'greet', got: {:?}", result_a);
+    assert_eq!(result_b, Value::String(Arc::from("hello from B")),
+        "engine B must call its own 'greet', got: {:?}", result_b);
+}
+
+#[test]
+fn test_embed_register_fn_returns_correct_value() {
+    // Existing test: register_fn still works correctly with the per-VM approach.
+    let mut engine = TxtcodeEngine::new();
+    engine.register_fn("add_one", |args| {
+        if let Some(Value::Integer(n)) = args.first() {
+            Value::Integer(n + 1)
+        } else {
+            Value::Integer(0)
+        }
+    });
+    let result = engine.eval("add_one(41)").expect("eval failed");
+    assert_eq!(result, Value::Integer(42));
 }

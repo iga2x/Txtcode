@@ -118,6 +118,15 @@ pub trait ExpressionVM {
         ))
     }
 
+    /// Call a per-VM native (host-registered) function by name.
+    ///
+    /// Returns `Some(value)` if a matching function is registered on this VM,
+    /// `None` otherwise. VMs that support native functions (e.g. `VirtualMachine`)
+    /// must override this method with their per-VM registry lookup.
+    fn call_native_fn(&mut self, _fn_name: &str, _args: &[Value]) -> Option<Value> {
+        None
+    }
+
     /// Spawn `func` in a new OS thread and return a `Value::Future`.
     ///
     /// This is the free-standing `async_run(closure)` stdlib function — does NOT

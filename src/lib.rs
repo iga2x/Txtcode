@@ -2,9 +2,11 @@
 // without additional heap allocation. Boxing would require widespread API changes.
 #![allow(clippy::result_large_err)]
 
+pub mod builder;
 pub mod capability;
 pub mod cli;
 pub mod compiler;
+pub mod ir;
 pub mod embed;
 pub mod config;
 pub mod lexer;

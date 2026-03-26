@@ -19,22 +19,25 @@ pub fn init_project(name: Option<&str>) -> Result<(), Box<dyn std::error::Error>
         cwd.clone()
     };
 
-    let toml_path = project_dir.join("Txtcode.toml");
+    // W.4: generate txtcode.toml with [project] table so Builder::run() can
+    // discover and load it via ProjectConfig::discover_near().
+    let toml_path = project_dir.join("txtcode.toml");
     if !toml_path.exists() {
         fs::write(
             &toml_path,
             format!(
-                r#"name = "{name}"
+                r#"[project]
+name = "{name}"
 version = "0.1.0"
-description = "A new Txt-code project"
-authors = []
+entry = "src/main.tc"
+backend = "ast"
 
 [dependencies]
 "#,
                 name = project_name
             ),
         )?;
-        println!("  created  Txtcode.toml");
+        println!("  created  txtcode.toml");
     }
 
     let src_dir = project_dir.join("src");
@@ -124,7 +127,7 @@ txtcode lint src/
 
 ```
 {name}/
-├── Txtcode.toml   # Project manifest
+├── txtcode.toml   # Project manifest
 ├── src/
 │   └── main.tc    # Entry point
 └── tests/

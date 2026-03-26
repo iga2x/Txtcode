@@ -2,7 +2,7 @@
   <img src="assets/icons/logo-512-white.png" alt="Txtcode Logo" width="200"/>
 </p>
 
-# Txtcode Programming Language v1.0.0
+# Txtcode Programming Language v3.0.0
 
 **Txtcode** © 2026 — A multipurpose, security-native programming language for automation, networking, and system scripting.
 
@@ -188,8 +188,9 @@ txtcode migrate [...]          Migrate code between Txt-code versions
   - `txtcode --safe-mode run <file>` disables `exec()` and restricts process spawning.
   - `--allow-exec` overrides `--safe-mode` to re-enable process execution explicitly.
 - **Compilation target**:
-  - `txtcode compile` currently emits bytecode (`.txtc`) only.
-  - Native (LLVM) and WASM backends are **planned** and not enabled in v0.4 builds.
+  - `txtcode compile` emits bytecode (`.txtc`) by default.
+  - `txtcode compile --target wasm` emits WebAssembly Text Format (`.wat`) — experimental.
+  - Native (LLVM/Cranelift) backend is deferred; see `docs/dev-plan.md` §Deferred.
 
 > **Engine note:** Both `txtcode run` (AST VM) and compiled `.txtc` files (Bytecode VM) enforce
 > the full 6-layer security pipeline: intent checking, capability tokens, rate limiting, permission
@@ -258,7 +259,9 @@ src/
  ├── capability/   Capability and permission model
  ├── policy/       Policy engine
  ├── validator/    Input and runtime validation
- ├── compiler/     Code generation (bytecode; native/WASM planned)
+ ├── compiler/     Code generation (bytecode; WASM experimental; native deferred)
+ ├── builder/      Single-entry pipeline factory (CLI + embed + REPL)
+ ├── ir/           IR layer — constant folding and dead-branch elimination
  ├── runtime/      Virtual machine and memory management
  ├── stdlib/       Standard library modules
  ├── tools/        Formatter, linter, debugger, docgen

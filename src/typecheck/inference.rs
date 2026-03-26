@@ -5,14 +5,6 @@ use std::collections::HashMap;
 /// Type inference engine
 pub struct TypeInference {
     pub context: TypeContext,
-    #[allow(dead_code)] // Reserved for future constraint-based type inference
-    constraints: Vec<TypeConstraint>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TypeConstraint {
-    pub left: Type,
-    pub right: Type,
 }
 
 impl Default for TypeInference {
@@ -25,7 +17,6 @@ impl TypeInference {
     pub fn new() -> Self {
         Self {
             context: TypeContext::new(),
-            constraints: Vec::new(),
         }
     }
 

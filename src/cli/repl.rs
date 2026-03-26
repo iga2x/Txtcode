@@ -1,10 +1,9 @@
 //! `txtcode repl` — interactive REPL with multiline input and meta-commands.
 
-use crate::cli::run::apply_env_permissions;
+use crate::builder::{BuildConfig, Builder};
 use crate::config::Config;
 use crate::lexer::{Lexer, TokenKind};
 use crate::parser::Parser;
-use crate::runtime::vm::VirtualMachine;
 use crate::runtime::Value;
 use crate::validator::Validator;
 use std::fs;
@@ -39,9 +38,14 @@ pub fn start_repl(
         .unwrap_or(false);
     let effective_safe_mode = safe_mode || env_safe_mode;
     let exec_allowed = if allow_exec { true } else { !effective_safe_mode };
-    let mut vm = VirtualMachine::with_all_options(effective_safe_mode, debug, verbose);
-    vm.set_exec_allowed(exec_allowed);
-    apply_env_permissions(&mut vm);
+    let repl_config = BuildConfig {
+        safe_mode: effective_safe_mode,
+        allow_exec: exec_allowed,
+        debug,
+        verbose,
+        ..BuildConfig::default()
+    };
+    let mut vm = Builder::create_repl_vm(&repl_config);
 
     let mut history: Vec<String> = Vec::new();
     let mut multiline_buf: Vec<String> = Vec::new();
@@ -105,30 +109,14 @@ pub fn start_repl(
                                         }
                                         _ => {}
                                     }
-                                    match fs::read_to_string(&validated_path) {
-                                        Ok(src) => {
-                                            let mut lx = Lexer::new(src);
-                                            match lx.tokenize() {
-                                                Ok(toks) => {
-                                                    let mut p = Parser::new(toks);
-                                                    match p.parse() {
-                                                        Ok(prog) => {
-                                                            if let Err(e) = Validator::validate_program(&prog) {
-                                                                eprintln!("Validation error: {}", e);
-                                                            } else {
-                                                                match vm.interpret(&prog) {
-                                                                    Ok(_) => println!("Loaded: {}", path),
-                                                                    Err(e) => eprintln!("Runtime error: {}", e),
-                                                                }
-                                                            }
-                                                        }
-                                                        Err(e) => eprintln!("Parse error: {}", e),
-                                                    }
-                                                }
-                                                Err(e) => eprintln!("Lex error: {}", e),
+                                    match Builder::load_and_validate(&validated_path) {
+                                        Ok(prog) => {
+                                            match vm.interpret(&prog) {
+                                                Ok(_) => println!("Loaded: {}", path),
+                                                Err(e) => eprintln!("Runtime error: {}", e),
                                             }
                                         }
-                                        Err(e) => eprintln!("Cannot read '{}': {}", path, e),
+                                        Err(e) => eprintln!("Error: {}", e),
                                     }
                                 }
                             }
@@ -148,19 +136,19 @@ pub fn start_repl(
                                 if expr_src.is_empty() {
                                     eprintln!("Usage: :type <expression>");
                                 } else {
-                                    use crate::typecheck::inference::TypeInference;
+                                    use crate::typecheck::TypeChecker;
                                     let mut lx = Lexer::new(expr_src.to_string());
                                     match lx.tokenize() {
                                         Ok(toks) => {
                                             let mut p = Parser::new(toks);
                                             match p.parse() {
                                                 Ok(prog) => {
-                                                    let mut infer = TypeInference::new();
-                                                    match infer.infer_program(&prog) {
-                                                        Ok(_) => println!("{} : (ok)", expr_src),
+                                                    let mut checker = TypeChecker::new();
+                                                    match checker.check(&prog) {
+                                                        Ok(()) => println!("{} : ok", expr_src),
                                                         Err(errs) => {
                                                             for e in errs {
-                                                                println!("type-error: {}", e);
+                                                                println!("type: {}", e);
                                                             }
                                                         }
                                                     }
@@ -173,13 +161,7 @@ pub fn start_repl(
                                 }
                             }
                             "clear" | "reset" => {
-                                vm = VirtualMachine::with_all_options(
-                                    effective_safe_mode,
-                                    debug,
-                                    verbose,
-                                );
-                                vm.set_exec_allowed(exec_allowed);
-                                apply_env_permissions(&mut vm);
+                                vm = Builder::create_repl_vm(&repl_config);
                                 history.clear();
                                 println!("Session cleared.");
                             }
@@ -198,6 +180,12 @@ pub fn start_repl(
                 }
 
                 block_depth += repl_block_delta(trimmed);
+                // Guard against underflow: stray 'end' outside a block must not
+                // send block_depth negative, which would leave the REPL stuck in
+                // a false "inside block" state.
+                if block_depth < 0 {
+                    block_depth = 0;
+                }
                 multiline_buf.push(line.clone());
 
                 if block_depth > 0 {

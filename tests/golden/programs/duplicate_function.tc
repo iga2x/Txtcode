@@ -1,0 +1,7 @@
+define → greet → ()
+  print("hello")
+end
+
+define → greet → ()
+  print("duplicate")
+end

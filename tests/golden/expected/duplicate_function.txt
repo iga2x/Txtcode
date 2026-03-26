@@ -1,0 +1,2 @@
+EXIT_CODE: 1
+CONTAINS: Function 'greet' is defined more than once

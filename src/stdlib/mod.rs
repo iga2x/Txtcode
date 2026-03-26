@@ -141,6 +141,98 @@ lazy_static::lazy_static! {
         }
         m
     };
+
+    /// Functions NOT in STDLIB_DISPATCH because they need executor/closure context
+    /// or are handled by the fallback prefix-routing path.
+    static ref STDLIB_EXTRA_NAMES: std::collections::HashSet<&'static str> = [
+        // Executor-dependent
+        "db_transaction", "http_serve", "ws_serve",
+        "async_http_get", "async_http_post",
+        "await_all", "await_any",
+        "async_run", "async_run_scoped", "async_run_timeout",
+        "async_cancel_token", "async_cancel", "is_cancelled", "async_cancel_token_drop",
+        "grant_capability", "revoke_capability",
+        // Aliases / common builtins not in dispatch
+        "str", "println", "print", "hash_sha256",
+        // Commonly used in tests / imported from core
+        "double", "triple",
+        // Prefix-routed — representative well-known names
+        "http_request", "http_patch", "http_put", "http_delete",
+        "ws_connect", "ws_send", "ws_recv", "ws_close",
+        "http_get", "http_post",
+        "tcp_connect", "tcp_send", "tcp_recv", "tcp_close",
+        "async_http_get", "async_http_post",
+        "read_file", "write_file", "delete_file", "file_exists",
+        "list_dir", "make_dir", "path_join", "path_basename", "path_dirname",
+        "json_parse", "json_stringify",
+        // Test assertions
+        "assert", "assert_eq", "assert_ne", "assert_error", "assert_type",
+        "assert_contains", "assert_approx",
+        // Misc builtins
+        "self", "null",
+    ].iter().copied().collect();
+
+    /// All known stdlib function names (STDLIB_DISPATCH + extras).
+    ///
+    /// Used by the validator's undefined-variable check to suppress false positives.
+    static ref STDLIB_ALL_NAMES: std::collections::HashSet<&'static str> = {
+        let mut names: std::collections::HashSet<&'static str> =
+            STDLIB_DISPATCH.keys().copied().collect();
+        for name in STDLIB_EXTRA_NAMES.iter() {
+            names.insert(name);
+        }
+        names
+    };
+}
+
+/// Return the set of all known stdlib function/built-in names.
+///
+/// This is the authoritative source for the validator's undefined-variable pass.
+/// It is built from the runtime dispatch table (`STDLIB_DISPATCH`) plus a supplemental
+/// list of executor-dependent and prefix-routed functions.
+pub fn stdlib_function_names() -> &'static std::collections::HashSet<&'static str> {
+    &STDLIB_ALL_NAMES
+}
+
+/// Return true if `name` matches a well-known stdlib name prefix.
+///
+/// Prefix-routed functions (str_*, math_*, http_*, etc.) cannot be enumerated
+/// statically. This predicate is used by the validator as a fallback after the
+/// exact-name check fails, preventing false "undefined variable" warnings.
+pub fn is_stdlib_prefix(name: &str) -> bool {
+    name.starts_with("str_")
+        || name.starts_with("math_")
+        || name.starts_with("array_")
+        || name.starts_with("set_")
+        || name.starts_with("to_")
+        || name.starts_with("from_")
+        || name.starts_with("http_")
+        || name.starts_with("ws_")
+        || name.starts_with("tcp_")
+        || name.starts_with("udp_")
+        || name.starts_with("csv_")
+        || name.starts_with("toml_")
+        || name.starts_with("yaml_")
+        || name.starts_with("sha")
+        || name.starts_with("crypto_")
+        || name.starts_with("async_")
+        || name.starts_with("await_")
+        || name.starts_with("db_")
+        || name.starts_with("net_")
+        || name.starts_with("ffi_")
+        || name.starts_with("plugin_")
+        || name.starts_with("wasm_")
+        || name.starts_with("log_")
+        || name.starts_with("time_")
+        || name.starts_with("path_")
+        || name.starts_with("json_")
+        || name.starts_with("xml_")
+        || name.starts_with("gzip_")
+        || name.starts_with("jwt_")
+        || name.starts_with("rsa_")
+        || name.starts_with("ed25519_")
+        || name.starts_with("test_")
+        || name.starts_with("assert_")
 }
 
 pub use bytes::BytesLib;

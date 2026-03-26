@@ -73,6 +73,9 @@ pub struct VirtualMachine {
     /// O.3: Current statement's source location (line, column) for error reporting.
     /// Updated at the start of each `execute_statement` call.
     pub(crate) current_span: Option<(usize, usize)>,
+    /// Per-engine native function registry (populated by TxtcodeEngine::register_fn).
+    /// Stored on the VM so multiple engines don't share a global registry.
+    pub(crate) native_registry: HashMap<String, Box<dyn Fn(&[Value]) -> Value + Send + Sync>>,
 }
 
 impl VirtualMachine {
@@ -651,6 +654,15 @@ impl FunctionExecutor for VirtualMachine {
 
 // Implement ExpressionVM trait for VirtualMachine
 impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
+    /// Check the per-VM native function registry.
+    fn call_native_fn(&mut self, fn_name: &str, args: &[Value]) -> Option<Value> {
+        if let Some(f) = self.native_registry.get(fn_name) {
+            let result = f(args);
+            return Some(result);
+        }
+        None
+    }
+
     fn get_variable(&self, name: &str) -> Option<Value> {
         VirtualMachine::get_variable(self, name)
     }

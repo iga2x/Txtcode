@@ -223,10 +223,10 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         return call_user_function(vm, name, &params, &body, &captured_env, &args, expr);
     }
 
-    // Check embed NATIVE_REGISTRY: variable holds "__native_fn::<name>" sentinel
+    // Check per-VM native registry: variable holds "__native_fn::<name>" sentinel
     if let Some(Value::String(sentinel)) = vm.get_variable(name) {
         if let Some(fn_name) = sentinel.strip_prefix("__native_fn::") {
-            if let Some(result) = crate::embed::call_native(fn_name, &args) {
+            if let Some(result) = vm.call_native_fn(fn_name, &args) {
                 return Ok(result);
             }
             return Err(vm.create_error(format!(

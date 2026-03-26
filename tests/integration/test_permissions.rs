@@ -1710,14 +1710,25 @@ fn test_safe_mode_creates_audit_log() {
 /// When --no-audit-log is set, safe mode should NOT create an auto audit log.
 #[test]
 fn test_safe_mode_no_audit_log_suppresses_auto_write() {
+    use std::collections::HashSet;
     use std::fs;
+
+    let our_pid = std::process::id();
+    let audit_dir = dirs::home_dir().map(|h| h.join(".txtcode").join("audit"));
+
+    // Snapshot files that already exist BEFORE the run so concurrent safe-mode
+    // tests (which DO write audit files) don't pollute this check.
+    let before_files: HashSet<String> = audit_dir
+        .as_ref()
+        .and_then(|d| fs::read_dir(d).ok())
+        .map(|entries| {
+            entries.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect()
+        })
+        .unwrap_or_default();
 
     let dir = tempfile::tempdir().unwrap();
     let script = dir.path().join("hello2.tc");
     fs::write(&script, "2 + 2\n").unwrap();
-
-    // Note timestamp just before the run
-    let before_time = std::time::SystemTime::now();
 
     let result = txtcode::cli::run::run_file_with_allowlists_full(
         &script.to_path_buf(),
@@ -1730,25 +1741,17 @@ fn test_safe_mode_no_audit_log_suppresses_auto_write() {
     );
     assert!(result.is_ok(), "safe mode run with no_audit_log should succeed: {:?}", result);
 
-    // No audit log should have been written by THIS run (no file newer than before_time
-    // with the specific {ts}_{pid}.json naming of our process).
-    let our_pid = std::process::id();
-    let audit_dir = dirs::home_dir().map(|h| h.join(".txtcode").join("audit"));
+    // No NEW audit log file from our PID should have appeared during this run.
+    let pid_suffix = format!("_{}.json", our_pid);
     if let Some(d) = audit_dir {
         if let Ok(entries) = fs::read_dir(&d) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                // Files from THIS run would include our PID
-                if name.ends_with(&format!("_{}.json", our_pid)) {
-                    if let Ok(meta) = entry.metadata() {
-                        if let Ok(modified) = meta.modified() {
-                            assert!(
-                                modified < before_time,
-                                "--no-audit-log should not write audit file: {}",
-                                entry.path().display()
-                            );
-                        }
-                    }
+                if name.ends_with(&pid_suffix) && !before_files.contains(&name) {
+                    panic!(
+                        "--no-audit-log should not write a new audit file, but found: {}",
+                        entry.path().display()
+                    );
                 }
             }
         }

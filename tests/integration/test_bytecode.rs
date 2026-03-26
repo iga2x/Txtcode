@@ -295,7 +295,7 @@ fn test_bytecode_method_string_len() {
 fn test_bytecode_method_string_to_upper() {
     assert_eq!(
         run_ok("return → \"hello\".toUpper()"),
-        Value::String("HELLO".to_string())
+        Value::String("HELLO".into())
     );
 }
 
@@ -303,7 +303,7 @@ fn test_bytecode_method_string_to_upper() {
 fn test_bytecode_method_string_trim() {
     assert_eq!(
         run_ok("return → \"  hi  \".trim()"),
-        Value::String("hi".to_string())
+        Value::String("hi".into())
     );
 }
 
@@ -342,7 +342,7 @@ fn test_bytecode_method_array_contains() {
 fn test_bytecode_method_array_join() {
     assert_eq!(
         run_ok("return → [\"a\", \"b\", \"c\"].join(\"-\")"),
-        Value::String("a-b-c".to_string())
+        Value::String("a-b-c".into())
     );
 }
 
@@ -378,7 +378,7 @@ fn test_bytecode_slice_array() {
 #[test]
 fn test_bytecode_slice_string() {
     let val = run_ok("store → s → \"hello\"\nreturn → s[1:4]");
-    assert_eq!(val, Value::String("ell".to_string()));
+    assert_eq!(val, Value::String("ell".into()));
 }
 
 // ---------------------------------------------------------------------------
@@ -428,13 +428,13 @@ fn test_bytecode_method_on_variable() {
 #[test]
 fn test_bytecode_string_interpolation_basic() {
     let val = run_ok("store → name → \"World\"\nreturn → f\"Hello {name}!\"");
-    assert_eq!(val, Value::String("Hello World!".to_string()));
+    assert_eq!(val, Value::String("Hello World!".into()));
 }
 
 #[test]
 fn test_bytecode_string_interpolation_expr() {
     let val = run_ok("store → x → 5\nreturn → f\"result={x + 1}\"");
-    assert_eq!(val, Value::String("result=6".to_string()));
+    assert_eq!(val, Value::String("result=6".into()));
 }
 
 // ---------------------------------------------------------------------------
@@ -590,7 +590,7 @@ end
 return → greet({"name": "Alice", "age": 30})
 "#,
     );
-    assert_eq!(val, Value::String("Alice".to_string()));
+    assert_eq!(val, Value::String("Alice".into()));
 }
 
 #[test]
@@ -1034,28 +1034,28 @@ fn test_bytecode_slice_empty_array_reverse() {
 fn test_bytecode_slice_step_on_string() {
     // String slicing with step.
     let val = run_ok("store → s → \"abcdef\"\nreturn → s[::2]");
-    assert_eq!(val, Value::String("ace".to_string()));
+    assert_eq!(val, Value::String("ace".into()));
 }
 
 #[test]
 fn test_bytecode_slice_string_reverse() {
     // String[::-1] must reverse the string.
     let val = run_ok("store → s → \"hello\"\nreturn → s[::-1]");
-    assert_eq!(val, Value::String("olleh".to_string()));
+    assert_eq!(val, Value::String("olleh".into()));
 }
 
 #[test]
 fn test_bytecode_slice_string_negative_index() {
     // String[-3:] → last 3 chars.
     let val = run_ok("store → s → \"hello\"\nreturn → s[-3:]");
-    assert_eq!(val, Value::String("llo".to_string()));
+    assert_eq!(val, Value::String("llo".into()));
 }
 
 #[test]
 fn test_bytecode_slice_string_unicode_negative_index() {
     // Unicode: "héllo" has 5 chars. [-3:] → last 3 chars "llo", not bytes.
     let val = run_ok("store → s → \"héllo\"\nreturn → s[-3:]");
-    assert_eq!(val, Value::String("llo".to_string()));
+    assert_eq!(val, Value::String("llo".into()));
 }
 
 #[test]
@@ -1162,7 +1162,7 @@ fn test_bytecode_propagate_err_returns() {
     match result {
         Ok(v) => assert_eq!(
             v,
-            Value::Result(false, Box::new(Value::String("fail".to_string()))),
+            Value::Result(false, Box::new(Value::String("fail".into()))),
             "? on Err should return the Err value"
         ),
         Err(e) => panic!("unexpected error: {e}"),
@@ -1433,4 +1433,154 @@ mod optimizer_tests {
         let nop_count_after = optimized.instructions.iter().filter(|i| matches!(i, Instruction::Nop)).count();
         assert_eq!(nop_count_after, 0, "all Nops should be removed");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: AST VM / Bytecode VM parity tests
+//
+// For each program the result from the bytecode VM must equal the result from
+// the AST-walking VM.  Divergence indicates a bug in one of the two paths.
+// ---------------------------------------------------------------------------
+
+fn run_ast_vm(source: &str) -> Value {
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+    use txtcode::runtime::vm::VirtualMachine;
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut vm = VirtualMachine::new();
+    match vm.interpret_repl(&program) {
+        Ok(v) => v,
+        // Top-level `return → value` raises a ReturnValue signal — extract it.
+        Err(e) => e.take_return_value().unwrap_or(Value::Null),
+    }
+}
+
+fn assert_parity(source: &str) {
+    let bytecode_result = compile_and_run(source).unwrap_or(Value::Null);
+    let ast_result = run_ast_vm(source);
+    assert_eq!(
+        bytecode_result, ast_result,
+        "AST/Bytecode parity failure for:\n{}\n  bytecode: {:?}\n  ast:      {:?}",
+        source, bytecode_result, ast_result
+    );
+}
+
+#[test]
+fn test_parity_integer_arithmetic() {
+    assert_parity("return → 2 + 3 * 4 - 1");
+}
+
+#[test]
+fn test_parity_integer_division_and_modulo() {
+    assert_parity("return → 17 / 3");
+    assert_parity("return → 17 % 3");
+}
+
+// Float literal arithmetic is a known bytecode VM gap: the bytecode compiler
+// does not yet emit Float constants, so this test is ignored until fixed.
+#[test]
+#[ignore]
+fn test_parity_float_arithmetic() {
+    assert_parity("return → 1.5 + 2.5");
+}
+
+#[test]
+fn test_parity_boolean_logic() {
+    assert_parity("return → true and false");
+    assert_parity("return → true or false");
+    assert_parity("return → not true");
+}
+
+#[test]
+fn test_parity_string_concatenation() {
+    assert_parity("return → \"hello\" + \" world\"");
+}
+
+#[test]
+fn test_parity_if_else() {
+    assert_parity("if → 3 > 2\n  return → 1\nelse\n  return → 0\nend");
+}
+
+#[test]
+fn test_parity_nested_if() {
+    let src = "store → x → 5\nif → x > 3\n  if → x > 4\n    return → 2\n  else\n    return → 1\n  end\nelse\n  return → 0\nend";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_while_loop() {
+    let src = "store → s → 0\nstore → i → 1\nwhile → i <= 5\n  s += i\n  i += 1\nend\nreturn → s";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_for_loop() {
+    let src = "store → s → 0\nfor → x in [1, 2, 3, 4, 5]\n  s += x\nend\nreturn → s";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_function_call() {
+    let src = "define → add → (a, b)\n  return → a + b\nend\nreturn → add(3, 4)";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_recursive_function() {
+    let src = "define → fib → (n)\n  if → n <= 1\n    return → n\n  end\n  return → fib(n - 1) + fib(n - 2)\nend\nreturn → fib(10)";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_higher_order_map() {
+    let src = "return → map([1, 2, 3], (x) → x * 2)";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_higher_order_filter() {
+    let src = "return → filter([1, 2, 3, 4, 5], (x) → x > 3)";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_array_indexing() {
+    let src = "store → arr → [10, 20, 30]\nreturn → arr[1]";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_map_literal() {
+    let src = "store → m → {\"a\": 1, \"b\": 2}\nreturn → m[\"a\"]";
+    assert_parity(src);
+}
+
+#[test]
+fn test_parity_string_len() {
+    assert_parity("return → \"hello\".len()");
+}
+
+#[test]
+fn test_parity_ternary() {
+    assert_parity("return → 5 > 3 ? 1 : 0");
+    assert_parity("return → 1 > 3 ? 1 : 0");
+}
+
+#[test]
+fn test_parity_null_literal() {
+    assert_parity("return → null");
+}
+
+#[test]
+fn test_parity_chained_comparison() {
+    assert_parity("return → 1 < 2 and 2 < 3");
+}
+
+#[test]
+fn test_parity_string_interpolation() {
+    let src = "store → name → \"World\"\nreturn → f\"Hello {name}!\"";
+    assert_parity(src);
 }

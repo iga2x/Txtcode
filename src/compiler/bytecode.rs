@@ -30,10 +30,10 @@ impl Constant {
         match self {
             Constant::Integer(n) => crate::runtime::Value::Integer(*n),
             Constant::Float(f) => crate::runtime::Value::Float(*f),
-            Constant::String(s) => crate::runtime::Value::String(s.clone()),
+            Constant::String(s) => crate::runtime::Value::String(s.as_str().into()),
             Constant::Boolean(b) => crate::runtime::Value::Boolean(*b),
             Constant::Null => crate::runtime::Value::Null,
-            Constant::FunctionRef(s) => crate::runtime::Value::String(s.clone()),
+            Constant::FunctionRef(s) => crate::runtime::Value::String(s.as_str().into()),
         }
     }
 }

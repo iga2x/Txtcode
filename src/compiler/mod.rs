@@ -5,7 +5,8 @@ pub mod optimizer;
 /// Task 12.3 — WASM compilation target (requires bytecode feature for IR)
 #[cfg(feature = "bytecode")]
 pub mod wasm;
-/// Task 29.2 — WASM binary output (requires wasm feature)
+/// Task 29.2 — WASM binary output (requires bytecode + wasm features)
+#[cfg(feature = "bytecode")]
 pub mod wasm_binary;
 
 #[cfg(feature = "bytecode")]
