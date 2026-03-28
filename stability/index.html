@@ -10,25 +10,31 @@
       
       
       
+        <link rel="canonical" href="https://txtcode.dev/docs/stability/">
       
+      
+        <link rel="prev" href="../performance/">
+      
+      
+        <link rel="next" href="../contributing/">
       
       
         
       
       
-      <link rel="icon" href="/docs/assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>Txtcode Documentation</title>
+        <title>Stability Policy - Txtcode Documentation</title>
       
     
     
-      <link rel="stylesheet" href="/docs/assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="/docs/assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -47,7 +53,7 @@
       
     
     
-    <script>__md_scope=new URL("/docs/",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -71,6 +77,11 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
+        
+        <a href="#stability-guarantees-and-semver-policy" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -85,7 +96,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="/docs/." title="Txtcode Documentation" class="md-header__button md-logo" aria-label="Txtcode Documentation" data-md-component="logo">
+    <a href=".." title="Txtcode Documentation" class="md-header__button md-logo" aria-label="Txtcode Documentation" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -105,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              
+              Stability Policy
             
           </span>
         </div>
@@ -218,7 +229,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="/docs/quick-start/" class="md-tabs__link">
+      <a href="../quick-start/" class="md-tabs__link">
         
   
   
@@ -239,7 +250,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="/docs/language-spec/" class="md-tabs__link">
+        <a href="../language-spec/" class="md-tabs__link">
           
   
   
@@ -259,7 +270,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="/docs/permissions/" class="md-tabs__link">
+        <a href="../permissions/" class="md-tabs__link">
           
   
   
@@ -279,7 +290,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="/docs/performance/" class="md-tabs__link">
+        <a href="../performance/" class="md-tabs__link">
           
   
   
@@ -295,9 +306,11 @@
   
   
   
+    
   
-    <li class="md-tabs__item">
-      <a href="/docs/stability/" class="md-tabs__link">
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
         
   
   
@@ -316,7 +329,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="/docs/contributing/" class="md-tabs__link">
+      <a href="../contributing/" class="md-tabs__link">
         
   
   
@@ -351,7 +364,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="/docs/." title="Txtcode Documentation" class="md-nav__button md-logo" aria-label="Txtcode Documentation" data-md-component="logo">
+    <a href=".." title="Txtcode Documentation" class="md-nav__button md-logo" aria-label="Txtcode Documentation" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -381,7 +394,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/docs/quick-start/" class="md-nav__link">
+      <a href="../quick-start/" class="md-nav__link">
         
   
   
@@ -460,7 +473,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/docs/language-spec/" class="md-nav__link">
+      <a href="../language-spec/" class="md-nav__link">
         
   
   
@@ -488,7 +501,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/docs/syntax-reference/" class="md-nav__link">
+      <a href="../syntax-reference/" class="md-nav__link">
         
   
   
@@ -516,7 +529,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/docs/async/" class="md-nav__link">
+      <a href="../async/" class="md-nav__link">
         
   
   
@@ -603,7 +616,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/docs/permissions/" class="md-nav__link">
+      <a href="../permissions/" class="md-nav__link">
         
   
   
@@ -631,7 +644,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/docs/security-features/" class="md-nav__link">
+      <a href="../security-features/" class="md-nav__link">
         
   
   
@@ -718,7 +731,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/docs/performance/" class="md-nav__link">
+      <a href="../performance/" class="md-nav__link">
         
   
   
@@ -750,10 +763,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="/docs/stability/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stability Policy
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -769,6 +809,159 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#stability-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stability Tiers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stability Tiers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stable-guaranteed-for-v3x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable (guaranteed for v3.x)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unstable-may-change-in-v3x-minor-releases-with-deprecation-notice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unstable (may change in v3.x minor releases with deprecation notice)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#experimental-may-be-removed-or-significantly-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental (may be removed or significantly changed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#semantic-versioning-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantic Versioning Policy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Semantic Versioning Policy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#patch-releases-30x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Patch releases (3.0.x)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#minor-releases-3x0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minor releases (3.x.0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#major-releases-40" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Major releases (4.0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deprecation-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deprecation Process
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#long-term-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Long-Term Support
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-stability-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reporting Stability Issues
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -780,7 +973,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/docs/contributing/" class="md-nav__link">
+      <a href="../contributing/" class="md-nav__link">
         
   
   
@@ -817,6 +1010,149 @@
   
   
   
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#stability-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stability Tiers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stability Tiers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stable-guaranteed-for-v3x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stable (guaranteed for v3.x)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unstable-may-change-in-v3x-minor-releases-with-deprecation-notice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unstable (may change in v3.x minor releases with deprecation notice)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#experimental-may-be-removed-or-significantly-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental (may be removed or significantly changed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#semantic-versioning-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantic Versioning Policy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Semantic Versioning Policy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#patch-releases-30x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Patch releases (3.0.x)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#minor-releases-3x0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minor releases (3.x.0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#major-releases-40" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Major releases (4.0)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deprecation-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deprecation Process
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#long-term-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Long-Term Support
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-stability-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reporting Stability Issues
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -829,8 +1165,167 @@
               
               <article class="md-content__inner md-typeset">
                 
-  <h1>404 - Not found</h1>
+                  
 
+
+  
+  
+
+
+<h1 id="stability-guarantees-and-semver-policy">Stability Guarantees and Semver Policy<a class="headerlink" href="#stability-guarantees-and-semver-policy" title="Permanent link">&para;</a></h1>
+<p>Txtcode v3.0.0 establishes clear stability tiers and a semantic versioning policy for the language, standard library, CLI, and internal APIs.</p>
+<hr />
+<h2 id="stability-tiers">Stability Tiers<a class="headerlink" href="#stability-tiers" title="Permanent link">&para;</a></h2>
+<h3 id="stable-guaranteed-for-v3x">Stable (guaranteed for v3.x)<a class="headerlink" href="#stable-guaranteed-for-v3x" title="Permanent link">&para;</a></h3>
+<p>The following surfaces are <strong>stable</strong> from v3.0.0 and will not have breaking changes until a v4.0 release:</p>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Language syntax</strong></td>
+<td>All syntax described in <code>language-spec.md</code>. Additive changes only in minor releases.</td>
+</tr>
+<tr>
+<td><strong>Standard library API</strong></td>
+<td>All function names, argument order, and return types documented in stdlib. New functions may be added in minor releases.</td>
+</tr>
+<tr>
+<td><strong>CLI flags</strong></td>
+<td>All flags in <code>txtcode --help</code>. Flags will not be removed or renamed in patch/minor releases.</td>
+</tr>
+<tr>
+<td><strong>Module format</strong></td>
+<td><code>Txtcode.toml</code>, <code>import</code> statements, module search paths.</td>
+</tr>
+<tr>
+<td><strong>Lockfile format</strong></td>
+<td><code>Txtcode.lock</code> — lockfiles are forward-compatible within v3.x.</td>
+</tr>
+<tr>
+<td><strong>Package registry protocol</strong></td>
+<td><code>POST /api/v1/packages</code> and <code>GET</code> endpoints.</td>
+</tr>
+<tr>
+<td><strong>Script signature format</strong></td>
+<td><code>.sig</code> files produced by <code>txtcode sign</code> are stable.</td>
+</tr>
+<tr>
+<td><strong>Audit log JSON format</strong></td>
+<td>Fields in <code>--audit-log</code> output.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="unstable-may-change-in-v3x-minor-releases-with-deprecation-notice">Unstable (may change in v3.x minor releases with deprecation notice)<a class="headerlink" href="#unstable-may-change-in-v3x-minor-releases-with-deprecation-notice" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Bytecode format</strong></td>
+<td>The compiled <code>.tbc</code> bytecode is internal. Do not distribute compiled bytecode; always distribute source <code>.tc</code> files.</td>
+</tr>
+<tr>
+<td><strong>Internal Rust API</strong></td>
+<td><code>src/runtime/</code>, <code>src/parser/</code>, <code>src/lexer/</code> Rust types and traits are not public API.</td>
+</tr>
+<tr>
+<td><strong>LSP protocol extensions</strong></td>
+<td>Custom LSP capabilities beyond the standard protocol.</td>
+</tr>
+<tr>
+<td><strong>VM internals</strong></td>
+<td><code>VirtualMachine</code> struct fields, <code>Value</code> enum variants (for Rust embedding).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="experimental-may-be-removed-or-significantly-changed">Experimental (may be removed or significantly changed)<a class="headerlink" href="#experimental-may-be-removed-or-significantly-changed" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>WASM target</strong></td>
+<td><code>txtcode compile --target wasm</code> output format may change.</td>
+</tr>
+<tr>
+<td><strong>Native compilation</strong></td>
+<td>Not yet production-ready.</td>
+</tr>
+<tr>
+<td><strong>Registry server</strong></td>
+<td>The self-hosted registry server binary is experimental.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="semantic-versioning-policy">Semantic Versioning Policy<a class="headerlink" href="#semantic-versioning-policy" title="Permanent link">&para;</a></h2>
+<p>Txtcode follows <a href="https://semver.org/">Semantic Versioning 2.0.0</a>.</p>
+<h3 id="patch-releases-30x">Patch releases (3.0.x)<a class="headerlink" href="#patch-releases-30x" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Bug fixes</li>
+<li>Security patches</li>
+<li>Performance improvements</li>
+<li>Documentation corrections</li>
+<li><strong>No breaking changes to any Stable surface</strong></li>
+</ul>
+<h3 id="minor-releases-3x0">Minor releases (3.x.0)<a class="headerlink" href="#minor-releases-3x0" title="Permanent link">&para;</a></h3>
+<ul>
+<li>New stdlib functions (backwards compatible)</li>
+<li>New language features (backwards compatible)</li>
+<li>New CLI flags</li>
+<li>New LSP capabilities</li>
+<li>Deprecation of Unstable surfaces (with one minor release notice)</li>
+<li><strong>No breaking changes to any Stable surface</strong></li>
+</ul>
+<h3 id="major-releases-40">Major releases (4.0)<a class="headerlink" href="#major-releases-40" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Breaking changes to language syntax or stdlib API are permitted</li>
+<li>Must be accompanied by a migration guide</li>
+<li><code>txtcode migrate</code> will be updated to handle all breaking changes</li>
+<li>Breaking changes will be announced at least one minor release in advance</li>
+</ul>
+<hr />
+<h2 id="deprecation-process">Deprecation Process<a class="headerlink" href="#deprecation-process" title="Permanent link">&para;</a></h2>
+<ol>
+<li>A feature is marked <code>[DEPRECATED]</code> in docs and emits a runtime warning</li>
+<li>Deprecated features remain functional for <strong>at least one minor release</strong> after deprecation</li>
+<li>Removed in the next major release</li>
+</ol>
+<hr />
+<h2 id="long-term-support">Long-Term Support<a class="headerlink" href="#long-term-support" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>v3.0.x</strong> receives security patches for <strong>24 months</strong> from release date (until March 2028)</li>
+<li><strong>v3.x</strong> receives bug fixes for <strong>12 months</strong> after the next minor release</li>
+</ul>
+<hr />
+<h2 id="reporting-stability-issues">Reporting Stability Issues<a class="headerlink" href="#reporting-stability-issues" title="Permanent link">&para;</a></h2>
+<p>If a patch or minor release breaks your code in a way that violates this policy, please <a href="https://github.com/iga2x/txtcode/issues">file an issue</a> with the label <code>stability-regression</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
               </article>
             </div>
           
@@ -889,10 +1384,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "/docs/", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "/docs/assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
     
     
-      <script src="/docs/assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

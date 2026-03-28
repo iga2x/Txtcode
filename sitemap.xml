@@ -1,43 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://iga2x.github.io/txtcode/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/async/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/contributing/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/contributing/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/dev-plan/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/dev-history/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/language-spec/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/dev-plan/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/llvm-backend/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/language-spec/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/performance/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/performance/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/permissions/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/permissions/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/quick-start/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/quick-start/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/security-features/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/security-features/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
     <url>
-         <loc>https://iga2x.github.io/txtcode/syntax-reference/</loc>
-         <lastmod>2026-03-20</lastmod>
+         <loc>https://txtcode.dev/docs/stability/</loc>
+         <lastmod>2026-03-28</lastmod>
+    </url>
+    <url>
+         <loc>https://txtcode.dev/docs/syntax-reference/</loc>
+         <lastmod>2026-03-28</lastmod>
     </url>
 </urlset>
