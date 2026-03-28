@@ -514,7 +514,6 @@ inf(0)
 // WASM compiler string support (Group 29.1)
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "bytecode")]
 #[test]
 fn test_wasm_compiler_string_data_segments() {
     use txtcode::compiler::bytecode::BytecodeCompiler;

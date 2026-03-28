@@ -10,7 +10,6 @@
 /// wasm_call(handle: int, fn: string, args: array) -> value
 /// wasm_close(handle: int) -> null
 /// ```
-
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 

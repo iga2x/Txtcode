@@ -1688,11 +1688,11 @@ impl CoreLib {
                                     _ => String::new(),
                                 };
                                 let inner = if children.is_empty() {
-                                    let escaped = text
+                                    
+                                    text
                                         .replace('&', "&amp;")
                                         .replace('<', "&lt;")
-                                        .replace('>', "&gt;");
-                                    escaped
+                                        .replace('>', "&gt;")
                                 } else {
                                     children
                                 };
@@ -1889,7 +1889,7 @@ impl CoreLib {
                             }
                             Some(&d) if d.is_ascii_digit() => {
                                 let mut num_str = String::new();
-                                while chars.peek().map_or(false, |c| c.is_ascii_digit()) {
+                                while chars.peek().is_some_and(|c| c.is_ascii_digit()) {
                                     num_str.push(chars.next().unwrap());
                                 }
                                 if chars.peek() == Some(&'}') {

@@ -669,7 +669,7 @@ impl crate::runtime::execution::expressions::ExpressionVM for VirtualMachine {
 
     fn list_variables(&self) -> Vec<String> {
         let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for (k, _) in self.scope_manager.globals() {
+        for k in self.scope_manager.globals().keys() {
             names.insert(k.clone());
         }
         for scope in self.scope_manager.scopes() {

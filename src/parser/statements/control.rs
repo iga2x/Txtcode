@@ -19,6 +19,14 @@ pub fn parse_if(parser: &mut Parser) -> Result<Option<Statement>, String> {
         parser.advance();
     }
 
+    // Detect C-style brace blocks and give a helpful error
+    if parser.check(crate::lexer::token::TokenKind::LeftBrace) {
+        return parser.error(
+            "Expected keyword-delimited block (end with `end`), not `{`. \
+             Use `if condition\\n  body\\nend` syntax",
+        );
+    }
+
     let mut then_branch = Vec::new();
     let mut else_if_branches = Vec::new();
 
@@ -138,6 +146,13 @@ pub fn parse_while(parser: &mut Parser) -> Result<Option<Statement>, String> {
     parser.skip_optional_arrow(); // Optional arrow before condition
     let condition = crate::parser::expressions::operators::parse_expression(parser)?;
 
+    if parser.check(crate::lexer::token::TokenKind::LeftBrace) {
+        return parser.error(
+            "Expected keyword-delimited block (end with `end`), not `{`. \
+             Use `while condition\\n  body\\nend` syntax",
+        );
+    }
+
     let mut body = Vec::new();
     while !parser.is_at_end() && !parser.check_keyword("end") {
         if let Some(stmt) = parser.parse_statement()? {
@@ -209,6 +224,13 @@ pub fn parse_for(parser: &mut Parser) -> Result<Option<Statement>, String> {
     let var_name = parser.expect_identifier()?;
     parser.expect_keyword("in")?;
     let iterable = crate::parser::expressions::operators::parse_expression(parser)?;
+
+    if parser.check(crate::lexer::token::TokenKind::LeftBrace) {
+        return parser.error(
+            "Expected keyword-delimited block (end with `end`), not `{`. \
+             Use `for x in iterable\\n  body\\nend` syntax",
+        );
+    }
 
     let mut body = Vec::new();
     while !parser.is_at_end() && !parser.check_keyword("end") {

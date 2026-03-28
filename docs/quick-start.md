@@ -107,9 +107,9 @@ txtcode inspect program.txtc --format json
 ```
 
 > **Note:** The compiled file extension is `.txtc`.
-> The bytecode VM runs with basic permission checking but no audit trail, policy engine,
-> or intent checking. Use `txtcode run` on source files for full security enforcement.
-> Native and WASM compilation backends are planned for v0.6/v0.8.
+> Both `txtcode run` (AST VM) and compiled `.txtc` files (Bytecode VM) enforce the full 6-layer
+> security pipeline. The Bytecode VM is experimental (`--features bytecode`); float literals are
+> not yet implemented in the bytecode compiler. Use `txtcode run` for production use.
 
 ## Package Management
 
@@ -146,38 +146,20 @@ txtcode run long.tc --timeout 30s
 ### Declaring permissions in a function
 
 ```txtcode
-define → recon → (target: string)
-  allowed → ["net.connect", "wifi.scan"]
+define → probe → (target: string)
+  intent    → "HTTP reachability probe only"
+  allowed   → ["net.connect"]
   forbidden → ["sys.exec", "fs.write"]
 
-  store → nets → wifi_scan()
-  store → resp → http_get(f"https://{target}/info")
-  return → {"wifi": nets, "http": resp}
+  store → resp → http_get(f"https://{target}/health")
+  return → is_ok(resp)
 end
 ```
 
 `forbidden` violations are caught at **validation time** (before execution).
-`allowed` declarations are advisory and logged to the audit trail.
+`allowed` and `intent` declarations are advisory and logged to the audit trail.
 
-### WiFi and Bluetooth operations
-
-```txtcode
-# Requires wifi.scan permission (enforced)
-grant_permission("wifi.scan", null)
-store → networks → wifi_scan()
-
-# Requires ble.scan permission (enforced)
-grant_permission("ble.scan", null)
-store → devices → ble_scan()
-
-# BLE connect + read (requires both permissions)
-grant_permission("ble.connect", null)
-grant_permission("ble.read", null)
-store → handle → ble_connect("AA:BB:CC:DD:EE:FF")
-store → data → ble_read(handle, "0x2A37")
-```
-
-## New in v0.5.0 — Stdlib Highlights
+## Stdlib Highlights
 
 ### Streaming File I/O
 ```txtcode

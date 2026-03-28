@@ -20,10 +20,10 @@ fn parse_interpolated_expr(expr_str: &str) -> Expression {
 pub fn token_span_to_ast_span(token: &Token) -> Span {
     // Token span is (line, column)
     Span {
-        start: token.span.1,  // column as start position
-        end: token.span.1,    // column as end position (same for single token)
-        line: token.span.0,   // line number
-        column: token.span.1, // column number
+        start: token.span.1,                        // column as start position
+        end: token.span.1 + token.value.len(),      // end = start + token width
+        line: token.span.0,                         // line number
+        column: token.span.1,                       // column number
     }
 }
 

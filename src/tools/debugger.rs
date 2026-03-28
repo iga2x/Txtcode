@@ -149,6 +149,37 @@ impl Debugger {
         self.vm.get_ip()
     }
 
+    /// Step over: advance until the source line changes (or execution ends).
+    /// Unlike `step` which executes one instruction, `step_over` skips remaining
+    /// instructions on the current source line and stops at the first instruction
+    /// of the next line.
+    pub fn step_over(&mut self) -> Result<DebugState, RuntimeError> {
+        let bytecode = self
+            .bytecode
+            .as_ref()
+            .ok_or_else(|| RuntimeError::new("No bytecode loaded".to_string()))?
+            .clone();
+
+        let start_line = self.source_line_for_ip(self.vm.get_ip());
+
+        loop {
+            let ip = self.vm.get_ip();
+            if ip >= bytecode.instructions.len() {
+                let instruction = "END".to_string();
+                return Ok(DebugState { ip, instruction, done: true });
+            }
+            let instruction = format!("{:?}", bytecode.instructions[ip]);
+            let more = self.vm.execute_single(&bytecode)?;
+            if !more {
+                return Ok(DebugState { ip, instruction, done: true });
+            }
+            let new_line = self.source_line_for_ip(self.vm.get_ip());
+            if new_line != start_line {
+                return Ok(DebugState { ip: self.vm.get_ip(), instruction, done: false });
+            }
+        }
+    }
+
     /// Total number of instructions in loaded bytecode
     pub fn instruction_count(&self) -> usize {
         self.bytecode

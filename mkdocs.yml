@@ -7,8 +7,6 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
-  logo: assets/logo.png
-  favicon: assets/favicon.ico
   features:
     - navigation.tabs
     - navigation.sections
@@ -35,22 +33,16 @@ theme:
 docs_dir: docs
 
 nav:
-  - Home: index.md
-  - Getting Started:
-    - Installation: getting-started.md
-    - Quick Start: quick-start.md
+  - Getting Started: quick-start.md
   - Language Reference:
     - Language Spec: language-spec.md
+    - Syntax Reference: syntax-reference.md
     - Async & Concurrency: async.md
   - Security:
     - Permissions: permissions.md
     - Security Features: security-features.md
   - Tools:
-    - CLI Reference: cli.md
-    - Package Manager: packages.md
     - Benchmarking: performance.md
-  - Roadmap: roadmap.md
-  - Changelog: CHANGELOG.md
   - Stability Policy: stability.md
   - Contributing: contributing.md
 

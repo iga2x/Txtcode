@@ -177,9 +177,7 @@ impl Obfuscator {
                     self.collect_stmt(s);
                 }
             }
-            Statement::Return { value, .. } => {
-                if let Some(v) = value { self.collect_expr(v); }
-            }
+            Statement::Return { value: Some(v), .. } => { self.collect_expr(v); }
             Statement::Yield { value, .. } => { self.collect_expr(value); }
             Statement::Nursery { body, .. } => {
                 for s in body { self.collect_stmt(s); }
@@ -356,7 +354,7 @@ impl Obfuscator {
             Statement::CompoundAssignment { name, op, value, span } => {
                 Statement::CompoundAssignment {
                     name: self.sub_name(name),
-                    op: op.clone(),
+                    op: *op,
                     value: self.sub_expr(value),
                     span: span.clone(),
                 }
@@ -537,14 +535,14 @@ impl Obfuscator {
             Expression::BinaryOp { left, op, right, span } => {
                 Expression::BinaryOp {
                     left: Box::new(self.sub_expr(left)),
-                    op: op.clone(),
+                    op: *op,
                     right: Box::new(self.sub_expr(right)),
                     span: span.clone(),
                 }
             }
             Expression::UnaryOp { op, operand, span } => {
                 Expression::UnaryOp {
-                    op: op.clone(),
+                    op: *op,
                     operand: Box::new(self.sub_expr(operand)),
                     span: span.clone(),
                 }

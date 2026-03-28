@@ -10,15 +10,17 @@
 /// std::fs::write("output.wat", wat).unwrap();
 /// // Convert to binary: wat2wasm output.wat -o output.wasm  (via wasm-tools or WABT)
 /// ```
-
 use crate::compiler::bytecode::{Bytecode, Instruction};
 use crate::runtime::core::Value;
+use std::collections::HashMap;
 
 /// Generates WAT (WebAssembly Text Format) from a `Bytecode` program.
 pub struct WasmCompiler {
     /// All local variable names seen during compilation (for `(local ...)` declarations)
+    #[allow(dead_code)]
     locals: Vec<String>,
     /// Function bodies accumulated during compilation
+    #[allow(dead_code)]
     functions: Vec<WatFunction>,
     /// WAT data segment for string constants
     data_segments: Vec<(usize, String)>,
@@ -26,6 +28,7 @@ pub struct WasmCompiler {
     mem_offset: usize,
 }
 
+#[allow(dead_code)]
 struct WatFunction {
     name: String,
     params: Vec<String>,
@@ -153,185 +156,310 @@ impl WasmCompiler {
         &mut self,
         instructions: &[Instruction],
         constants: &[Value],
-        locals: &[String],
+        _locals: &[String],
     ) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
-        let mut i = 0;
+        // Pre-scan: build loop map (loop_start_ip → (cond_jump_ip, loop_end_ip))
+        let loop_map = self.build_loop_map(instructions);
+        let mut out = Vec::new();
+        let mut label_ctr = 0usize;
+        self.emit_range(instructions, constants, 0, instructions.len(), &loop_map, &mut out, &mut label_ctr);
+        out
+    }
 
-        while i < instructions.len() {
-            let inst = &instructions[i];
-            match inst {
-                Instruction::PushConstant(idx) => {
-                    match constants.get(*idx) {
-                        Some(Value::Integer(n)) => {
-                            out.push(format!("i64.const {}", n));
-                        }
-                        Some(Value::Float(f)) => {
-                            out.push(format!("f64.const {}", f));
-                            // cast to i64 for stack uniformity (limited support)
-                            out.push("i64.trunc_f64_s".to_string());
-                        }
-                        Some(Value::Boolean(b)) => {
-                            out.push(format!("i64.const {}", if *b { 1 } else { 0 }));
-                        }
-                        Some(Value::Null) => {
-                            out.push("i64.const 0".to_string());
-                        }
-                        Some(Value::String(s)) => {
-                            // Group 29.1: String support via linear memory data segments.
-                            // Strings are encoded as: (offset << 32) | length  in an i64.
-                            // The host runtime unpacks ptr = (val >> 32) as i32, len = val as i32.
-                            let (offset, len) = self.intern_string(s);
-                            let packed = ((offset as i64) << 32) | (len as i64);
-                            out.push(format!(
-                                "i64.const {}  ;; string \"{}\": ptr={} len={}",
-                                packed,
-                                s.chars().take(20).collect::<String>(),
-                                offset,
-                                len
-                            ));
-                        }
-                        Some(Value::Array(arr)) => {
-                            // Group 29.1: Array literals.
-                            // Push each element then call the host array_new(count) import
-                            // which allocates a heap array and returns a reference pointer.
-                            // If array is all integers, emit optimized inline store.
-                            let count = arr.len();
-                            for item in arr {
-                                match item {
-                                    Value::Integer(n) => out.push(format!("i64.const {}", n)),
-                                    Value::Float(f) => {
-                                        out.push(format!("f64.const {}", f));
-                                        out.push("i64.trunc_f64_s".to_string());
-                                    }
-                                    Value::Boolean(b) => {
-                                        out.push(format!("i64.const {}", if *b { 1 } else { 0 }))
-                                    }
-                                    _ => out.push("i64.const 0".to_string()),
-                                }
+    /// Pre-scan backward jumps to identify while-loop boundaries.
+    ///
+    /// Returns a map from `loop_start_ip` to `(cond_jump_ip, loop_end_ip)` where:
+    /// - `loop_start_ip`  — first IP of the loop (start of condition computation)
+    /// - `cond_jump_ip`   — IP of the `JumpIfFalse` that exits the loop
+    /// - `loop_end_ip`    — first IP after the loop (= backward-`Jump` IP + 1)
+    fn build_loop_map(&self, instructions: &[Instruction]) -> HashMap<usize, (usize, usize)> {
+        let mut map = HashMap::new();
+        for (j, inst) in instructions.iter().enumerate() {
+            if let Instruction::Jump(t) = inst {
+                let t = *t;
+                if t < j {
+                    // Backward jump at j: loop_end = j+1; find JumpIfFalse(j+1) in [t, j)
+                    let loop_end = j + 1;
+                    for (k, inst_k) in instructions.iter().enumerate().take(j).skip(t) {
+                        if let Instruction::JumpIfFalse(end) = inst_k {
+                            if *end == loop_end {
+                                map.insert(t, (k, loop_end));
+                                break;
                             }
-                            out.push(format!("i64.const {}", count));
-                            out.push("call $array_new  ;; host: allocate array".to_string());
-                        }
-                        _ => {
-                            out.push("i64.const 0  ;; unsupported constant type".to_string());
                         }
                     }
-                }
-                Instruction::LoadVar(name) => {
-                    out.push(format!("local.get ${}", sanitize_name(name)));
-                }
-                Instruction::StoreVar(name) | Instruction::StoreConst(name) => {
-                    out.push(format!("local.set ${}", sanitize_name(name)));
-                }
-                Instruction::Add => {
-                    out.push("i64.add".to_string());
-                }
-                Instruction::Subtract => {
-                    out.push("i64.sub".to_string());
-                }
-                Instruction::Multiply => {
-                    out.push("i64.mul".to_string());
-                }
-                Instruction::Divide => {
-                    out.push("i64.div_s".to_string());
-                }
-                Instruction::Modulo => {
-                    out.push("i64.rem_s".to_string());
-                }
-                Instruction::Negate => {
-                    out.push("i64.const -1".to_string());
-                    out.push("i64.mul".to_string());
-                }
-                Instruction::Equal => {
-                    out.push("i64.eq".to_string());
-                    out.push("i64.extend_i32_u".to_string());
-                }
-                Instruction::NotEqual => {
-                    out.push("i64.ne".to_string());
-                    out.push("i64.extend_i32_u".to_string());
-                }
-                Instruction::Less => {
-                    out.push("i64.lt_s".to_string());
-                    out.push("i64.extend_i32_u".to_string());
-                }
-                Instruction::Greater => {
-                    out.push("i64.gt_s".to_string());
-                    out.push("i64.extend_i32_u".to_string());
-                }
-                Instruction::LessEqual => {
-                    out.push("i64.le_s".to_string());
-                    out.push("i64.extend_i32_u".to_string());
-                }
-                Instruction::GreaterEqual => {
-                    out.push("i64.ge_s".to_string());
-                    out.push("i64.extend_i32_u".to_string());
-                }
-                Instruction::And => {
-                    out.push("i64.and".to_string());
-                }
-                Instruction::Or => {
-                    out.push("i64.or".to_string());
-                }
-                Instruction::Not => {
-                    out.push("i64.eqz".to_string());
-                    out.push("i64.extend_i32_u".to_string());
-                }
-                Instruction::Jump(target) => {
-                    // WAT uses structured control flow; we emit a comment with the target
-                    out.push(format!(";; Jump to {} (requires block structure)", target));
-                }
-                Instruction::JumpIfFalse(target) => {
-                    out.push(format!(";; JumpIfFalse {} (requires block structure)", target));
-                }
-                Instruction::JumpIfTrue(target) => {
-                    out.push(format!(";; JumpIfTrue {} (requires block structure)", target));
-                }
-                Instruction::Pop => {
-                    out.push("drop".to_string());
-                }
-                Instruction::Dup => {
-                    // Duplicate via local scratch
-                    out.push("local.set $__tmp".to_string());
-                    out.push("local.get $__tmp".to_string());
-                    out.push("local.get $__tmp".to_string());
-                }
-                Instruction::Call(name, _argc) => {
-                    match name.as_str() {
-                        "print" | "println" => {
-                            // Group 29.1: For string values (packed ptr|len), call print_str.
-                            // For integers, call print_i64. At WASM compile time we don't know
-                            // the type; emit both via the host dispatch convention.
-                            // The WAT runtime uses the high-word to distinguish: 0 = integer.
-                            out.push(";; print dispatch: host determines type from packed i64".to_string());
-                            out.push("call $print_i64".to_string());
-                        }
-                        "len" => {
-                            // Group 29.1: array_len or str_len
-                            out.push("call $array_len  ;; len() on array".to_string());
-                        }
-                        "array_get" => {
-                            out.push("call $array_get".to_string());
-                        }
-                        _ => {
-                            out.push(format!("call ${}", sanitize_name(name)));
-                        }
-                    }
-                }
-                Instruction::Return | Instruction::ReturnValue => {
-                    out.push("return".to_string());
-                }
-                Instruction::Nop => {
-                    out.push("nop".to_string());
-                }
-                _ => {
-                    out.push(format!(";; Unsupported instruction: {:?}", inst));
                 }
             }
+        }
+        map
+    }
+
+    /// Recursively emit WAT for a slice of instructions `[start, end)`.
+    ///
+    /// Structured control flow (`if`/`while`) is reconstructed from jump patterns:
+    ///
+    /// - **While loop**: backward `Jump(loop_start)` at `loop_end-1` with matching
+    ///   `JumpIfFalse(loop_end)` at `cond_jump_ip`.
+    ///   Emits `(block $break_N (loop $loop_N ...))`.
+    /// - **If-else**: `JumpIfFalse(else_start)` with a forward `Jump(end)` at `else_start-1`.
+    ///   Emits `(if (then ...) (else ...))`.
+    /// - **If-then**: `JumpIfFalse(end)` with no following else `Jump`.
+    ///   Emits `(if (then ...))`.
+    fn emit_range(
+        &mut self,
+        instructions: &[Instruction],
+        constants: &[Value],
+        start: usize,
+        end: usize,
+        loop_map: &HashMap<usize, (usize, usize)>,
+        out: &mut Vec<String>,
+        label_ctr: &mut usize,
+    ) {
+        let mut i = start;
+        while i < end {
+            // ── While-loop detection ────────────────────────────────────────
+            if let Some(&(cond_jump_ip, loop_end_ip)) = loop_map.get(&i) {
+                let lbl = *label_ctr;
+                *label_ctr += 1;
+                out.push(format!("(block $break_{}", lbl));
+                out.push(format!("  (loop $loop_{}", lbl));
+                // Emit condition computation instructions [i, cond_jump_ip).
+                // Use a map without the current loop entry to prevent infinite recursion
+                // when the condition range starts at the same IP as the loop start.
+                let mut cond_map = loop_map.clone();
+                cond_map.remove(&i);
+                self.emit_range(instructions, constants, i, cond_jump_ip, &cond_map, out, label_ctr);
+                // Condition check: exit loop if false
+                out.push("    i32.wrap_i64".to_string());
+                out.push("    i32.eqz".to_string());
+                out.push(format!("    br_if $break_{}", lbl));
+                // Emit body [cond_jump_ip+1, loop_end_ip-1) — excludes backward Jump
+                self.emit_range(instructions, constants, cond_jump_ip + 1, loop_end_ip - 1, loop_map, out, label_ctr);
+                out.push(format!("    br $loop_{}", lbl));
+                out.push("  )".to_string());
+                out.push(")".to_string());
+                i = loop_end_ip;
+                continue;
+            }
+
+            // Extract info before match to avoid borrow issues
+            let jump_info = match &instructions[i] {
+                Instruction::JumpIfFalse(t) => Some((*t, false)),
+                Instruction::Jump(t) => Some((*t, true)),
+                Instruction::JumpIfTrue(t) => Some((*t, false)), // handled specially below
+                _ => None,
+            };
+
+            if let Some((target, is_unconditional)) = jump_info {
+                if is_unconditional {
+                    if target > i {
+                        // Forward jump: skip to target (function bodies, lambda bodies,
+                        // try/catch escape, match-case end jumps, break placeholders).
+                        // The bytecode emits Jump(after_body) to skip over inline definitions;
+                        // we honour that by advancing the instruction pointer to the target.
+                        i = target.min(end);
+                    } else {
+                        // Backward jump not caught by build_loop_map (do-while, nested break).
+                        // Emit `unreachable` to preserve WAT stack discipline.
+                        out.push("unreachable".to_string());
+                        i += 1;
+                    }
+                    continue;
+                }
+
+                let is_jit = matches!(&instructions[i], Instruction::JumpIfTrue(_));
+
+                if is_jit {
+                    // JumpIfTrue: short-circuit `or` — if truthy, skip RHS computation.
+                    // Emit as: test; if true branch past this block.
+                    out.push(format!(";; JumpIfTrue {} (short-circuit)", target));
+                    out.push("i32.wrap_i64".to_string());
+                    out.push("(if (then".to_string());
+                    // then-branch is empty: condition already on stack (RHS skipped)
+                    out.push("  ))".to_string());
+                    i += 1;
+                    continue;
+                }
+
+                // JumpIfFalse: detect if-else vs if-then
+                let else_end = if target > 0 && target - 1 < instructions.len() {
+                    match &instructions[target - 1] {
+                        Instruction::Jump(j) if *j > target => Some(*j),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+
+                out.push("i32.wrap_i64".to_string());
+                if let Some(else_end_ip) = else_end {
+                    // if-then-else
+                    out.push("(if (then".to_string());
+                    self.emit_range(instructions, constants, i + 1, target - 1, loop_map, out, label_ctr);
+                    out.push("  ) (else".to_string());
+                    self.emit_range(instructions, constants, target, else_end_ip, loop_map, out, label_ctr);
+                    out.push("  ))".to_string());
+                    i = else_end_ip;
+                } else {
+                    // if-then
+                    out.push("(if (then".to_string());
+                    self.emit_range(instructions, constants, i + 1, target, loop_map, out, label_ctr);
+                    out.push("  ))".to_string());
+                    i = target;
+                }
+                continue;
+            }
+
+            // ── Regular instruction ─────────────────────────────────────────
+            // Clone to avoid borrow conflict with &mut self in emit_single
+            let inst = instructions[i].clone();
+            self.emit_single(&inst, constants, out);
             i += 1;
         }
+    }
 
-        out
+    /// Emit WAT for a single non-jump instruction.
+    fn emit_single(&mut self, inst: &Instruction, constants: &[Value], out: &mut Vec<String>) {
+        match inst {
+            Instruction::PushConstant(idx) => {
+                match constants.get(*idx) {
+                    Some(Value::Integer(n)) => {
+                        out.push(format!("i64.const {}", n));
+                    }
+                    Some(Value::Float(f)) => {
+                        out.push(format!("f64.const {}", f));
+                        // cast to i64 for stack uniformity (limited support)
+                        out.push("i64.trunc_f64_s".to_string());
+                    }
+                    Some(Value::Boolean(b)) => {
+                        out.push(format!("i64.const {}", if *b { 1 } else { 0 }));
+                    }
+                    Some(Value::Null) => {
+                        out.push("i64.const 0".to_string());
+                    }
+                    Some(Value::String(s)) => {
+                        // Group 29.1: String support via linear memory data segments.
+                        // Strings are encoded as: (offset << 32) | length  in an i64.
+                        // The host runtime unpacks ptr = (val >> 32) as i32, len = val as i32.
+                        let s = s.clone();
+                        let (offset, len) = self.intern_string(&s);
+                        let packed = ((offset as i64) << 32) | (len as i64);
+                        out.push(format!(
+                            "i64.const {}  ;; string \"{}\": ptr={} len={}",
+                            packed,
+                            s.chars().take(20).collect::<String>(),
+                            offset,
+                            len
+                        ));
+                    }
+                    Some(Value::Array(arr)) => {
+                        // Group 29.1: Array literals.
+                        // Push each element then call the host array_new(count) import.
+                        let count = arr.len();
+                        let arr = arr.clone();
+                        for item in &arr {
+                            match item {
+                                Value::Integer(n) => out.push(format!("i64.const {}", n)),
+                                Value::Float(f) => {
+                                    out.push(format!("f64.const {}", f));
+                                    out.push("i64.trunc_f64_s".to_string());
+                                }
+                                Value::Boolean(b) => {
+                                    out.push(format!("i64.const {}", if *b { 1 } else { 0 }))
+                                }
+                                _ => out.push("i64.const 0".to_string()),
+                            }
+                        }
+                        out.push(format!("i64.const {}", count));
+                        out.push("call $array_new  ;; host: allocate array".to_string());
+                    }
+                    _ => {
+                        out.push("i64.const 0  ;; unsupported constant type".to_string());
+                    }
+                }
+            }
+            Instruction::LoadVar(name) => {
+                out.push(format!("local.get ${}", sanitize_name(name)));
+            }
+            Instruction::StoreVar(name) | Instruction::StoreConst(name) => {
+                out.push(format!("local.set ${}", sanitize_name(name)));
+            }
+            Instruction::Add => out.push("i64.add".to_string()),
+            Instruction::Subtract => out.push("i64.sub".to_string()),
+            Instruction::Multiply => out.push("i64.mul".to_string()),
+            Instruction::Divide => out.push("i64.div_s".to_string()),
+            Instruction::Modulo => out.push("i64.rem_s".to_string()),
+            Instruction::Negate => {
+                out.push("i64.const -1".to_string());
+                out.push("i64.mul".to_string());
+            }
+            Instruction::Equal => {
+                out.push("i64.eq".to_string());
+                out.push("i64.extend_i32_u".to_string());
+            }
+            Instruction::NotEqual => {
+                out.push("i64.ne".to_string());
+                out.push("i64.extend_i32_u".to_string());
+            }
+            Instruction::Less => {
+                out.push("i64.lt_s".to_string());
+                out.push("i64.extend_i32_u".to_string());
+            }
+            Instruction::Greater => {
+                out.push("i64.gt_s".to_string());
+                out.push("i64.extend_i32_u".to_string());
+            }
+            Instruction::LessEqual => {
+                out.push("i64.le_s".to_string());
+                out.push("i64.extend_i32_u".to_string());
+            }
+            Instruction::GreaterEqual => {
+                out.push("i64.ge_s".to_string());
+                out.push("i64.extend_i32_u".to_string());
+            }
+            Instruction::And => out.push("i64.and".to_string()),
+            Instruction::Or => out.push("i64.or".to_string()),
+            Instruction::Not => {
+                out.push("i64.eqz".to_string());
+                out.push("i64.extend_i32_u".to_string());
+            }
+            Instruction::Pop => out.push("drop".to_string()),
+            Instruction::Dup => {
+                // Duplicate via local scratch
+                out.push("local.set $__tmp".to_string());
+                out.push("local.get $__tmp".to_string());
+                out.push("local.get $__tmp".to_string());
+            }
+            Instruction::Call(name, _argc) => {
+                match name.as_str() {
+                    "print" | "println" => {
+                        // Group 29.1: For string values (packed ptr|len), call print_str.
+                        // For integers, call print_i64. At WASM compile time we don't know
+                        // the type; emit both via the host dispatch convention.
+                        // The WAT runtime uses the high-word to distinguish: 0 = integer.
+                        out.push(";; print dispatch: host determines type from packed i64".to_string());
+                        out.push("call $print_i64".to_string());
+                    }
+                    "len" => {
+                        // Group 29.1: array_len or str_len
+                        out.push("call $array_len  ;; len() on array".to_string());
+                    }
+                    "array_get" => {
+                        out.push("call $array_get".to_string());
+                    }
+                    _ => {
+                        out.push(format!("call ${}", sanitize_name(name)));
+                    }
+                }
+            }
+            Instruction::Return | Instruction::ReturnValue => {
+                out.push("return".to_string());
+            }
+            Instruction::Nop => out.push("nop".to_string()),
+            _ => {
+                out.push(format!(";; Unsupported instruction: {:?}", inst));
+            }
+        }
     }
 }
 
@@ -666,4 +794,79 @@ fn escape_string(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compiler::bytecode::{Bytecode, Constant, Instruction};
+
+    fn make_bc(instructions: Vec<Instruction>, constants: Vec<Constant>) -> Bytecode {
+        Bytecode { instructions, constants, debug_info: vec![] }
+    }
+
+    /// Jump consumed by if-else detection: no bare `;; (forward jump` comment.
+    #[test]
+    fn test_wasm_if_else_no_comment_jump() {
+        // PushConst(1/true), JumpIfFalse(4), PushConst(10), StoreVar(x), Jump(6), PushConst(20), StoreVar(x)
+        let bc = make_bc(vec![
+            Instruction::PushConstant(0),       // 0: push 1 (truthy)
+            Instruction::JumpIfFalse(4),         // 1: if false → 4
+            Instruction::PushConstant(1),        // 2: push 10
+            Instruction::StoreVar("x".to_string()), // 3: x = 10
+            Instruction::Jump(6),                // 4: skip else
+            Instruction::PushConstant(2),        // 5: push 20
+            Instruction::StoreVar("x".to_string()), // 6: x = 20
+        ], vec![
+            Constant::Integer(1),
+            Constant::Integer(10),
+            Constant::Integer(20),
+        ]);
+        let wat = WasmCompiler::new().compile(&bc);
+        assert!(
+            !wat.contains(";; (forward jump"),
+            "if-else jump should be consumed by structured detection, not emitted as comment:\n{}", wat
+        );
+    }
+
+    /// Forward Jump over a function body: should skip to target, not emit a comment.
+    #[test]
+    fn test_wasm_function_body_jump_no_comment() {
+        let bc = make_bc(vec![
+            Instruction::Jump(3),                // 0: skip function body
+            Instruction::PushConstant(0),        // 1: (body) push 42
+            Instruction::ReturnValue,            // 2: return 42
+            Instruction::RegisterFunction(       // 3: register fn
+                "myfn".to_string(), vec![], 1),
+        ], vec![Constant::Integer(42)]);
+        let wat = WasmCompiler::new().compile(&bc);
+        assert!(
+            !wat.contains(";; (forward jump"),
+            "function-body jump should be skipped, not emitted as comment:\n{}", wat
+        );
+    }
+
+    /// While loop: condition + backward Jump generates block/loop WAT, no bare comment jumps.
+    /// Pattern: loop_start=0, cond_jump at 3 (JumpIfFalse(9)), body=[4,7], Jump(0) at 8, loop_end=9.
+    #[test]
+    fn test_wasm_while_loop_no_comment_jump() {
+        let bc = make_bc(vec![
+            Instruction::LoadVar("x".to_string()),   // 0
+            Instruction::PushConstant(0),             // 1
+            Instruction::Greater,                     // 2
+            Instruction::JumpIfFalse(9),              // 3: exits to 9
+            Instruction::LoadVar("x".to_string()),   // 4
+            Instruction::PushConstant(1),             // 5
+            Instruction::Subtract,                    // 6
+            Instruction::StoreVar("x".to_string()),  // 7
+            Instruction::Jump(0),                     // 8: back-jump
+                                                     // 9: (end)
+        ], vec![Constant::Integer(0), Constant::Integer(1)]);
+        let wat = WasmCompiler::new().compile(&bc);
+        assert!(wat.contains("loop"), "while loop should emit WAT loop:\n{}", wat);
+        assert!(
+            !wat.contains(";; (loop-back"),
+            "while loop back-jump should be consumed by loop detection:\n{}", wat
+        );
+    }
 }

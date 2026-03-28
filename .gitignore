@@ -42,6 +42,9 @@ testzone/*.tc
 # Cursor IDE
 .cursor/
 
+# Claude Code auto-memory (internal tool state, not a project file)
+memory/
+
 # Extra markdown reports (generated docs)
 ANALYSIS_REPORT.md
 ARROW_COMPATIBILITY.md

@@ -16,7 +16,7 @@ The following surfaces are **stable** from v3.0.0 and will not have breaking cha
 | **Standard library API** | All function names, argument order, and return types documented in stdlib. New functions may be added in minor releases. |
 | **CLI flags** | All flags in `txtcode --help`. Flags will not be removed or renamed in patch/minor releases. |
 | **Module format** | `Txtcode.toml`, `import` statements, module search paths. |
-| **Lockfile format** | `Txtcode.lock` — lockfiles from v1.0 will be compatible with all v1.x runtimes. |
+| **Lockfile format** | `Txtcode.lock` — lockfiles are forward-compatible within v3.x. |
 | **Package registry protocol** | `POST /api/v1/packages` and `GET` endpoints. |
 | **Script signature format** | `.sig` files produced by `txtcode sign` are stable. |
 | **Audit log JSON format** | Fields in `--audit-log` output. |

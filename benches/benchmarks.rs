@@ -84,7 +84,6 @@ fn bench_ast_vm(c: &mut Criterion) {
     });
 }
 
-#[cfg(feature = "bytecode")]
 fn bench_compile(c: &mut Criterion) {
     use txtcode::compiler::bytecode::BytecodeCompiler;
 
@@ -101,7 +100,6 @@ fn bench_compile(c: &mut Criterion) {
     });
 }
 
-#[cfg(feature = "bytecode")]
 fn bench_vm_bytecode(c: &mut Criterion) {
     use txtcode::compiler::bytecode::BytecodeCompiler;
     use txtcode::runtime::bytecode_vm::BytecodeVM;
@@ -184,7 +182,6 @@ fn bench_ast_gc_alloc(c: &mut Criterion) {
     });
 }
 
-#[cfg(feature = "bytecode")]
 fn bench_bytecode_fib(c: &mut Criterion) {
     use txtcode::compiler::bytecode::BytecodeCompiler;
     use txtcode::runtime::bytecode_vm::BytecodeVM;
@@ -199,7 +196,6 @@ fn bench_bytecode_fib(c: &mut Criterion) {
     });
 }
 
-#[cfg(feature = "bytecode")]
 fn bench_bytecode_array_ops(c: &mut Criterion) {
     use txtcode::compiler::bytecode::BytecodeCompiler;
     use txtcode::runtime::bytecode_vm::BytecodeVM;
@@ -214,7 +210,6 @@ fn bench_bytecode_array_ops(c: &mut Criterion) {
     });
 }
 
-#[cfg(feature = "bytecode")]
 criterion_group!(
     benches,
     bench_lexer,

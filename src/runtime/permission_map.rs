@@ -10,7 +10,6 @@
 ///
 /// Adding a new privileged function means updating `map_function_to_permission`
 /// only. Both enforcement points pick it up automatically.
-
 use crate::runtime::core::Value;
 use crate::runtime::permissions::PermissionResource;
 

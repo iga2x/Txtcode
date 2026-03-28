@@ -334,10 +334,12 @@ impl Parser {
                     }
                 }
 
+                let saved_pos = self.position;
                 if let Ok(expr) = self.parse_expression() {
                     Ok(Some(Statement::Expression(expr)))
                 } else {
-                    self.error(&format!("Unexpected token: {:?}", token_kind))
+                    self.position = saved_pos;
+                    self.error("Unexpected start of statement")
                 }
             }
         }

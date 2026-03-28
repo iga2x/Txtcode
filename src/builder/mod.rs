@@ -27,7 +27,6 @@ use crate::validator::Validator;
 use project::ProjectConfig;
 use std::path::PathBuf;
 
-#[cfg(feature = "bytecode")]
 use crate::compiler::bytecode::{Bytecode, BytecodeCompiler};
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -37,11 +36,9 @@ use crate::compiler::bytecode::{Bytecode, BytecodeCompiler};
 pub enum BuildTarget {
     /// AST-walking interpreter (current default).
     Ast,
-    /// Bytecode compiler + VM (requires `bytecode` feature).
-    #[cfg(feature = "bytecode")]
+    /// Bytecode compiler + VM.
     Bytecode,
-    /// Bytecode → WAT text output (requires `bytecode` feature).
-    #[cfg(feature = "bytecode")]
+    /// Bytecode → WAT text output.
     WasmText,
     /// Bytecode → binary `.wasm` output (requires `wasm` feature).
     #[cfg(feature = "wasm")]
@@ -186,7 +183,6 @@ impl Builder {
     ///
     /// For `BuildTarget::Ast` this is equivalent to `check` (no artifact is
     /// produced for a non-compiled target; callers should use `run` instead).
-    #[cfg(feature = "bytecode")]
     pub fn build(config: &BuildConfig) -> Result<BuildOutput, String> {
         let entry = ProjectConfig::resolve_entry(&config.input)?;
         let source = std::fs::read_to_string(&entry)
@@ -210,22 +206,6 @@ impl Builder {
         })
     }
 
-    /// Stub for non-bytecode builds — check-only, no artifact.
-    #[cfg(not(feature = "bytecode"))]
-    pub fn build(config: &BuildConfig) -> Result<BuildOutput, String> {
-        let entry = ProjectConfig::resolve_entry(&config.input)?;
-        let source = std::fs::read_to_string(&entry)
-            .map_err(|e| format!("Cannot read '{}': {}", entry.display(), e))?;
-
-        let program = parse_source(&source)?;
-        validate_and_typecheck(&program, config)?;
-
-        Ok(BuildOutput {
-            entry_path: entry,
-            target: config.target.clone(),
-            artifact_path: None,
-        })
-    }
 
     /// Create a properly configured `VirtualMachine` for REPL use.
     ///
@@ -355,22 +335,20 @@ fn run_type_check(program: &Program, config: &BuildConfig) -> Result<(), String>
         if config.strict_types {
             checker.check_strict(program)
                 .map_err(|e| format!("Type error: {}", e))?;
-        } else {
-            if let Err(errs) = checker.check(program) {
-                let mut has_critical = false;
-                for e in &errs {
-                    if is_critical_type_error(e) {
-                        eprintln!("[ERROR] type: {}", e);
-                        has_critical = true;
-                    } else {
-                        eprintln!("[WARNING] type: {}", e);
-                    }
+        } else if let Err(errs) = checker.check(program) {
+            let mut has_critical = false;
+            for e in &errs {
+                if is_critical_type_error(e) {
+                    eprintln!("[ERROR] type: {}", e);
+                    has_critical = true;
+                } else {
+                    eprintln!("[WARNING] type: {}", e);
                 }
-                if has_critical {
-                    return Err(
-                        "Critical type error(s) found; use --strict-types to make all type errors fatal".to_string()
-                    );
-                }
+            }
+            if has_critical {
+                return Err(
+                    "Critical type error(s) found; use --strict-types to make all type errors fatal".to_string()
+                );
             }
         }
     }
@@ -387,8 +365,7 @@ fn is_critical_type_error(e: &str) -> bool {
         || e.contains("null dereference in arithmetic")
 }
 
-/// Stage 6 (bytecode feature): lower AST → `Bytecode`.
-#[cfg(feature = "bytecode")]
+/// Stage 6: lower AST → `Bytecode`.
 fn lower_to_bytecode(program: &Program) -> Result<Bytecode, String> {
     let mut compiler = BytecodeCompiler::new();
     Ok(compiler.compile(program))
@@ -398,10 +375,9 @@ fn lower_to_bytecode(program: &Program) -> Result<Bytecode, String> {
 ///
 /// `program` is the already-parsed (and optionally obfuscated) program.
 /// It is used by the WasmText+ir path to avoid a TOCTOU re-read of the source file.
-#[cfg(feature = "bytecode")]
 fn emit_artifact(
     bytecode: &Bytecode,
-    program: &Program,
+    _program: &Program,
     entry: &std::path::Path,
     config: &BuildConfig,
 ) -> Result<PathBuf, String> {

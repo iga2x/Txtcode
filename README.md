@@ -4,15 +4,12 @@
 
 # Txtcode Programming Language v3.0.0
 
-**Txtcode** © 2026 — A multipurpose, security-native programming language for automation, networking, and system scripting.
+**Txtcode** © 2026 — A security-native scripting language for automation, orchestration, and security-sensitive operations.
 
 [![CI](https://github.com/txtcode/txtcode/actions/workflows/ci.yml/badge.svg)](https://github.com/txtcode/txtcode/actions/workflows/ci.yml)
-[![Docker](https://ghcr.io/txtcode/txtcode)](https://github.com/txtcode/txtcode/pkgs/container/txtcode)
 [![Docs](https://img.shields.io/badge/docs-txtcode.dev-blue)](https://txtcode.dev/docs)
 
 Txtcode is a **permission-transparent cyber orchestration DSL** — a policy-enforced execution engine designed for security-sensitive automation and experimentation. It provides a safe bridge between AI planning and real-world actions, with built-in audit trails and permission systems.
-
-> See [NON-GOALS.md](NON-GOALS.md) for what Txtcode is intentionally **not** designed to do.
 
 ---
 
@@ -25,6 +22,7 @@ Txtcode is a **permission-transparent cyber orchestration DSL** — a policy-enf
 - **AI-Safe Design** — Structured error output and permission-transparent execution for AI agents
 - **Developer Tooling** — REPL, formatter, linter, debugger, LSP server, TextMate grammar
 - **Package Manager** — 20 core packages, `registry/index.json`, lockfile (`Txtcode.lock`)
+- **Bytecode VM** — `txtcode compile` emits `.txtc` bytecode; `txtcode debug` for interactive debugging; both always available (no feature flag)
 - **Async/Await** — `async define` + `await` with thread-based `Value::Future`; `await_all` / `await_any` for parallel resolution
 - **Struct Methods** — `impl → StructName` blocks define methods callable as `obj.method(args)` in both VMs
 - **`?` Error Propagation** — Postfix `?` on a `Result` value unwraps `Ok` or early-returns `Err` from the enclosing function
@@ -39,7 +37,7 @@ Txtcode is a **permission-transparent cyber orchestration DSL** — a policy-enf
 
 - Safe, auditable automation of security-sensitive tasks
 - **Permission-transparent execution** — every privileged side effect (network, filesystem, process) requires an explicit grant; no hidden escalation
-- Map iteration order is insertion-order (deterministic as of v0.6)
+- Map iteration order is insertion-order (deterministic, guaranteed)
 - AI-compatible scripting with structured, machine-readable output
 - Transparent policy enforcement with zero silent privilege escalation
 - Bridging AI planning with real-world system actions safely
@@ -110,15 +108,13 @@ txtcode self info           # shows binary path, data size, project environments
 
 ```bash
 # Run a Txt-code program
-txtcode examples/hello.tc
-# or explicitly:
-txtcode run examples/hello.tc
+txtcode run script.tc
 
 # Start interactive REPL
 txtcode repl
 
 # Compile to bytecode
-txtcode compile examples/hello.tc -o hello.txtc
+txtcode compile script.tc -o script.txtc
 
 # Start LSP server (for editor integration)
 txtcode lsp
@@ -232,21 +228,6 @@ end
 
 ---
 
-## Examples
-
-The [`examples/`](examples/) directory contains ready-to-run programs:
-
-| File | Description |
-|------|-------------|
-| [`hello.tc`](examples/hello.tc) | Hello World, variables, functions, control flow |
-| [`calculator.tc`](examples/calculator.tc) | Arithmetic with pattern matching |
-| [`file_processor.tc`](examples/file_processor.tc) | File read/write operations |
-| [`port_scanner.tc`](examples/port_scanner.tc) | TCP port scanning (authorized hosts only) |
-| [`security_demo.tc`](examples/security_demo.tc) | Hashing, encryption, and audit logging |
-| [`web_server.tc`](examples/web_server.tc) | Simple HTTP server |
-
----
-
 ## Project Structure
 
 ```
@@ -267,10 +248,12 @@ src/
  ├── tools/        Formatter, linter, debugger, docgen
  └── cli/          Command-line interface
 
+crates/           Supporting crates (plugin-sdk)
 docs/             Language specification and guides
-examples/         Example programs
 tests/            Unit and integration test suite
-release/          Pre-built binaries
+editors/          VS Code extension (TextMate grammar, LSP client, snippets)
+benches/          Criterion benchmarks
+fuzz/             Fuzz test harness
 ```
 
 ---
@@ -341,8 +324,8 @@ cargo build --release
 # Run tests
 cargo test
 
-# Run an example directly
-cargo run -- run examples/hello.tc
+# Run a script directly
+cargo run -- run script.tc
 ```
 
 ### Makefile targets

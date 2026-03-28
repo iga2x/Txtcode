@@ -1,362 +1,60 @@
 {
   "version": "1",
-  "updated": "2026-03-20",
-  "registry_url": "https://registry.txtcode.dev",
-  "api_base": "https://registry.txtcode.dev/api/v1",
+  "updated": "2026-03-27",
   "packages": {
     "npl-math": {
-      "description": "Essential math utilities: GCD, LCM, primes, factorial, Fibonacci, clamp, lerp, and more.",
-      "author": "Txtcode Core Team",
+      "description": "Mathematical utilities: statistics, trigonometry, number theory",
+      "author": "txtcode-core",
       "license": "MIT",
-      "keywords": [
-        "math",
-        "numbers",
-        "gcd",
-        "fibonacci"
-      ],
+      "keywords": ["math", "statistics", "trigonometry"],
       "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-math",
+        "1.0.0": {
+          "url": "https://registry.txtcode.dev/packages/npl-math/npl-math-1.0.0.tar.gz",
           "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-math/0.1.0/download"
+          "local_path": "",
+          "dependencies": {}
         }
       }
     },
     "npl-strings": {
-      "description": "String utilities: padding, repetition, truncation, word splitting, and more.",
-      "author": "Txtcode Core Team",
+      "description": "String manipulation utilities: padding, splitting, templates, encoding",
+      "author": "txtcode-core",
       "license": "MIT",
-      "keywords": [
-        "strings",
-        "text",
-        "padding"
-      ],
+      "keywords": ["strings", "text", "encoding"],
       "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-strings",
+        "1.0.0": {
+          "url": "https://registry.txtcode.dev/packages/npl-strings/npl-strings-1.0.0.tar.gz",
           "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-strings/0.1.0/download"
+          "local_path": "",
+          "dependencies": {}
         }
       }
     },
     "npl-collections": {
-      "description": "Collection utilities: zip, flatten, chunk, unique, frequencies, group_by, take, drop, range.",
-      "author": "Txtcode Core Team",
+      "description": "Collection utilities: stacks, queues, sets, priority queues",
+      "author": "txtcode-core",
       "license": "MIT",
-      "keywords": [
-        "collections",
-        "arrays",
-        "functional"
-      ],
+      "keywords": ["collections", "data-structures"],
       "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-collections",
+        "1.0.0": {
+          "url": "https://registry.txtcode.dev/packages/npl-collections/npl-collections-1.0.0.tar.gz",
           "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-collections/0.1.0/download"
+          "local_path": "",
+          "dependencies": {}
         }
       }
     },
     "npl-datetime": {
-      "description": "Date/time helpers built on top of the now() / format_time() / parse_time() stdlib.",
-      "author": "Txtcode Core Team",
+      "description": "Date and time utilities: parsing, formatting, arithmetic, timezones",
+      "author": "txtcode-core",
       "license": "MIT",
-      "keywords": [
-        "datetime",
-        "time",
-        "date"
-      ],
+      "keywords": ["datetime", "time", "calendar"],
       "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-datetime",
+        "1.0.0": {
+          "url": "https://registry.txtcode.dev/packages/npl-datetime/npl-datetime-1.0.0.tar.gz",
           "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-datetime/0.1.0/download"
-        }
-      }
-    },
-    "npl-http-client": {
-      "description": "HTTP client wrapper with retries, headers, and JSON helpers.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "http",
-        "client",
-        "rest",
-        "api"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-http-client",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-http-client/0.1.0/download"
-        }
-      }
-    },
-    "npl-http-server": {
-      "description": "HTTP server with routing, middleware, and JSON response helpers.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "http",
-        "server",
-        "routing",
-        "web"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-http-server",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-http-server/0.1.0/download"
-        }
-      }
-    },
-    "npl-json-schema": {
-      "description": "JSON schema validation for Txtcode maps and arrays.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "json",
-        "schema",
-        "validation"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-json-schema",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-json-schema/0.1.0/download"
-        }
-      }
-    },
-    "npl-csv": {
-      "description": "CSV read/write utilities with header mapping and type coercion.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "csv",
-        "data"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-csv",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-csv/0.1.0/download"
-        }
-      }
-    },
-    "npl-env": {
-      "description": ".env file loader \u2014 reads KEY=VALUE pairs into environment variables.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "env",
-        "dotenv",
-        "config"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-env",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-env/0.1.0/download"
-        }
-      }
-    },
-    "npl-template": {
-      "description": "Simple string templating: render({name: \"Alice\"}, \"Hello {{name}}\").",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "template",
-        "strings"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-template",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-template/0.1.0/download"
-        }
-      }
-    },
-    "npl-semver": {
-      "description": "Semantic versioning: parse, compare, and satisfy version constraints.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "semver",
-        "version"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-semver",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-semver/0.1.0/download"
-        }
-      }
-    },
-    "npl-base64": {
-      "description": "Base64 encode/decode thin wrapper with URL-safe variant.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "base64",
-        "encoding"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-base64",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-base64/0.1.0/download"
-        }
-      }
-    },
-    "npl-uuid": {
-      "description": "UUID generation (v4) and validation thin wrapper.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "uuid",
-        "id"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-uuid",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-uuid/0.1.0/download"
-        }
-      }
-    },
-    "npl-retry": {
-      "description": "Retry logic with exponential backoff and jitter.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "retry",
-        "backoff",
-        "resilience"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-retry",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-retry/0.1.0/download"
-        }
-      }
-    },
-    "npl-assert": {
-      "description": "Extended assertion utilities: assert_throws, assert_approx, assert_contains.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "testing",
-        "assertions"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-assert",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-assert/0.1.0/download"
-        }
-      }
-    },
-    "npl-cli-args": {
-      "description": "CLI argument parsing helpers: flags, options, positional args.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "cli",
-        "args",
-        "flags"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-cli-args",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-cli-args/0.1.0/download"
-        }
-      }
-    },
-    "npl-colors": {
-      "description": "Terminal color output using ANSI escape codes.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "colors",
-        "terminal",
-        "ansi"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-colors",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-colors/0.1.0/download"
-        }
-      }
-    },
-    "npl-table": {
-      "description": "Print data as formatted ASCII tables in the terminal.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "table",
-        "terminal",
-        "display"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-table",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-table/0.1.0/download"
-        }
-      }
-    },
-    "npl-hash": {
-      "description": "Consistent hashing: murmur3, fnv1a, djb2 for fast non-crypto hashing.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "hash",
-        "checksum"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-hash",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-hash/0.1.0/download"
-        }
-      }
-    },
-    "npl-path": {
-      "description": "Advanced path manipulation: glob, walk, relative, normalize.",
-      "author": "Txtcode Core Team",
-      "license": "MIT",
-      "keywords": [
-        "path",
-        "filesystem",
-        "glob"
-      ],
-      "versions": {
-        "0.1.0": {
-          "local_path": "packages/npl-path",
-          "sha256": "",
-          "dependencies": {},
-          "url": "https://registry.txtcode.dev/api/v1/packages/npl-path/0.1.0/download"
+          "local_path": "",
+          "dependencies": {}
         }
       }
     }

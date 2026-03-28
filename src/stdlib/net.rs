@@ -231,7 +231,7 @@ impl NetLib {
                 };
                 let mut result = IndexMap::new();
                 result.insert("status".to_string(), Value::Integer(status));
-                result.insert("body".to_string(), Value::String(Arc::from(body)));
+                result.insert("body".to_string(), Value::String(body));
                 result.insert("headers".to_string(), Value::Map(headers));
                 Ok(Value::Map(result))
             }
@@ -452,7 +452,7 @@ impl NetLib {
             // net_ping(host, timeout_ms) → bool
             // Implemented as TCP probe to port 80 (ICMP requires root; TCP probe is portable).
             "net_ping" => {
-                if args.len() < 1 || args.len() > 2 {
+                if args.is_empty() || args.len() > 2 {
                     return Err(RuntimeError::new("net_ping requires 1-2 arguments (host, timeout_ms?)".to_string()));
                 }
                 let host = match &args[0] {
@@ -1210,7 +1210,7 @@ impl NetLib {
         let mut request_line = String::new();
         reader.read_line(&mut request_line).map_err(|e| RuntimeError::new(e.to_string()))?;
         let parts: Vec<&str> = request_line.trim().splitn(3, ' ').collect();
-        let method = parts.get(0).copied().unwrap_or("GET").to_string();
+        let method = parts.first().copied().unwrap_or("GET").to_string();
         let path = parts.get(1).copied().unwrap_or("/").to_string();
 
         // Read headers

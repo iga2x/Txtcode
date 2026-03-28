@@ -365,7 +365,7 @@ impl IOLib {
                                 })
                                 .collect();
                         entries.map(|mut v| {
-                            v.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                            v.sort_by_key(|a| a.to_string());
                             Value::Array(v)
                         })
                     }
@@ -837,7 +837,7 @@ impl IOLib {
             }
             // ── Streaming file I/O ───────────────────────────────────────────
             "file_open" => {
-                if args.len() < 1 || args.len() > 2 {
+                if args.is_empty() || args.len() > 2 {
                     return Err(RuntimeError::new("file_open requires 1 or 2 arguments (path, mode?)".to_string()));
                 }
                 let path = match &args[0] {
@@ -1001,7 +1001,7 @@ impl IOLib {
                 match &args[0] {
                     Value::String(path) => {
                         let mut map = indexmap::IndexMap::new();
-                        map.insert("path".to_string(), Value::String(Arc::from(path.clone())));
+                        map.insert("path".to_string(), Value::String(path.clone()));
                         match Self::validate_path(path) {
                             Ok(validated_path) => {
                                 let exists = validated_path.exists();

@@ -1,5 +1,4 @@
 use super::VirtualMachine;
-use std::sync::Arc;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use crate::runtime::intent::{IntentChecker, IntentDeclaration};

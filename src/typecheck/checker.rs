@@ -529,13 +529,10 @@ impl TypeChecker {
         let enum_name = match value {
             Expression::Identifier(name) => {
                 // Look up what type this variable has
-                if let Some(ty) = self.context.get_variable(name) {
-                    match ty {
-                        Type::Identifier(ident) => ident.clone(),
-                        _ => return, // not an enum type we know about
-                    }
+                if let Some(Type::Identifier(ident)) = self.context.get_variable(name) {
+                    ident.clone()
                 } else {
-                    return; // unknown variable — skip
+                    return; // unknown variable or not an enum type
                 }
             }
             Expression::FunctionCall { name, .. } => name.clone(), // e.g. Color::Red pattern
@@ -665,20 +662,18 @@ impl TypeChecker {
                 };
                 if arr_arg_idx != usize::MAX {
                     if let Expression::Identifier(arr_name) = &arguments[arr_arg_idx] {
-                        if let Some(arr_type) = self.context.get_variable(arr_name).cloned() {
-                            if let Type::Array(elem_type) = arr_type {
-                                let mut inference = TypeInference::new();
-                                inference.context = self.context.clone();
-                                if let crate::typecheck::types::InferenceResult::Known(actual) =
-                                    inference.infer_expression(&arguments[val_arg_idx])
-                                {
-                                    if !actual.is_compatible_with(&elem_type) {
-                                        self.errors.push(format!(
-                                            "Cannot push {} into array[{}]: type mismatch",
-                                            self.type_to_string(&actual),
-                                            self.type_to_string(&elem_type),
-                                        ));
-                                    }
+                        if let Some(Type::Array(elem_type)) = self.context.get_variable(arr_name).cloned() {
+                            let mut inference = TypeInference::new();
+                            inference.context = self.context.clone();
+                            if let crate::typecheck::types::InferenceResult::Known(actual) =
+                                inference.infer_expression(&arguments[val_arg_idx])
+                            {
+                                if !actual.is_compatible_with(&elem_type) {
+                                    self.errors.push(format!(
+                                        "Cannot push {} into array[{}]: type mismatch",
+                                        self.type_to_string(&actual),
+                                        self.type_to_string(&elem_type),
+                                    ));
                                 }
                             }
                         }
@@ -868,7 +863,7 @@ impl TypeChecker {
                                 ));
                             }
                             // (user protocol constraint: accepted at type-check time)
-                        } else if canonical.map_or(true, |c| !allowed.contains(c)) {
+                        } else if canonical.is_none_or(|c| !allowed.contains(c)) {
                             self.errors.push(format!(
                                 "Type '{}' does not satisfy constraint '{}' on type variable '{}' in '{}'",
                                 self.type_to_string(&arg_type), constraint, tvar, fn_name,
@@ -917,26 +912,28 @@ impl TypeChecker {
     fn extract_early_return_null_check(&self, stmts: &[Statement]) -> Vec<(String, Type)> {
         let mut narrowings = Vec::new();
         for stmt in stmts {
-            if let Statement::If { condition, then_branch, else_branch: None, .. } = stmt {
+            if let Statement::If {
+                condition: Expression::BinaryOp { left, op, right, .. },
+                then_branch,
+                else_branch: None,
+                ..
+            } = stmt
+            {
                 // if x == null { return/... }
-                if let Expression::BinaryOp { left, op, right, .. } = condition {
-                    if *op == BinaryOperator::Equal {
-                        let name = match (left.as_ref(), right.as_ref()) {
-                            (Expression::Identifier(n), Expression::Literal(Literal::Null)) => Some(n.clone()),
-                            (Expression::Literal(Literal::Null), Expression::Identifier(n)) => Some(n.clone()),
-                            _ => None,
-                        };
-                        if let Some(name) = name {
-                            // Check if body ends with return/break (early exit)
-                            let ends_with_exit = then_branch.last().map_or(false, |s| {
-                                matches!(s, Statement::Return { .. } | Statement::Break { .. })
-                            });
-                            if ends_with_exit {
-                                if let Some(base_type) = self.context.get_variable(&name) {
-                                    if let Type::Nullable(inner) = base_type {
-                                        narrowings.push((name, *inner.clone()));
-                                    }
-                                }
+                if *op == BinaryOperator::Equal {
+                    let name = match (left.as_ref(), right.as_ref()) {
+                        (Expression::Identifier(n), Expression::Literal(Literal::Null)) => Some(n.clone()),
+                        (Expression::Literal(Literal::Null), Expression::Identifier(n)) => Some(n.clone()),
+                        _ => None,
+                    };
+                    if let Some(name) = name {
+                        // Check if body ends with return/break (early exit)
+                        let ends_with_exit = then_branch.last().is_some_and(|s| {
+                            matches!(s, Statement::Return { .. } | Statement::Break { .. })
+                        });
+                        if ends_with_exit {
+                            if let Some(Type::Nullable(inner)) = self.context.get_variable(&name) {
+                                narrowings.push((name, *inner.clone()));
                             }
                         }
                     }
@@ -975,19 +972,16 @@ impl TypeChecker {
                 if *expected_type == Type::Unknown {
                     continue;
                 }
-                match inference.infer_expression(field_expr) {
-                    crate::typecheck::types::InferenceResult::Known(actual) => {
-                        if !actual.is_compatible_with(expected_type) {
-                            self.errors.push(format!(
-                                "struct '{}' field '{}': expected {}, got {}",
-                                struct_name,
-                                field_name,
-                                self.type_to_string(expected_type),
-                                self.type_to_string(&actual),
-                            ));
-                        }
+                if let crate::typecheck::types::InferenceResult::Known(actual) = inference.infer_expression(field_expr) {
+                    if !actual.is_compatible_with(expected_type) {
+                        self.errors.push(format!(
+                            "struct '{}' field '{}': expected {}, got {}",
+                            struct_name,
+                            field_name,
+                            self.type_to_string(expected_type),
+                            self.type_to_string(&actual),
+                        ));
                     }
-                    _ => {}
                 }
             } else {
                 // Field not declared in struct

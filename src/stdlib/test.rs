@@ -1,5 +1,4 @@
 use crate::runtime::{RuntimeError, Value};
-use std::sync::Arc;
 
 /// Testing framework library
 pub struct TestLib;
@@ -303,7 +302,7 @@ impl TestLib {
                 // Usage:
                 //   store → r → divide(10, 0)   # returns err("E0001: division by zero")
                 //   expect_error(r, "E0001")      # passes
-                if args.len() < 1 || args.len() > 2 {
+                if args.is_empty() || args.len() > 2 {
                     return Err(RuntimeError::new(
                         "expect_error requires 1 or 2 arguments (result, expected_pattern?)".to_string(),
                     ));

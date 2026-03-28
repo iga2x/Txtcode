@@ -118,14 +118,12 @@ fn render_tokens(tokens: &[Token], context: &IndexMap<String, Value>) -> Result<
             }
             Token::EachStart { list, item } => {
                 let (body, consumed) = collect_each_body(&tokens[i + 1..]);
-                if let Some(arr) = context.get(list.as_str()) {
-                    if let Value::Array(values) = arr {
-                        for val in values {
-                            let mut child_ctx = context.clone();
-                            child_ctx.insert(item.clone(), val.clone());
-                            // Also expose index via "loop.index" convention
-                            out.push_str(&render_tokens(&body, &child_ctx)?);
-                        }
+                if let Some(Value::Array(values)) = context.get(list.as_str()) {
+                    for val in values {
+                        let mut child_ctx = context.clone();
+                        child_ctx.insert(item.clone(), val.clone());
+                        // Also expose index via "loop.index" convention
+                        out.push_str(&render_tokens(&body, &child_ctx)?);
                     }
                 }
                 i += consumed;

@@ -1,5 +1,4 @@
 use crate::parser::ast::{Expression, Literal, Pattern};
-use std::sync::Arc;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;
 use indexmap::IndexMap;

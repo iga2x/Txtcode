@@ -71,9 +71,7 @@ impl Registry {
         }
         let content = fs::read_to_string(&index_path)
             .map_err(|e| format!("Failed to read index: {}", e))?;
-        // Parse our simplified JSON format
-        // In production, use serde_json — here we do a lightweight read
-        let _ = content; // loaded — deserialization would parse packages
+        self.packages = parse_index_json(&content);
         Ok(())
     }
 
@@ -264,8 +262,7 @@ fn handle_request(
                 body_str.find(&needle)
                     .and_then(|p| {
                         let rest = body_str[p + needle.len()..].trim_start();
-                        if rest.starts_with('"') {
-                            let inner = &rest[1..];
+                        if let Some(inner) = rest.strip_prefix('"') {
                             inner.find('"').map(|e| inner[..e].to_string())
                         } else {
                             None
@@ -327,6 +324,194 @@ fn handle_request(
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Index JSON parser (parses the format produced by save_index())
+// ---------------------------------------------------------------------------
+
+/// Extract the first quoted string from a JSON fragment.
+fn idx_first_quoted(s: &str) -> String {
+    if let Some(start) = s.find('"') {
+        let rest = &s[start + 1..];
+        if let Some(end) = rest.find('"') {
+            return rest[..end].to_string();
+        }
+    }
+    String::new()
+}
+
+/// Extract the string value for `"key": "value"` in a JSON fragment.
+fn idx_str_val(s: &str, key: &str) -> String {
+    let needle = format!("\"{}\"", key);
+    let pos = match s.find(&needle) {
+        Some(p) => p,
+        None => return String::new(),
+    };
+    let after = s[pos + needle.len()..].trim_start();
+    let after = match after.strip_prefix(':') {
+        Some(a) => a.trim_start(),
+        None => return String::new(),
+    };
+    if let Some(inner) = after.strip_prefix('"') {
+        if let Some(end) = inner.find('"') {
+            return inner[..end].to_string();
+        }
+    }
+    String::new()
+}
+
+/// Extract an array of strings for `"key": ["a", "b"]` in a JSON fragment.
+fn idx_str_array(s: &str, key: &str) -> Vec<String> {
+    let needle = format!("\"{}\"", key);
+    let pos = match s.find(&needle) {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+    let after = &s[pos + needle.len()..];
+    let start = match after.find('[') {
+        Some(p) => p + 1,
+        None => return Vec::new(),
+    };
+    let arr = &after[start..];
+    let end = match arr.find(']') {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+    arr[..end]
+        .split(',')
+        .filter_map(|item| {
+            let t = item.trim().trim_matches('"');
+            if t.is_empty() { None } else { Some(t.to_string()) }
+        })
+        .collect()
+}
+
+/// Parse a single-line version entry:
+/// `"1.0.0": { "sha256": "...", "published_at": "...", "tarball": "..." }`
+fn idx_parse_version(line: &str, pkg_name: &str) -> Option<VersionEntry> {
+    let version = idx_first_quoted(line);
+    if version.is_empty() { return None; }
+    let sha256 = idx_str_val(line, "sha256");
+    let published_at = idx_str_val(line, "published_at");
+    let tarball_path = {
+        let t = idx_str_val(line, "tarball");
+        if t.is_empty() {
+            format!("tarballs/{}-{}.tar.gz", pkg_name, version)
+        } else {
+            t
+        }
+    };
+    Some(VersionEntry { version, sha256, published_at, tarball_path })
+}
+
+/// Parse the JSON index produced by `save_index()`.
+///
+/// Format (2-space outer indent, 4 for packages, 6 for fields, 8 for versions):
+/// ```json
+/// { "version": "1", "packages": {
+///     "name": { "description": "...", "author": "...", "license": "...",
+///               "keywords": [...], "versions": {
+///         "1.0.0": { "sha256": "...", "published_at": "...", "tarball": "..." }
+///     }}
+/// }}
+/// ```
+fn parse_index_json(content: &str) -> HashMap<String, PackageEntry> {
+    let mut packages = HashMap::new();
+    let mut current_pkg: Option<PackageEntry> = None;
+    let mut in_packages = false;
+    let mut in_versions = false;
+
+    for line in content.lines() {
+        // Detect start of "packages" block.
+        if !in_packages {
+            if line.contains("\"packages\"") && line.contains('{') {
+                in_packages = true;
+            }
+            continue;
+        }
+
+        let leading = line.len() - line.trim_start_matches(' ').len();
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() { continue; }
+
+        // save_index() indentation:
+        //   4 sp → package name:   `    "name": {`
+        //   6 sp → package fields: `      "description": "..."` and
+        //          versions header: `      "versions": {`   and
+        //          version entries: `      "1.0.0": { ... }` (when in_versions)
+        //          close versions:  `      }`
+        //   4 sp → close package:  `    }`
+        //   2 sp → close packages: `  }`
+        match leading {
+            4 => {
+                if trimmed.starts_with('"') {
+                    // New package entry: save the previous one first.
+                    if let Some(pkg) = current_pkg.take() {
+                        packages.insert(pkg.name.clone(), pkg);
+                    }
+                    in_versions = false;
+                    let current_name = idx_first_quoted(trimmed);
+                    if !current_name.is_empty() {
+                        current_pkg = Some(PackageEntry {
+                            name: current_name,
+                            description: String::new(),
+                            author: String::new(),
+                            license: String::new(),
+                            keywords: Vec::new(),
+                            versions: Vec::new(),
+                        });
+                    }
+                } else if trimmed.starts_with('}') {
+                    // Closing brace of the last package before packages-block closes.
+                    if let Some(pkg) = current_pkg.take() {
+                        packages.insert(pkg.name.clone(), pkg);
+                    }
+                }
+            }
+            6 => {
+                if in_versions {
+                    // Inside the "versions" object.
+                    if trimmed.starts_with('}') {
+                        // Closing brace of versions object.
+                        in_versions = false;
+                    } else if trimmed.starts_with('"') {
+                        // Version entry: `"1.0.0": { "sha256": "...", ... }`
+                        if let Some(pkg) = current_pkg.as_mut() {
+                            if let Some(ver) = idx_parse_version(trimmed, &pkg.name) {
+                                pkg.versions.push(ver);
+                            }
+                        }
+                    }
+                } else if let Some(pkg) = current_pkg.as_mut() {
+                    if trimmed.starts_with("\"description\"") {
+                        pkg.description = idx_str_val(trimmed, "description");
+                    } else if trimmed.starts_with("\"author\"") {
+                        pkg.author = idx_str_val(trimmed, "author");
+                    } else if trimmed.starts_with("\"license\"") {
+                        pkg.license = idx_str_val(trimmed, "license");
+                    } else if trimmed.starts_with("\"keywords\"") {
+                        pkg.keywords = idx_str_array(trimmed, "keywords");
+                    } else if trimmed.starts_with("\"versions\"") {
+                        in_versions = true;
+                    }
+                }
+            }
+            // End of packages block.
+            0 | 2 if trimmed.starts_with('}') => {
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(pkg) = current_pkg {
+        packages.insert(pkg.name.clone(), pkg);
+    }
+    packages
+}
+
+// ---------------------------------------------------------------------------
 
 fn chrono_now() -> String {
     // Minimal timestamp without chrono dep
@@ -393,10 +578,115 @@ fn main() {
     let listener = TcpListener::bind(&addr).expect("Failed to bind");
     eprintln!("txtcode registry listening on http://{}", addr);
 
-    for stream in listener.incoming() {
-        if let Ok(stream) = stream {
-            let reg = Arc::clone(&registry);
-            std::thread::spawn(move || handle_request(stream, reg));
-        }
+    for stream in listener.incoming().flatten() {
+        let reg = Arc::clone(&registry);
+        std::thread::spawn(move || handle_request(stream, reg));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn test_temp_dir() -> std::path::PathBuf {
+        let n = TEST_SEQ.fetch_add(1, Ordering::SeqCst);
+        std::env::temp_dir().join(format!("txtcode_reg_{}_{}",
+            std::process::id(), n))
+    }
+
+    fn make_registry_with_pkg() -> Registry {
+        let tmp = test_temp_dir();
+        let _ = fs::create_dir_all(&tmp);
+        let mut r = Registry {
+            packages: HashMap::new(),
+            data_dir: tmp.clone(),
+            api_token: None,
+        };
+        r.packages.insert("mypkg".to_string(), PackageEntry {
+            name: "mypkg".to_string(),
+            description: "A test package".to_string(),
+            author: "tester".to_string(),
+            license: "MIT".to_string(),
+            keywords: vec!["test".to_string(), "demo".to_string()],
+            versions: vec![VersionEntry {
+                version: "1.0.0".to_string(),
+                sha256: "deadbeef".to_string(),
+                published_at: "1711490000".to_string(),
+                tarball_path: "tarballs/mypkg-1.0.0.tar.gz".to_string(),
+            }],
+        });
+        r
+    }
+
+    #[test]
+    fn test_load_index_roundtrip() {
+        let r = make_registry_with_pkg();
+        r.save_index().expect("save_index failed");
+
+        // Reload into a fresh registry
+        let mut r2 = Registry {
+            packages: HashMap::new(),
+            data_dir: r.data_dir.clone(),
+            api_token: None,
+        };
+        r2.load_index().expect("load_index failed");
+
+        assert!(r2.packages.contains_key("mypkg"), "mypkg should be loaded");
+        let pkg = &r2.packages["mypkg"];
+        assert_eq!(pkg.description, "A test package");
+        assert_eq!(pkg.author, "tester");
+        assert_eq!(pkg.license, "MIT");
+        assert_eq!(pkg.keywords, vec!["test", "demo"]);
+        assert_eq!(pkg.versions.len(), 1);
+        assert_eq!(pkg.versions[0].version, "1.0.0");
+        assert_eq!(pkg.versions[0].sha256, "deadbeef");
+    }
+
+    #[test]
+    fn test_load_index_multiple_packages() {
+        let mut r = make_registry_with_pkg();
+        r.packages.insert("otherpkg".to_string(), PackageEntry {
+            name: "otherpkg".to_string(),
+            description: "Another package".to_string(),
+            author: "dev".to_string(),
+            license: "Apache-2.0".to_string(),
+            keywords: vec![],
+            versions: vec![VersionEntry {
+                version: "2.1.0".to_string(),
+                sha256: "cafebabe".to_string(),
+                published_at: "1711500000".to_string(),
+                tarball_path: "tarballs/otherpkg-2.1.0.tar.gz".to_string(),
+            }],
+        });
+        r.save_index().expect("save failed");
+
+        let mut r2 = Registry {
+            packages: HashMap::new(),
+            data_dir: r.data_dir.clone(),
+            api_token: None,
+        };
+        r2.load_index().expect("load failed");
+        assert_eq!(r2.packages.len(), 2);
+        assert!(r2.packages.contains_key("mypkg"));
+        assert!(r2.packages.contains_key("otherpkg"));
+        assert_eq!(r2.packages["otherpkg"].license, "Apache-2.0");
+        assert_eq!(r2.packages["otherpkg"].versions[0].version, "2.1.0");
+    }
+
+    #[test]
+    fn test_load_index_empty_file_absent() {
+        let tmp = test_temp_dir();
+        // Don't create the dir at all — simulates missing data directory
+        let mut r = Registry { packages: HashMap::new(), data_dir: tmp, api_token: None };
+        // No index.json → load_index should return Ok and leave packages empty
+        assert!(r.load_index().is_ok());
+        assert!(r.packages.is_empty());
     }
 }

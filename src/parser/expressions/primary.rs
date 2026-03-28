@@ -286,6 +286,6 @@ pub fn parse_primary(parser: &mut Parser) -> Result<Expression, String> {
                 })
             }
         }
-        _ => parser.error(&format!("Unexpected token: {:?}", token_kind)),
+        _ => parser.error("Unexpected start of expression"),
     }
 }

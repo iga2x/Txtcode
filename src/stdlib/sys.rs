@@ -1217,7 +1217,7 @@ impl SysLib {
                             result.insert(key, Value::Boolean(true));
                         } else if options.contains(&key) {
                             let val = iter.next().map(|v| match v {
-                                Value::String(s) => Value::String(Arc::from(s.clone())),
+                                Value::String(s) => Value::String(s.clone()),
                                 other => Value::String(Arc::from(other.to_string())),
                             }).unwrap_or(Value::Null);
                             result.insert(key, val);

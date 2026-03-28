@@ -61,7 +61,7 @@ impl BytesLib {
                 if idx < 0 || idx as usize >= b.len() {
                     return Err(RuntimeError::new(format!("bytes_set: index {} out of bounds (len {})", idx, b.len())));
                 }
-                if val < 0 || val > 255 {
+                if !(0..=255).contains(&val) {
                     return Err(RuntimeError::new(format!("bytes_set: value {} is not a valid byte (0-255)", val)));
                 }
                 let mut new_b = b.clone();

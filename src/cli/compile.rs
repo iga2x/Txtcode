@@ -1,39 +1,12 @@
 //! `txtcode compile` / `txtcode inspect` — compile to bytecode and inspect bytecode files.
 
-#[cfg(feature = "bytecode")]
 use crate::builder::{BuildConfig, BuildTarget, Builder};
-#[cfg(feature = "bytecode")]
 use crate::config::Config;
-#[cfg(feature = "bytecode")]
 use crate::tools::logger;
-#[cfg(feature = "bytecode")]
 use sha2::{Digest, Sha256};
-#[cfg(feature = "bytecode")]
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[cfg(not(feature = "bytecode"))]
-pub fn compile_file(
-    _file: &PathBuf,
-    _output: Option<&PathBuf>,
-    _optimize: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    Err("The 'compile' command requires the 'bytecode' feature. \
-         Rebuild with: cargo build --features bytecode"
-        .into())
-}
-
-#[cfg(not(feature = "bytecode"))]
-pub fn inspect_bytecode(
-    _file: &Path,
-    _format: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    Err("The 'inspect' command requires the 'bytecode' feature. \
-         Rebuild with: cargo build --features bytecode"
-        .into())
-}
-
-#[cfg(feature = "bytecode")]
 pub fn compile_file(
     file: &PathBuf,
     output: Option<&PathBuf>,
@@ -77,7 +50,7 @@ pub fn compile_file(
 
     let config = BuildConfig {
         input: file.clone(),
-        output: output.map(|p| p.clone()),
+        output: output.cloned(),
         target: BuildTarget::Bytecode,
         optimize: optimize == "basic",
         type_check: true,
@@ -105,7 +78,6 @@ pub fn compile_file(
     Ok(())
 }
 
-#[cfg(feature = "bytecode")]
 pub fn inspect_bytecode(file: &Path, format: &str) -> Result<(), Box<dyn std::error::Error>> {
     use crate::compiler::bytecode::Bytecode;
     let bytes = std::fs::read(file)?;
@@ -138,7 +110,6 @@ pub fn inspect_bytecode(file: &Path, format: &str) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-#[cfg(feature = "bytecode")]
 fn generate_cache_key(source: &str, optimize: &str) -> Result<String, Box<dyn std::error::Error>> {
     let mut hasher = Sha256::new();
     hasher.update(source.as_bytes());
@@ -147,32 +118,20 @@ fn generate_cache_key(source: &str, optimize: &str) -> Result<String, Box<dyn st
     Ok(hex::encode(&hash[..16]))
 }
 
-#[cfg(not(feature = "bytecode"))]
-pub fn compile_wasm(
-    _file: &PathBuf,
-    _output: Option<&std::path::Path>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    Err("The 'compile --target wasm' command requires the 'bytecode' feature. \
-         Rebuild with: cargo build --features bytecode"
-        .into())
-}
-
 /// Task 12.3 / 29.2 — Compile a Txt-code file to WebAssembly.
 ///
 /// `binary`: when true produce a `.wasm` binary (requires `wasm` feature);
 ///           when false produce a `.wat` text file.
-#[cfg(feature = "bytecode")]
 pub fn compile_wasm(
-    file: &PathBuf,
+    file: &std::path::Path,
     output: Option<&std::path::Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     compile_wasm_with_opts(file, output, false)
 }
 
 /// Compile to WAT or binary WASM depending on `binary`.
-#[cfg(feature = "bytecode")]
 pub fn compile_wasm_with_opts(
-    file: &PathBuf,
+    file: &std::path::Path,
     output: Option<&std::path::Path>,
     binary: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -186,7 +145,7 @@ pub fn compile_wasm_with_opts(
     };
 
     let config = BuildConfig {
-        input: file.clone(),
+        input: file.to_path_buf(),
         output: output.map(|p| p.to_path_buf()),
         target,
         type_check: true,

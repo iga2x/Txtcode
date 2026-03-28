@@ -32,7 +32,6 @@
 /// The OS sandbox complements the language-level permission system. Even if a bug
 /// in the runtime allowed crafting malicious arguments, the seccomp filter prevents
 /// the underlying process from executing external programs.
-
 /// Result type for sandbox operations.
 pub type SandboxResult = Result<(), String>;
 
@@ -156,6 +155,7 @@ fn apply_linux_sandbox_strict() -> SandboxResult {
 }
 
 #[cfg(target_os = "linux")]
+#[allow(clippy::vec_init_then_push)]
 fn apply_seccomp_blocklist() -> SandboxResult {
     // BPF constants
     const BPF_LD: u16 = 0x00;
@@ -290,6 +290,7 @@ fn apply_seccomp_blocklist() -> SandboxResult {
 /// (SECCOMP_RET_ERRNO) so the process can surface a clear error message instead
 /// of being killed with SIGSYS.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[allow(clippy::vec_init_then_push)]
 fn apply_seccomp_allowlist() -> SandboxResult {
     // BPF constants
     const BPF_LD: u16 = 0x00;

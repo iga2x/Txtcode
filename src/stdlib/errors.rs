@@ -16,7 +16,6 @@
 ///
 /// Each constructor returns a Map value with an `_error_type` key so
 /// scripts can inspect the type without runtime support changes.
-
 use crate::runtime::core::Value;
 use std::sync::Arc;
 use crate::runtime::errors::RuntimeError;

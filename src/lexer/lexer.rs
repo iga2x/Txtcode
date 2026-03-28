@@ -900,7 +900,7 @@ impl Lexer {
                             while self.position < self.source.len() {
                                 let oct_remaining = &self.source[self.position..];
                                 if let Some(oct_ch) = oct_remaining.chars().next() {
-                                    if oct_ch >= '0' && oct_ch <= '7' {
+                                    if ('0'..='7').contains(&oct_ch) {
                                         value.push(oct_ch);
                                         has_digits = true;
                                         self.advance();

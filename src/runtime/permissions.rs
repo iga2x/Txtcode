@@ -26,8 +26,9 @@ impl PermissionResource {
             "sys" | "system" => Ok(PermissionResource::System(action.to_string())),
             "process" | "proc" => Ok(PermissionResource::Process(vec![action.to_string()])),
             "wifi" | "ble" | "bluetooth" => Err(format!(
-                "Permission resource '{}' is not supported. \
-                 WiFi/Bluetooth capabilities were removed in v0.4.1.",
+                "Permission resource '{}' is not a built-in namespace. \
+                 Hardware access (WiFi/BLE/radio) requires the plugin/FFI system or sys.exec. \
+                 Built-in namespaces: fs, net, sys, process.",
                 prefix
             )),
             _ => Err(format!("Unknown resource type: '{}'. Valid: fs, net, sys, process.", prefix)),

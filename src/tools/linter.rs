@@ -1157,14 +1157,13 @@ fn collect_div_zero_stmt(stmt: &Statement, issues: &mut Vec<LintIssue>) {
 fn collect_div_zero_expr(expr: &Expression, issues: &mut Vec<LintIssue>) {
     if let Expression::BinaryOp { left, op, right, span } = expr {
         let is_div_or_mod = matches!(op, BinaryOperator::Divide | BinaryOperator::Modulo);
-        if is_div_or_mod {
-            if matches!(right.as_ref(), Expression::Literal(Literal::Integer(0))) {
+        if is_div_or_mod
+            && matches!(right.as_ref(), Expression::Literal(Literal::Integer(0))) {
                 let op_str = if matches!(op, BinaryOperator::Divide) { "/" } else { "%" };
                 issues.push(lint_issue(span.line, span.column,
                     format!("Division by zero literal: `x {} 0` will always raise a runtime error", op_str),
                     Severity::Warning, "L010"));
             }
-        }
         collect_div_zero_expr(left, issues);
         collect_div_zero_expr(right, issues);
     }

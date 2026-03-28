@@ -1,8 +1,8 @@
 # Txtcode Performance Baseline
 
 > Measured on: Linux x86-64, release build (`cargo bench`)
-> Date: 2026-03-19
-> Txtcode version: 0.5.0
+> Date: 2026-03-27
+> Txtcode version: 3.0.0
 > CPU: x86-64 (single-threaded, no parallelism)
 
 All times are median of 100 samples collected by [Criterion.rs](https://github.com/bheisler/criterion.rs).
@@ -51,10 +51,10 @@ The AST VM is the tree-walking interpreter used by `txtcode repl`, `txtcode run`
 ## Bytecode VM Execution
 
 The Bytecode VM (`txtcode compile` → `.txtc`) executes pre-compiled instruction streams.
-It is currently **experimental** and not yet the default for `txtcode run`.
+It is **experimental** (`--features bytecode`). Float literals are not yet implemented in the bytecode compiler.
 
 > Note: Bytecode benchmarks require `--features bytecode`.
-> No bytecode numbers are included in this baseline; see roadmap below.
+> No bytecode numbers are included in this baseline.
 
 ---
 
@@ -71,8 +71,8 @@ counter, but Rust's ownership model handles the actual deallocation automaticall
 - No GC pause — memory is freed deterministically when scopes end
 - 10,000 map allocations take **5.76 ms** total → **576 ns per allocation**, which includes the
   Txtcode interpreter overhead (variable lookup, scope push/pop) in addition to the Rust allocation itself
-- Large programs with deep call stacks may stack-allocate more Rust frames; `MAX_CALL_DEPTH = 50`
-  prevents stack overflow from unbounded recursion
+- Large programs with deep call stacks may stack-allocate more Rust frames; `MAX_CALL_DEPTH = 500`
+  prevents stack overflow from unbounded recursion (uses `stacker::maybe_grow` for safety)
 
 ---
 
@@ -91,22 +91,12 @@ Based on the benchmark data:
 
 ---
 
-## Roadmap: Performance Improvements
+## Performance Notes
 
-### v0.6 — Bytecode VM as Default
-- `txtcode run` will use the Bytecode VM by default
-- Expected speedup: **5–20×** for computation-heavy programs (loop iterations, arithmetic)
-- Recursive functions may see smaller gains (call overhead dominates)
-
-### v0.8 — `txtcode compile` → `.txtc` (Bytecode-Only Execution)
-- Pre-compiled bytecode files skip the lex+parse step entirely
-- Target: cold-start for a typical 500-line script < **5 ms** including VM setup
-- AST VM kept for: REPL, debugging, `--type-check` mode
-
-### Future
-- String interning (reduce allocation pressure for repeated string keys in maps)
-- Scope implemented as flat array instead of `HashMap<String, Value>` (reduces lookup cost)
-- Tail-call optimization for recursive functions
+- **TCO (Tail-Call Optimization)** is active for self-recursive functions — `fib(30)` iterative style runs without stack overflow.
+- **Constant folding** via `IrBuilder::apply_to_ast()` runs before every execution — folds `1 + 2` to `3` at parse time.
+- **Bytecode VM** (experimental, `--features bytecode`): expected 5–20× speedup over AST VM for computation-heavy programs once float support and full parity are complete. See `docs/dev-plan.md` M4.
+- **Future**: string interning, flat-array scope, LLVM/Cranelift native backend (deferred, post-M6).
 
 ---
 

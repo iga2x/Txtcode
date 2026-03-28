@@ -145,8 +145,6 @@ impl BytecodeVM {
 
     // ── Security management (parity with VirtualMachine) ─────────────────────
 
-    /// Set AI agent metadata for audit trail attribution.
-
     /// Register an intent declaration for a named function.
     pub fn register_function_intent(&mut self, name: String, declaration: IntentDeclaration) {
         self.intent_checker.register_function_intent(name, declaration);
@@ -486,7 +484,7 @@ impl BytecodeVM {
                 };
                 let mut result = Vec::new();
                 for elem in arr {
-                    let pred = self.call_lambda_inline(lambda_name, &[elem.clone()])?;
+                    let pred = self.call_lambda_inline(lambda_name, std::slice::from_ref(&elem))?;
                     if matches!(pred, Value::Boolean(true)) {
                         result.push(elem);
                     }
@@ -510,7 +508,7 @@ impl BytecodeVM {
                     _ => return Err(RuntimeError::new("find: first argument must be an array".to_string())),
                 };
                 for elem in arr {
-                    let pred = self.call_lambda_inline(lambda_name, &[elem.clone()])?;
+                    let pred = self.call_lambda_inline(lambda_name, std::slice::from_ref(&elem))?;
                     if matches!(pred, Value::Boolean(true)) {
                         return Ok(elem);
                     }
@@ -581,7 +579,6 @@ impl BytecodeVM {
             Instruction::Add => {
                 let b = self.pop_value()?;
                 let a = self.pop_value()?;
-                // Handle string concatenation in bytecode VM too
                 match (&a, &b) {
                     (Value::String(s), other) => {
                         self.stack.push(Value::String(format!("{}{}", s, other).into()));
@@ -595,33 +592,42 @@ impl BytecodeVM {
                         })?;
                         self.stack.push(Value::Integer(result));
                     }
-                    _ => {
-                        self.stack.push(self.binary_op(a, b, |a, b| a + b)?);
-                    }
+                    (Value::Float(x), Value::Float(y)) => self.stack.push(Value::Float(x + y)),
+                    (Value::Integer(x), Value::Float(y)) => self.stack.push(Value::Float(*x as f64 + y)),
+                    (Value::Float(x), Value::Integer(y)) => self.stack.push(Value::Float(x + *y as f64)),
+                    _ => return Err(RuntimeError::new("Invalid operands for addition".to_string())),
                 }
             }
             Instruction::Subtract => {
                 let b = self.pop_value()?;
                 let a = self.pop_value()?;
-                if let (Value::Integer(x), Value::Integer(y)) = (&a, &b) {
-                    let result = x.checked_sub(*y).ok_or_else(|| {
-                        RuntimeError::new(format!("Integer overflow: {} - {}", x, y))
-                    })?;
-                    self.stack.push(Value::Integer(result));
-                } else {
-                    self.stack.push(self.binary_op(a, b, |a, b| a - b)?);
+                match (&a, &b) {
+                    (Value::Integer(x), Value::Integer(y)) => {
+                        let result = x.checked_sub(*y).ok_or_else(|| {
+                            RuntimeError::new(format!("Integer overflow: {} - {}", x, y))
+                        })?;
+                        self.stack.push(Value::Integer(result));
+                    }
+                    (Value::Float(x), Value::Float(y)) => self.stack.push(Value::Float(x - y)),
+                    (Value::Integer(x), Value::Float(y)) => self.stack.push(Value::Float(*x as f64 - y)),
+                    (Value::Float(x), Value::Integer(y)) => self.stack.push(Value::Float(x - *y as f64)),
+                    _ => return Err(RuntimeError::new("Invalid operands for subtraction".to_string())),
                 }
             }
             Instruction::Multiply => {
                 let b = self.pop_value()?;
                 let a = self.pop_value()?;
-                if let (Value::Integer(x), Value::Integer(y)) = (&a, &b) {
-                    let result = x.checked_mul(*y).ok_or_else(|| {
-                        RuntimeError::new(format!("Integer overflow: {} * {}", x, y))
-                    })?;
-                    self.stack.push(Value::Integer(result));
-                } else {
-                    self.stack.push(self.binary_op(a, b, |a, b| a * b)?);
+                match (&a, &b) {
+                    (Value::Integer(x), Value::Integer(y)) => {
+                        let result = x.checked_mul(*y).ok_or_else(|| {
+                            RuntimeError::new(format!("Integer overflow: {} * {}", x, y))
+                        })?;
+                        self.stack.push(Value::Integer(result));
+                    }
+                    (Value::Float(x), Value::Float(y)) => self.stack.push(Value::Float(x * y)),
+                    (Value::Integer(x), Value::Float(y)) => self.stack.push(Value::Float(*x as f64 * y)),
+                    (Value::Float(x), Value::Integer(y)) => self.stack.push(Value::Float(x * *y as f64)),
+                    _ => return Err(RuntimeError::new("Invalid operands for multiplication".to_string())),
                 }
             }
             Instruction::Divide => {
@@ -644,13 +650,32 @@ impl BytecodeVM {
             Instruction::Modulo => {
                 let b = self.pop_value()?;
                 let a = self.pop_value()?;
-                if let (Value::Integer(a_val), Value::Integer(b_val)) = (&a, &b) {
-                    if *b_val == 0 {
-                        return Err(RuntimeError::new("Modulo by zero".to_string()));
+                match (&a, &b) {
+                    (Value::Integer(a_val), Value::Integer(b_val)) => {
+                        if *b_val == 0 {
+                            return Err(RuntimeError::new("Modulo by zero".to_string()));
+                        }
+                        self.stack.push(Value::Integer(a_val % b_val));
                     }
-                    self.stack.push(Value::Integer(a_val % b_val));
-                } else {
-                    return Err(RuntimeError::new("Modulo requires integers".to_string()));
+                    (Value::Float(a_val), Value::Float(b_val)) => {
+                        if *b_val == 0.0 {
+                            return Err(RuntimeError::new("Modulo by zero".to_string()));
+                        }
+                        self.stack.push(Value::Float(a_val % b_val));
+                    }
+                    (Value::Integer(a_val), Value::Float(b_val)) => {
+                        if *b_val == 0.0 {
+                            return Err(RuntimeError::new("Modulo by zero".to_string()));
+                        }
+                        self.stack.push(Value::Float(*a_val as f64 % b_val));
+                    }
+                    (Value::Float(a_val), Value::Integer(b_val)) => {
+                        if *b_val == 0 {
+                            return Err(RuntimeError::new("Modulo by zero".to_string()));
+                        }
+                        self.stack.push(Value::Float(a_val % *b_val as f64));
+                    }
+                    _ => return Err(RuntimeError::new("Invalid operands for modulo".to_string())),
                 }
             }
             Instruction::Power => {
@@ -2076,7 +2101,7 @@ impl BytecodeVM {
                             ))
                         }
                     };
-                    Ok(Value::String(s.replace(&*from, &*to).into()))
+                    Ok(Value::String(s.replace(&*from, &to).into()))
                 }
                 "substring" | "substr" => {
                     let start = match args.first() {
@@ -2318,6 +2343,7 @@ impl BytecodeVM {
         }
     }
 
+    #[allow(dead_code)]
     fn binary_op<F>(&self, a: Value, b: Value, op: F) -> Result<Value, RuntimeError>
     where
         F: FnOnce(i64, i64) -> i64,

@@ -82,8 +82,7 @@ impl VirtualMachine {
         let module_scope: HashMap<String, Value> = self
             .scope_manager
             .scopes()
-            .last()
-            .map(|s| s.clone())
+            .last().cloned()
             .unwrap_or_default();
 
         // Collect delta: symbols added to globals during module execution (functions, etc.)

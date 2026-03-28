@@ -1,29 +1,14 @@
 //! `txtcode debug` — interactive bytecode debugger.
 
-#[cfg(not(feature = "bytecode"))]
-pub fn start_debug_repl(_file: &std::path::PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    Err("The 'debug' command requires the 'bytecode' feature. \
-         Rebuild with: cargo build --features bytecode"
-        .into())
-}
-
-#[cfg(feature = "bytecode")]
 use crate::compiler::bytecode::BytecodeCompiler;
-#[cfg(feature = "bytecode")]
 use crate::lexer::Lexer;
-#[cfg(feature = "bytecode")]
 use crate::parser::Parser;
-#[cfg(feature = "bytecode")]
 use crate::tools::debugger::Debugger;
-#[cfg(feature = "bytecode")]
 use crate::validator::Validator;
-#[cfg(feature = "bytecode")]
 use std::fs;
-#[cfg(feature = "bytecode")]
 use std::path::PathBuf;
 
 /// Print up to 3 lines of source context centred on `target_line`, with a `→` marker.
-#[cfg(feature = "bytecode")]
 fn print_source_context(source_lines: &[&str], target_line: usize) {
     let start = target_line.saturating_sub(1);
     let end = (target_line + 1).min(source_lines.len());
@@ -36,7 +21,6 @@ fn print_source_context(source_lines: &[&str], target_line: usize) {
     }
 }
 
-#[cfg(feature = "bytecode")]
 pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     use rustyline::DefaultEditor;
 
@@ -69,7 +53,7 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
         println!("(no debug symbols — source line mapping unavailable)");
     }
     println!(
-        "Commands: step/s, continue/c, break/b <line>, print/p <var>, stack, vars, run, quit/q, help"
+        "Commands: step/s, next/n, continue/c, break/b <line>, print/p <var>, stack, vars, run, quit/q, help"
     );
     println!("Type 'run' to run to end, or 'break <line>' then 'run' to stop at a line.");
 
@@ -105,6 +89,24 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
                     }
                 }
                 Err(e) => eprintln!("Step error: {}", e),
+            },
+
+            // ── next (step-over) ──────────────────────────────────────────
+            "next" | "n" => match debugger.step_over() {
+                Ok(state) => {
+                    if state.done {
+                        println!("Program finished.");
+                    } else {
+                        let src_line = debugger.source_line_for_ip(state.ip);
+                        if let Some(ln) = src_line {
+                            println!("ip={} line={} | {}", state.ip, ln, state.instruction);
+                            print_source_context(&source_lines, ln);
+                        } else {
+                            println!("ip={} | {}", state.ip, state.instruction);
+                        }
+                    }
+                }
+                Err(e) => eprintln!("Next error: {}", e),
             },
 
             // ── continue / run ────────────────────────────────────────────
@@ -224,6 +226,7 @@ pub fn start_debug_repl(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>
             "help" | "?" => {
                 println!("Commands:");
                 println!("  step / s               — execute one instruction");
+                println!("  next / n               — step to next source line (step over)");
                 println!("  continue / c / run     — run until breakpoint or end");
                 println!("  break / b <line>       — set breakpoint at source line");
                 println!("  break / b              — list breakpoints");

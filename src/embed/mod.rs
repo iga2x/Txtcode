@@ -22,7 +22,6 @@
 /// long long y = txtcode_get_int(e, "y");  // 84
 /// txtcode_free(e);
 /// ```
-
 use crate::builder::{BuildConfig, Builder};
 use crate::lexer::lexer::Lexer;
 use crate::parser::parser::Parser;
@@ -65,11 +64,11 @@ impl TxtcodeEngine {
         let mut lexer = Lexer::new(source.to_string());
         let tokens = lexer
             .tokenize()
-            .map_err(|e| RuntimeError::new(e))?;
+            .map_err(RuntimeError::new)?;
         let mut parser = Parser::new(tokens);
         let program = parser
             .parse()
-            .map_err(|e| RuntimeError::new(e))?;
+            .map_err(RuntimeError::new)?;
         // P.1: run the full validator pipeline before execution.
         // Without this, host applications embedding via C ABI received zero
         // semantic validation and no restriction checking.

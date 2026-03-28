@@ -295,7 +295,7 @@ impl BytecodeCompiler {
         if line > 0 {
             let ip = instructions.len();
             // Only push if this is a new ip or a different line than the last entry
-            if self.debug_info.last().map_or(true, |&(i, l)| i != ip || l != line) {
+            if self.debug_info.last().is_none_or(|&(i, l)| i != ip || l != line) {
                 self.debug_info.push((ip, line));
             }
         }

@@ -148,7 +148,7 @@ impl ControlFlowExecutor {
         let iter_val = match iter_val_raw {
             Value::Future(handle) => handle
                 .resolve()
-                .map_err(|e| RuntimeError::new(e))?,
+                .map_err(RuntimeError::new)?,
             other => other,
         };
         log_debug(&format!(
@@ -249,7 +249,7 @@ impl ControlFlowExecutor {
                 let iter2 = match fields.get("iter2") { Some(v) => v.clone(), None => return Err(RuntimeError::new("__Chain__: missing 'iter2'".to_string())) };
                 let arr1: Vec<Value> = match iter1 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(), _ => return Err(RuntimeError::new("chain: iter1 must be an array or string".to_string())) };
                 let arr2: Vec<Value> = match iter2 { Value::Array(a) => a, Value::String(s) => s.chars().map(|c| Value::String(Arc::from(c.to_string()))).collect(), _ => return Err(RuntimeError::new("chain: iter2 must be an array or string".to_string())) };
-                let chained: Vec<Value> = arr1.into_iter().chain(arr2.into_iter()).collect();
+                let chained: Vec<Value> = arr1.into_iter().chain(arr2).collect();
                 vm.push_scope();
                 let mut outer_err: Option<RuntimeError> = None;
                 'chain_outer: for item in chained {

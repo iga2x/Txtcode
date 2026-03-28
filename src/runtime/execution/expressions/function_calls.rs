@@ -59,7 +59,7 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
     // the permission manager will only allow the call if a scope-less grant exists.
     // We do NOT skip the check: an unresolvable scope should produce a denial, not a bypass.
     if let Some(resource) = permission_map::map_function_to_permission(name) {
-        let scope = permission_map::extract_permission_scope(&resource, &args);
+        let scope = permission_map::extract_permission_scope(&resource, args);
         vm.check_rate_limit(name)?;
         vm.check_permission_with_audit(&resource, scope.as_deref())?;
     }
@@ -129,7 +129,7 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
             vm.create_error("await_future requires 1 argument (a Future)".to_string())
         })?;
         return match fut {
-            Value::Future(handle) => handle.resolve().map_err(|e| RuntimeError::new(e)),
+            Value::Future(handle) => handle.resolve().map_err(RuntimeError::new),
             other => Ok(other), // pass-through for non-futures
         };
     }
@@ -149,7 +149,7 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         || name == "revoke_capability"
         || name == "capability_valid"
     {
-        match vm.handle_capability_function(name, &args)? {
+        match vm.handle_capability_function(name, args)? {
             Some(result) => return Ok(result),
             None => {
                 // If VM doesn't handle it, try CapabilityLib directly (will fail but consistent)
@@ -161,7 +161,7 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
     }
 
     // Try to call standard library function
-    match vm.call_stdlib_function(name, &args) {
+    match vm.call_stdlib_function(name, args) {
         Ok(result) => return Ok(result),
         Err(e) => {
             // Check if it's an "Unknown function" error - if so, continue to check structs/user functions
@@ -220,13 +220,13 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
         if let Some(future_result) = vm.maybe_spawn_async(name, params.clone(), body.clone(), captured_env.clone(), args.to_vec()) {
             return future_result;
         }
-        return call_user_function(vm, name, &params, &body, &captured_env, &args, expr);
+        return call_user_function(vm, name, &params, &body, &captured_env, args, expr);
     }
 
     // Check per-VM native registry: variable holds "__native_fn::<name>" sentinel
     if let Some(Value::String(sentinel)) = vm.get_variable(name) {
         if let Some(fn_name) = sentinel.strip_prefix("__native_fn::") {
-            if let Some(result) = vm.call_native_fn(fn_name, &args) {
+            if let Some(result) = vm.call_native_fn(fn_name, args) {
                 return Ok(result);
             }
             return Err(vm.create_error(format!(
@@ -257,7 +257,7 @@ pub fn evaluate_function_call<VM: ExpressionVM>(
                     return Ok(result);
                 }
             }
-            return call_method(vm, obj_val, method_name, &args, obj_name);
+            return call_method(vm, obj_val, method_name, args, obj_name);
         }
         // Enum constructor via enum type name (not a variable holding an enum value)
         // e.g. Shape.Circle(5.0) where Shape is an enum type registered in enum_defs
@@ -550,9 +550,9 @@ fn call_string_method(
                 let right_pad = total_pad - left_pad;
                 Ok(Value::String(Arc::from(format!(
                     "{}{}{}",
-                    std::iter::repeat(pad_ch).take(left_pad).collect::<String>(),
+                    std::iter::repeat_n(pad_ch, left_pad).collect::<String>(),
                     s,
-                    std::iter::repeat(pad_ch).take(right_pad).collect::<String>()
+                    std::iter::repeat_n(pad_ch, right_pad).collect::<String>()
                 ))))
             }
         }
@@ -804,12 +804,12 @@ fn stmt_is_tail_call(fn_name: &str, stmt: &Statement) -> bool {
         Statement::Expression(Expression::FunctionCall { name, .. }) if name == fn_name => true,
         // if/else: all branches must end with a tail call  (N.4)
         Statement::If { then_branch, else_if_branches, else_branch, .. } => {
-            let then_ok = then_branch.last().map_or(false, |s| stmt_is_tail_call(fn_name, s));
+            let then_ok = then_branch.last().is_some_and(|s| stmt_is_tail_call(fn_name, s));
             let else_ok = else_branch.as_ref()
                 .and_then(|b| b.last())
-                .map_or(false, |s| stmt_is_tail_call(fn_name, s));
+                .is_some_and(|s| stmt_is_tail_call(fn_name, s));
             let elif_ok = else_if_branches.iter().all(|(_, b)| {
-                b.last().map_or(false, |s| stmt_is_tail_call(fn_name, s))
+                b.last().is_some_and(|s| stmt_is_tail_call(fn_name, s))
             });
             // All branches must be present and end with a tail call.
             // An if without an else is NOT guaranteed to tail-call.
@@ -982,14 +982,8 @@ pub fn call_user_function<VM: ExpressionVM>(
             // Evaluate new args for the tail call (last statement).
             // N.4: Also handles bare `fn_name(args)` as the last statement.
             let new_args_result = match body.last() {
-                Some(Statement::Return { value: Some(expr), .. }) => match expr {
-                    Expression::FunctionCall { arguments, .. } => arguments
-                        .iter()
-                        .map(|a| super::ExpressionEvaluator::evaluate(vm, a))
-                        .collect::<Result<Vec<_>, _>>(),
-                    _ => Ok(vec![]),
-                },
-                Some(Statement::Expression(Expression::FunctionCall { arguments, .. })) => arguments
+                Some(Statement::Return { value: Some(Expression::FunctionCall { arguments, .. }), .. })
+                | Some(Statement::Expression(Expression::FunctionCall { arguments, .. })) => arguments
                     .iter()
                     .map(|a| super::ExpressionEvaluator::evaluate(vm, a))
                     .collect::<Result<Vec<_>, _>>(),
@@ -1159,7 +1153,7 @@ fn stmt_contains_yield(stmt: &Statement) -> bool {
         Statement::If { then_branch, else_if_branches, else_branch, .. } => {
             then_branch.iter().any(stmt_contains_yield)
                 || else_if_branches.iter().any(|(_, stmts)| stmts.iter().any(stmt_contains_yield))
-                || else_branch.as_ref().map_or(false, |b| b.iter().any(stmt_contains_yield))
+                || else_branch.as_ref().is_some_and(|b| b.iter().any(stmt_contains_yield))
         }
         Statement::While { body, .. }
         | Statement::For { body, .. }
@@ -1167,7 +1161,7 @@ fn stmt_contains_yield(stmt: &Statement) -> bool {
         | Statement::Repeat { body, .. } => body.iter().any(stmt_contains_yield),
         Statement::Match { cases, default, .. } => {
             cases.iter().any(|(_, _, stmts)| stmts.iter().any(stmt_contains_yield))
-                || default.as_ref().map_or(false, |b| b.iter().any(stmt_contains_yield))
+                || default.as_ref().is_some_and(|b| b.iter().any(stmt_contains_yield))
         }
         _ => false,
     }

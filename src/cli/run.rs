@@ -17,19 +17,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
-#[cfg(feature = "bytecode")]
 use crate::runtime::bytecode_vm::BytecodeVM;
-#[cfg(feature = "bytecode")]
 use crate::config::Config;
 
 // ── Bytecode execution ────────────────────────────────────────────────────────
 
 /// Execute a pre-compiled `.txtc` bytecode file.
-#[cfg(feature = "bytecode")]
 fn run_compiled_file(
     file: &PathBuf,
     safe_mode: bool,
-    allow_exec: bool,
+    _allow_exec: bool,
     allow_fs: &[String],
     allow_net: &[String],
     allow_ffi: &[String],
@@ -90,7 +87,6 @@ fn parse_permission_string(s: &str) -> Option<PermissionResource> {
     PermissionResource::from_string(s).ok()
 }
 
-#[cfg(feature = "bytecode")]
 fn apply_env_permissions_bytecode(vm: &mut BytecodeVM) {
     if let Some((_env_dir, _name, cfg)) = crate::config::Config::load_active_env() {
         for perm_str in &cfg.permissions.allow {
@@ -195,14 +191,8 @@ fn run_file_inner(
         match ext {
             "tc" => {}
             "txtc" => {
-                #[cfg(feature = "bytecode")]
-                {
-                    logger::log_info(&format!("Running compiled bytecode: {}", file.display()));
-                    return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net, allow_ffi, cancel_flag);
-                }
-                #[cfg(not(feature = "bytecode"))]
-                return Err("Running pre-compiled .txtc files requires the 'bytecode' feature. \
-                     Rebuild with: cargo build --features bytecode".into());
+                logger::log_info(&format!("Running compiled bytecode: {}", file.display()));
+                return run_compiled_file(file, safe_mode, allow_exec, allow_fs, allow_net, allow_ffi, cancel_flag);
             }
             "txt" => {
                 return Err(format!(
@@ -281,7 +271,7 @@ pub fn print_permissions_report(program: &crate::parser::ast::Program, json: boo
             return;
         }
         println!("Permissions required by this script:");
-        println!("{:<20} {}", "Permission", "Functions");
+        println!("{:<20} Functions", "Permission");
         println!("{}", "-".repeat(60));
         for (perm, fns) in &seen {
             println!("{:<20} {}", perm, fns.join(", "));

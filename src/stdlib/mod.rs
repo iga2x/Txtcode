@@ -501,7 +501,7 @@ impl StdLib {
                 );
             }
             // Fallback: no executor — legacy BEGIN-only mode.
-            return crate::stdlib::db::DbLib::call_function(name, args, effective_permission_checker);
+            crate::stdlib::db::DbLib::call_function(name, args, effective_permission_checker)
         } else if name == "http_serve" {
             #[cfg(feature = "net")]
             {
@@ -510,9 +510,9 @@ impl StdLib {
                         args, exec, effective_permission_checker,
                     );
                 }
-                return Err(crate::runtime::RuntimeError::new(
+                Err(crate::runtime::RuntimeError::new(
                     "http_serve: requires an executor context (call from within VM)".to_string(),
-                ));
+                ))
             }
             #[cfg(not(feature = "net"))]
             return Err(crate::runtime::RuntimeError::new(
@@ -526,9 +526,9 @@ impl StdLib {
                         args, exec, effective_permission_checker,
                     );
                 }
-                return Err(crate::runtime::RuntimeError::new(
+                Err(crate::runtime::RuntimeError::new(
                     "ws_serve: requires an executor context (call from within VM)".to_string(),
-                ));
+                ))
             }
             #[cfg(not(feature = "net"))]
             return Err(crate::runtime::RuntimeError::new(
@@ -554,19 +554,14 @@ impl StdLib {
             let fn_name = name.to_string();
             let (handle, sender) = crate::runtime::core::value::FutureHandle::pending();
             let task = move || {
-                let result: Result<crate::runtime::Value, String> = (|| -> Result<crate::runtime::Value, crate::runtime::RuntimeError> {
-                    #[cfg(feature = "net")]
-                    {
+                let result: Result<crate::runtime::Value, String> = {
                         if fn_name == "async_http_get" {
-                            crate::stdlib::net::NetLib::call_function("http_get", &[crate::runtime::Value::String(Arc::from(url))], None)
+                            crate::stdlib::net::NetLib::call_function("http_get", &[crate::runtime::Value::String(url)], None)
                         } else {
                             let body = body_arg.unwrap_or(crate::runtime::Value::String(Arc::from("{}".to_string())));
-                            crate::stdlib::net::NetLib::call_function("http_post", &[crate::runtime::Value::String(Arc::from(url)), body], None)
+                            crate::stdlib::net::NetLib::call_function("http_post", &[crate::runtime::Value::String(url), body], None)
                         }
                     }
-                    #[cfg(not(feature = "net"))]
-                    Err(crate::runtime::RuntimeError::new(format!("{}: requires the 'net' feature", fn_name)))
-                })()
                 .map_err(|e| e.to_string());
                 sender.send(result);
             };
@@ -575,7 +570,7 @@ impl StdLib {
             } else {
                 std::thread::spawn(task);
             }
-            return Ok(crate::runtime::Value::Future(handle));
+            Ok(crate::runtime::Value::Future(handle))
         } else if name.starts_with("http")
             || name.starts_with("tcp")
             || name == "udp_send"
@@ -677,9 +672,10 @@ impl StdLib {
             || name == "datetime_diff"
         {
             TimeLib::call_function(name, args, time_override)
-        } else if name == "cli_parse" || name == "proc_run" || name == "proc_pipe" {
-            SysLib::call_function(name, args, exec_allowed, effective_permission_checker)
-        } else if name == "chdir"
+        } else if name == "cli_parse"
+            || name == "proc_run"
+            || name == "proc_pipe"
+            || name == "chdir"
             || name == "pid"
             || name == "user"
             || name == "home"
@@ -774,7 +770,7 @@ impl StdLib {
                 for fut in futures {
                     match fut {
                         crate::runtime::Value::Future(handle) => {
-                            let v = handle.resolve().map_err(|e| crate::runtime::RuntimeError::new(e))?;
+                            let v = handle.resolve().map_err(crate::runtime::RuntimeError::new)?;
                             results.push(v);
                         }
                         other => results.push(other), // non-future: pass through
@@ -783,21 +779,17 @@ impl StdLib {
                 Ok(crate::runtime::Value::Array(results))
             } else {
                 // await_any: return first future to resolve
-                // Naive implementation: resolve in order, return first Ok
-                for fut in futures {
-                    match fut {
-                        crate::runtime::Value::Future(handle) => {
-                            let v = handle.resolve().map_err(|e| crate::runtime::RuntimeError::new(e))?;
-                            return Ok(v);
-                        }
-                        other => return Ok(other),
+                // Naive implementation: resolve in order, return the first one
+                match futures.into_iter().next() {
+                    Some(crate::runtime::Value::Future(handle)) => {
+                        let v = handle.resolve().map_err(crate::runtime::RuntimeError::new)?;
+                        Ok(v)
                     }
+                    Some(other) => Ok(other),
+                    None => Ok(crate::runtime::Value::Null),
                 }
-                Ok(crate::runtime::Value::Null)
             }
-        } else if name.starts_with("gzip_") {
-            BytesLib::call_function(name, args)
-        } else if name.starts_with("bytes_") {
+        } else if name.starts_with("gzip_") || name.starts_with("bytes_") {
             BytesLib::call_function(name, args)
         } else if name == "template_render" {
             TemplateLib::call_function(name, args)

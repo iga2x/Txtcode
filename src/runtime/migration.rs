@@ -632,7 +632,7 @@ impl SourceMigrationPass for YieldArrowMigration {
             let trimmed = line.trim_start();
             // Match `yield <non-arrow>` — skip if already `yield →`
             if trimmed.starts_with("yield ") {
-                let rest = trimmed["yield ".len()..].trim_start();
+                let rest = trimmed.strip_prefix("yield ").unwrap_or("").trim_start();
                 if !rest.starts_with('→') && !rest.is_empty() {
                     let indent = &line[..line.len() - trimmed.len()];
                     out.push_str(&format!("{}yield → {}\n", indent, rest));

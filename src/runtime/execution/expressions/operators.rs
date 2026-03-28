@@ -1,7 +1,6 @@
 // Binary and unary operator evaluation
 
 use super::ExpressionVM;
-use std::sync::Arc;
 use crate::parser::ast::{BinaryOperator, Expression, UnaryOperator};
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;

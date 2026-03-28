@@ -1,12 +1,12 @@
-# Async Programming in NPL / Txtcode
+# Async Programming in Txtcode
 
-This guide covers every async feature available in NPL, from simple background tasks to structured concurrency, async streams, and timeouts.
+This guide covers every async feature available in Txtcode, from simple background tasks to structured concurrency, async streams, and timeouts.
 
 ---
 
 ## Overview
 
-NPL's async model is **thread-based and cooperative**.  There is no Tokio or event-loop dependency — async functions execute in OS threads managed by NPL's `FutureHandle` primitive (a `Mutex`+`Condvar` pair).  This keeps the model simple and predictable: an async call always runs on a real thread, and `await` simply blocks the calling thread until the result is ready.
+Txtcode's async model is **thread-based and cooperative**.  There is no Tokio or event-loop dependency — async functions execute in OS threads managed by Txtcode's `FutureHandle` primitive (a `Mutex`+`Condvar` pair).  This keeps the model simple and predictable: an async call always runs on a real thread, and `await` simply blocks the calling thread until the result is ready.
 
 Key concepts:
 
@@ -156,7 +156,7 @@ store → values → await stream
 
 ### `async → for` — Streaming Iteration
 
-Use `async → for` to iterate over an async generator without manually awaiting.  NPL auto-resolves the future before the loop body runs.
+Use `async → for` to iterate over an async generator without manually awaiting.  Txtcode auto-resolves the future before the loop body runs.
 
 ```
 async define → numbers → ()

@@ -1,7 +1,6 @@
 // Optional chaining evaluation (?., ?(), ?[])
 
 use super::ExpressionVM;
-use std::sync::Arc;
 use crate::parser::ast::Expression;
 use crate::runtime::core::Value;
 use crate::runtime::errors::RuntimeError;

@@ -25,7 +25,6 @@
 /// - `null`  → 0
 ///
 /// Up to 4 arguments are supported in this version.
-use std::sync::Arc;
 use crate::runtime::{RuntimeError, Value};
 use crate::stdlib::PermissionChecker;
 
@@ -344,6 +343,7 @@ unsafe fn dispatch_call(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn ffi_load_wrong_arg_type() {

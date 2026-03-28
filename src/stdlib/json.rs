@@ -26,7 +26,7 @@ impl JsonLib {
                 match &args[0] {
                     Value::String(json_str) => Self::json_decode(json_str).or_else(|e| {
                         // Return typed ParseError instead of a plain RuntimeError
-                        Ok(crate::stdlib::errors::parse_error(json_str, &e.message()))
+                        Ok(crate::stdlib::errors::parse_error(json_str, e.message()))
                     }),
                     _ => Err(RuntimeError::new(
                         "json_decode requires a string argument".to_string(),

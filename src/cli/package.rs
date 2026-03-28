@@ -307,7 +307,7 @@ impl PackageRegistry {
         // 2. Remote fetch (requires `net` feature)
         #[cfg(feature = "net")]
         {
-            return Self::fetch_index_remote();
+            Self::fetch_index_remote()
         }
 
         // 3. No network support compiled in
@@ -342,7 +342,7 @@ impl PackageRegistry {
             println!("No packages found matching '{}'.", query);
             return Ok(());
         }
-        println!("{:<25} {:<10} {}", "NAME", "LATEST", "DESCRIPTION");
+        println!("{:<25} {:<10} DESCRIPTION", "NAME", "LATEST");
         println!("{}", "-".repeat(72));
         for (name, pkg) in &results {
             let latest = pkg.latest_version().unwrap_or_else(|| "-".to_string());

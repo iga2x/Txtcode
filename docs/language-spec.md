@@ -1,47 +1,14 @@
 # Txt-code Language Specification — v3.0.0
 
-> **Status:** v3.0.0 — language correctness complete (Milestones 1–3 done; M4 active).
-> The public API, permission model, stdlib function names, and core language syntax are **stable**.
-> Breaking changes require a major version bump.
-> All changes are documented in the [CHANGELOG](https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md).
+> **Status:** v3.0.0 stable. The public API, permission model, stdlib function names, and core syntax will not have breaking changes until v4.0.
+> See [CHANGELOG](https://github.com/iga2x/txtcode/blob/main/CHANGELOG.md) for full version history.
 >
-> **New in v0.8 (over v0.7 / Group 12):**
-> - **Struct methods** (`impl → StructName` blocks) — define and call methods on struct instances via `obj.method(args)` in both VMs; see §1.16 and §2.2
-> - **`?` error propagation operator** — postfix `?` on a `Result` unwraps `Ok` or early-returns `Err` from the enclosing function; see §1.17 and §7.8
-> - **Or-patterns and range patterns** — `1 | 2 | 3` and `1..=5` in `match` case arms; both VMs; see §1.7 (Pattern Matching) and updated §1.15 grammar
-> - **`await_all` / `await_any`** stdlib functions — parallel resolution of `Future` arrays using existing OS-thread mechanism; see §4.6
-> - **WASM compilation target** — `txtcode compile --target wasm script.tc` produces `.wat` output; LLVM/Cranelift native backend deferred (see `docs/dev-plan.md` §Deferred)
->
-> **New in v0.5 (over v0.4):**
-> - **Real async/await** — `async define → fn → (args)` spawns an OS thread; `await` blocks until result; `Value::Future` type; `Instruction::Await` in bytecode VM
-> - **LSP server** — `txtcode lsp` starts a JSON-RPC LSP server over stdio; diagnostics on open/change, 100+ completions
-> - **20 core packages** — `npl-math`, `npl-strings`, `npl-collections`, `npl-datetime`, `npl-http-client`, `npl-http-server`, `npl-json-schema`, `npl-csv`, `npl-env`, `npl-template`, `npl-semver`, `npl-base64`, `npl-uuid`, `npl-retry`, `npl-assert`, `npl-cli-args`, `npl-colors`, `npl-table`, `npl-hash`, `npl-path`
-> - **Package registry backend** — `registry/index.json` single source of truth; `local_path` offline installs; SHA-256 verification; `package search` / `package info`
-> - **TextMate grammar** — `editors/txtcode.tmLanguage.json` + `editors/txtcode-language-configuration.json` for VS Code / Sublime / Zed
-> - **Full stdlib additions** — `file_open`/`file_read_line`/`file_write_line`/`file_close` streaming I/O; `format_datetime`/`datetime_add`/`datetime_diff`/`now` datetime; `csv_write`; `exec_pipe`; `http_serve`; `xml_decode`
-> - **Performance documented** — `docs/performance.md` with real Criterion.rs benchmark numbers
-> - **`txtcode run --permissions-report`** — list privileged calls without running
-> - **`txtcode run --type-check` / `--strict-types`** — static type checker as advisory or hard-error pre-execution step
-> - **`CapabilityResult` enum** (`Granted`, `NotFound`, `Revoked`, `Expired`) — typed denial reasons
-> - **Struct field type checking** — construction and bracket-assign validate against declared types; advisory (`[WARNING]`) or strict (`E0016`)
-> - **`Value::type_name()`** — human-readable type name for error messages
-> - **FFI stdlib** (`--features ffi`) — `ffi_load`, `ffi_call`, `ffi_close`; `sys.ffi` permission gate
->
-> **New in v0.4 (over v0.3):**
-> - Virtual environment system (`txtcode env`) with 12 subcommands
-> - Bytecode VM: `break`/`continue`, `for x in arr`, `repeat N`, `match`, string interpolation
-> - Integer overflow guards (`checked_*`) in both AST VM and bytecode VM
-> - Recursion depth limit (500) enforced across all VMs (raised from 50 in v3.0)
-> - User-defined functions with caller/callee scope isolation in bytecode VM
-> - `?.` / `?[]` / `?()` optional chaining — both VMs (returns `null` on null target)
->
-> **Still not fully implemented:**
-> - Generic type enforcement at runtime (type params are parsed but erased at execution; full enforcement planned v0.8)
-> - `++arr[0]` / `--arr[0]` on non-identifier targets — use `store → arr[0] → arr[0] + 1` instead
-> - WebSocket support — planned for v0.6
-> - macOS / Windows OS-level anti-debug checks — Linux fully implemented; other platforms use timing + env scan only
-> - LLVM / native compilation backend — deferred; see `docs/dev-plan.md` §Deferred
-- WASM compilation: basic `.wat` output available (`txtcode compile --target wasm`); full WASM stdlib, binary output, and `wasmtime` execution are planned for v1.0
+> **Known limitations (v3.0.0):**
+> - Generic type enforcement is parse-only — type params are stored in AST but erased at runtime
+> - `++arr[0]` / `--arr[0]` on non-identifier targets unsupported — use `store → arr[0] → arr[0] + 1`
+> - macOS/Windows OS-level anti-debug checks not yet implemented (Linux only)
+> - Bytecode VM is experimental (`--features bytecode`) — float literals unimplemented
+> - LLVM/native backend deferred — see `docs/dev-plan.md` §Deferred
 
 ---
 
@@ -96,11 +63,54 @@ The arrow `→` (Unicode U+2192) and `->` (ASCII two-character sequence) are bot
 Identifiers begin with a letter (`[a-zA-Z]`) or underscore (`_`), followed by zero or more letters, digits (`[0-9]`), or underscores. Identifiers are case-sensitive.
 
 Reserved keywords may not be used as identifiers:
-`and`, `array`, `assert`, `async`, `await`, `bool`, `break`, `call`, `case`, `catch`,
-`char`, `const`, `continue`, `define`, `do`, `else`, `elseif`, `end`, `enum`,
-`export`, `false`, `finally`, `float`, `for`, `forbidden`, `if`, `import`, `in`,
-`int`, `intent`, `map`, `match`, `not`, `null`, `or`, `permission`, `repeat`,
-`return`, `set`, `store`, `struct`, `times`, `true`, `try`, `while`.
+
+| Keyword | Purpose |
+|---------|---------|
+| `store` / `let` | Variable assignment (`let` is an alias) |
+| `const` | Immutable constant |
+| `print` / `out` | Print to stdout (`out` is an alias) |
+| `define` / `def` | Function definition (`def` is an alias) |
+| `return` / `ret` | Return from function (`ret` is an alias) |
+| `yield` | Emit a value from a generator function |
+| `if` | Conditional |
+| `elseif` / `elif` | Else-if branch (`elif` is an alias) |
+| `else` | Else branch |
+| `end` | Close a block |
+| `while` | While loop |
+| `do` | Do-while loop |
+| `for` / `foreach` | For loop (`foreach` is an alias) |
+| `in` | For-loop iteration keyword |
+| `repeat` / `times` | Counted loop |
+| `break` | Exit loop |
+| `continue` | Skip to next loop iteration |
+| `match` / `switch` | Pattern match (`switch` is an alias) |
+| `case` | Match arm |
+| `try` | Error handling block |
+| `catch` | Catch handler |
+| `finally` | Always-run cleanup block |
+| `and` / `or` / `not` | Logical operators |
+| `true` / `false` / `null` | Literal values |
+| `enum` | Enum type declaration |
+| `struct` | Struct type declaration |
+| `impl` | Attach methods to a struct |
+| `protocol` | Protocol (interface) declaration |
+| `implements` | Struct protocol list (inside `struct` declaration) |
+| `import` / `use` | Import a module (`use` is an alias) |
+| `from` | Import source: `from "mod" import X` |
+| `as` | Import alias: `import X as Y` |
+| `export` | Export names from a module |
+| `async` | Async function or nursery |
+| `await` | Await a future |
+| `nursery` | Structured concurrency block |
+| `intent` / `doc` | Function intent annotation (`doc` is an alias) |
+| `hint` / `ai_hint` | Function hint annotation (`ai_hint` is an alias) |
+| `allowed` | Capability whitelist inside function |
+| `forbidden` | Capability blacklist inside function |
+| `permission` | Permission statement |
+| `assert` | Runtime assertion |
+| `int` / `float` / `string` / `bool` / `char` | Type keywords |
+| `array` / `map` / `set` | Collection type keywords |
+| `step` / `to` / `then` | Loop / conditional helper keywords |
 
 ### 1.6 Literals
 
@@ -202,6 +212,7 @@ end
 do
   body
 while → condition
+end
 ```
 The body executes at least once before the condition is tested.
 
@@ -232,6 +243,8 @@ match → expression
     default_body
 end
 ```
+
+Guard expressions (`case → pattern if condition`) are evaluated only when the pattern matches. Variables bound by the pattern are in scope inside the guard expression. A case arm is only entered when both the pattern matches **and** the guard evaluates to `true`.
 
 **Or-patterns** — match any of several alternatives in a single arm:
 ```txtcode
@@ -282,12 +295,23 @@ export → name1, name2
 ```
 
 #### Struct Definition
+Two equivalent syntaxes:
 ```txtcode
+# Parens form (canonical — preferred)
+struct Point(x: int, y: int)
+
+# Block form (also accepted)
 struct → Point
   x: int
   y: int
 end
 ```
+
+**Struct literal** — create an instance:
+```txtcode
+store → p → Point { x: 3, y: 4 }
+```
+All declared fields must be provided.
 
 #### Enum Definition
 ```txtcode
@@ -311,6 +335,94 @@ Declares required capabilities for the enclosing scope:
 ```txtcode
 permission → fs.read
 permission → net.connect → "example.com"
+```
+
+#### Yield (Generator Functions)
+Inside a `define` body that contains at least one `yield`, the function becomes a generator. Calling it returns an array of all yielded values.
+```txtcode
+define → counter → (n)
+  store → i → 0
+  while → i < n
+    yield → i
+    store → i → i + 1
+  end
+end
+
+store → nums → counter(3)   # [0, 1, 2]
+```
+`yield` may only appear inside a `define` body. Mixing `yield` and `return` in the same function is allowed; `return` stops iteration early.
+
+#### Protocol Declaration
+Declares a named interface that structs can implement.
+```txtcode
+protocol → Printable
+  to_string() → string
+end
+
+protocol → Comparable
+  compare(other) → int
+end
+```
+Protocol bodies list method signatures: `method_name(param_types) → return_type`. Parameter names are optional.
+
+#### Struct with Protocol Implementation
+```txtcode
+struct Point(x: int, y: int) implements Printable
+
+impl → Point
+  define → to_string → (self) → string
+    return → f"Point({self.x}, {self.y})"
+  end
+end
+```
+The `implements` keyword lists protocols after the struct declaration. The type checker verifies that all protocol methods are implemented in the corresponding `impl` block.
+
+#### Type Alias
+Creates an alias for an existing type. Purely documentary — the runtime treats the alias as the underlying type.
+```txtcode
+type → UserId → int
+type → Hostname → string
+type → Matrix → array[array[float]]
+```
+
+#### Named Error
+Declares a named error constant. A named error is a **string value** at runtime — `error → NotFound → "Resource not found"` binds `NotFound` to the string `"Resource not found"`. It can be passed to `err()` or compared with `==`.
+
+```txtcode
+error → NotFound → "Resource not found"
+error → Unauthorized → "Access denied"
+
+# Raise using the name:
+return → err(NotFound)
+
+# Pattern match by value (string comparison):
+match → unwrap_err(result)
+  case → "Resource not found"
+    print → "not found"
+  case → _
+    print → "other error"
+end
+```
+
+Named errors are **not distinct types** — the runtime does not distinguish `err(NotFound)` from `err("Resource not found")`. They are a documentation and readability convention.
+
+#### Async For Loop
+`async → for` iterates over an async generator (or any `Future<Array>`). The future is resolved automatically before the loop body executes.
+```txtcode
+async → for → n in numbers()
+  total += n
+end
+```
+This is syntactic sugar: the runtime awaits the generator's `Future` and then iterates the resulting array.
+
+#### Async Nursery (Structured Concurrency)
+A nursery block spawns tasks and waits for all of them to complete before proceeding. If any task raises an error, all remaining tasks are cancelled and the error is re-raised.
+```txtcode
+async → nursery
+  nursery_spawn(() → fetch_data("https://api.example.com/a"))
+  nursery_spawn(() → fetch_data("https://api.example.com/b"))
+end
+# both tasks have completed (or one failed) when execution reaches here
 ```
 
 ### 1.8 Expressions
@@ -337,6 +449,8 @@ expression :=
   | condition ? true_expr : false_expr  # ternary
   | await → expression                # await (inside async only)
   | f"text {expr} text"              # interpolated string
+  | StructName "{" field: expr, ... "}"   # struct literal
+  | expression "?"                        # propagate error (see §1.17)
 ```
 
 ### 1.9 Slice Expressions
@@ -379,7 +493,7 @@ store → val → map?.["key"]       # null if map is null
 store → res → func?.()           # null if func is null; calls func if not null
 ```
 
-All three operators (`?.`, `?[]`, `?()`) are fully implemented in both the AST VM and bytecode VM as of v0.4.
+All three operators (`?.`, `?[]`, `?()`) are fully implemented in both the AST VM and bytecode VM.
 
 ### 1.12 Spread Operator
 
@@ -395,7 +509,7 @@ store → e → [...a, ...b, ...a] # [1, 2, 3, 4, 1, 2]
 
 Rules:
 - Spread elements must evaluate to `array`. Spreading a non-array is a `RuntimeError`.
-- Spread is only supported inside array literals (`[...]`). It is not supported in function call arguments in v0.4.
+- Spread is only supported inside array literals (`[...]`). It is not supported in function call arguments 
 
 ### 1.13 Multi-Return Values
 
@@ -437,11 +551,12 @@ program           := statement*
 
 statement         :=
     | assignment | compound_assignment | index_assignment
-    | function_def | return | break | continue
+    | function_def | return | break | continue | yield_stmt
     | if_stmt | while_stmt | do_while_stmt | for_stmt | repeat_stmt
     | match_stmt | try_stmt | assert_stmt
     | import_stmt | export_stmt | const_stmt
     | struct_def | enum_def | permission_stmt
+    | impl_def | protocol_def | type_alias | named_error | nursery_stmt | async_for_stmt
     | expression
 
 assignment        := ("store"|"let") ("→"|WS) pattern (":" type)? ("→"|WS) expression
@@ -466,7 +581,7 @@ if_stmt           := "if" ("→"|WS) expression statement*
                      ("else" statement*)? "end"
 
 while_stmt        := "while" ("→"|WS) expression statement* "end"
-do_while_stmt     := "do" statement* "while" ("→"|WS) expression
+do_while_stmt     := "do" statement* "while" ("→"|WS) expression "end"
 for_stmt          := "for" ("→"|WS) identifier "in" expression statement* "end"
 repeat_stmt       := "repeat" ("→"|WS) expression "times" statement* "end"
 
@@ -483,17 +598,38 @@ import_stmt       := "import" ("→"|WS) (name_list "from")? identifier ("as" id
 export_stmt       := "export" ("→"|WS) name_list
 const_stmt        := "const" ("→"|WS) identifier ("→"|WS) expression
 
-struct_def        := "struct" ("→"|WS) identifier field* "end"
+struct_def        := "struct" ("→"|WS) identifier ("(" field ("," field)* ")")?
+                     ("implements" identifier ("," identifier)*)? (field* "end")?
 field             := identifier ":" type
 enum_def          := "enum" ("→"|WS) identifier variant* "end"
 variant           := identifier ("→" expression)?
 permission_stmt   := "permission" "→" identifier "." identifier ("→" string_literal)?
 
+impl_def          := "impl" ("→"|WS) identifier function_def* "end"
+
+protocol_def      := "protocol" ("→"|WS) identifier method_sig* "end"
+method_sig        := identifier "(" type_list? ")" ("→" type)?
+type_list         := type ("," type)*
+
+type_alias        := "type" ("→"|WS) identifier ("→"|WS) type
+
+named_error       := "error" ("→"|WS) identifier ("→"|WS) string_literal
+
+yield_stmt        := "yield" ("→"|WS) expression
+
+nursery_stmt      := "async" ("→"|WS) "nursery" statement* "end"
+async_for_stmt    := "async" ("→"|WS) "for" ("→"|WS) identifier "in" expression statement* "end"
+
+struct_literal    := identifier "{" (identifier ":" expression ("," identifier ":" expression)*)? "}"
+
 type              := "int" | "float" | "string" | "char" | "bool"
                    | "array" "[" type "]" | "map" "[" type "]" | "set" "[" type "]"
                    | "Future" "<" type ">"
-                   | identifier           # named struct/enum
-                   | identifier           # generic type parameter
+                   | type "?"             # nullable type
+                   | identifier           # named struct/enum or generic param
+
+constraint        := "Comparable" | "Numeric" | "Printable"
+type_param        := identifier (":" constraint)?
 
 pattern           := identifier | "[" pattern_list "]"
                    | "{" (identifier ":" pattern)* ("..." identifier)? "}"
@@ -501,6 +637,8 @@ pattern           := identifier | "[" pattern_list "]"
                    | "_"
                    | or_pattern
                    | range_pattern
+                   | literal              # literal pattern (int, float, string, bool)
+                   | "..." identifier     # rest pattern (in array destructure)
 
 or_pattern        := pattern ("|" pattern)+
 range_pattern     := integer "..=" integer
@@ -576,7 +714,7 @@ end
 | Type | Syntax | Notes |
 |------|--------|-------|
 | `array[T]` | `[1, 2, 3]` | Ordered, zero-indexed, dynamically sized |
-| `map[T]` | `{"key": value}` | String keys only, values of type T; iteration order is insertion-order (as of v0.6) |
+| `map[T]` | `{"key": value}` | String keys only, values of type T; iteration order is insertion-order  |
 | `set[T]` | `{| 1, 2, 3 |}` | Unordered, unique values |
 | `struct Name` | `Name { field: value }` | Named fields, declared with `struct`; methods attached via `impl → Name` |
 | `enum Name` | `Name.Variant` | Discriminated union, declared with `enum` |
@@ -589,11 +727,13 @@ end
 | `Future<T>` | Returned by `async` functions; resolved with `await` |
 
 Calling an async function without `await` yields a `Future<T>`.
-Calling `await` on a non-`Future` value is a runtime error.
+Calling `await` on a non-`Future` value returns the value as-is (identity pass-through).
 
 ### 2.4 Type Annotations (Optional)
 
 Type annotations are optional everywhere. The type checker uses Hindley-Milner-style inference.
+
+**Default mode — advisory:** `txtcode run` always runs the type checker. Errors appear as `[WARNING] type: ...` messages but do **not** halt execution. Use `--strict-types` to make type errors fatal (exit 2). Use `--no-type-check` to disable the checker entirely.
 
 ```txtcode
 store → x: int → 42
@@ -602,6 +742,31 @@ define → add → (a: int, b: int) → int
   return → a + b
 end
 ```
+
+**Nullable types** — append `?` to allow `null` as a valid value:
+```txtcode
+store → user: string? → null        # can be string or null
+define → find → (id: int) → User?
+  # returns User or null
+end
+```
+
+**Generic type parameters with constraints:**
+```txtcode
+define → max<T: Comparable> → (a: T, b: T) → T
+  return → a > b ? a : b
+end
+```
+
+Available constraints:
+
+| Constraint | Applies to |
+|-----------|-----------|
+| `Comparable` | Types that support `<`, `>`, `<=`, `>=` |
+| `Numeric` | Types that support `+`, `-`, `*`, `/` |
+| `Printable` | Types that can be converted to `string` |
+
+> Type parameters and constraints are parsed and stored in the AST but **type-erased at runtime**. The type checker enforces them in advisory or strict mode; the VM does not.
 
 ### 2.5 Type Compatibility
 
@@ -685,8 +850,8 @@ Functions with no explicit `return` return `null`.
 | `-` (negate) | `float` | `float` | IEEE 754 negation |
 | `not` | `bool` | `bool` | Logical complement |
 | `~` | `int` | `int` | Bitwise NOT |
-| `++` (prefix) | `int` | `int` | Implemented in v0.4. |
-| `--` (prefix) | `int` | `int` | Implemented in v0.4. |
+| `++` (prefix) | `int` | `int` | Implemented  |
+| `--` (prefix) | `int` | `int` | Implemented  |
 
 ### 3.3 Comparison Operators
 
@@ -746,7 +911,7 @@ store → result → value ?? default
 
 Returns `value` if it is not `null`, otherwise returns `default`. The right operand is only evaluated if needed.
 
-> **v0.4 status:** `??` is fully implemented in the bytecode VM (`NullCoalesce` instruction). Works in both AST VM and bytecode mode.
+> `??` is fully implemented in the bytecode VM (`NullCoalesce` instruction). Works in both AST VM and bytecode mode.
 
 ### 3.7 Ternary
 
@@ -851,11 +1016,18 @@ end
 define → identity<T> → (x: T) → T
   return → x
 end
+
+# With constraint:
+define → max<T: Comparable> → (a: T, b: T) → T
+  return → a > b ? a : b
+end
 ```
 
-Type parameters are listed after the function name inside `<>` and may be used in parameter types and return types.
+Type parameters are listed after the function name inside `<>`. Constraints follow a colon: `<T: Comparable>`. Multiple type params: `<T, U>`. Multiple constraints per param are not supported.
 
-> **v0.4 note:** Type parameters are parsed and stored in the AST but are **type-erased at runtime**. No generic specialisation or type-checking against `T` occurs. All type annotations are advisory and validated by the type-checker tool only, not by the runtime.
+Available constraints: `Comparable`, `Numeric`, `Printable` (see §2.4).
+
+> Type parameters are **type-erased at runtime**. The type checker enforces constraints in advisory/strict mode only.
 
 ### 4.4 Return
 
@@ -886,14 +1058,14 @@ The captured environment is a snapshot: mutations to `n` after `make_adder` retu
 
 ### 4.6 Async Functions
 
-> **v0.5:** `async define → fn → (args)` now spawns a real OS thread when called without `await`.
+> `async define → fn → (args)` now spawns a real OS thread when called without `await`.
 > The return value is `Value::Future`. Calling `await future` blocks the calling thread until the
 > spawned task finishes. Non-future values passed to `await` are returned unchanged (identity).
 > The child thread receives a snapshot of the parent's global scope.
 
 ```txtcode
 async → define → fetch → (url: string) → string
-  # In v0.5 async define spawns an OS thread — http_get runs concurrently
+  # async define spawns an OS thread — http_get runs concurrently
   store → body → await → http_get(url)
   return → body
 end
@@ -939,7 +1111,7 @@ end
 | `net` | `connect`, `listen`, `*` | HTTP, TCP, UDP, DNS |
 | `sys` | `exec`, `env`, `*` | Process execution, environment |
 
-> **Note:** `wifi.*` and `ble.*` resources were removed in v0.4.1. Passing them raises a `RuntimeError` with an explanatory message.
+> **Architecture note:** The built-in permission namespaces are `fs`, `net`, `sys`, and `process`. Hardware-specific capabilities (WiFi, BLE, raw radio, etc.) are **not built-in** — they must be accessed through the plugin/FFI system or OS-level tools via `sys.exec`. Passing `wifi.*` or `ble.*` strings to `grant_permission` raises a `RuntimeError`.
 
 Wildcard forms: `"fs.*"` (any fs action), `"*.*"` (unrestricted).
 
@@ -1094,15 +1266,17 @@ RuntimeError: Maximum call depth exceeded (500)
 
 Design functions to stay within this budget. Deeply recursive algorithms should be rewritten iteratively.
 
+**Tail-call optimization (TCO)** — the runtime automatically optimizes direct self-recursive tail calls (a function whose last statement is `return → fn_name(...)`). TCO replaces the call with a loop, so properly tail-recursive functions do not consume call-stack depth. The TCO loop enforces its own limit of **100,000** iterations to prevent truly infinite loops. TCO applies only to direct self-calls, not mutual recursion or calls through variables.
+
 ### 6.4 Memory
 
-Memory is managed by Rust's ownership system combined with reference counting for shared values. There is **no explicit memory limit** in v0.5. The process is bounded by the host OS.
+Memory is managed by Rust's ownership system combined with reference counting for shared values. There is **no explicit memory limit** by default. The process is bounded by the host OS.
 
-`AllocationTracker` (in `src/runtime/gc.rs`) tracks allocations and enforces a configurable soft memory limit. A full arena-allocator-based GC is planned for v0.8.
+`AllocationTracker` (in `src/runtime/gc.rs`) tracks allocations and enforces a configurable soft memory limit. A full arena-allocator-based GC is deferred — see docs/dev-plan.md.
 
 ### 6.5 Integer Overflow
 
-Integer arithmetic uses Rust `i64`. All arithmetic (`+`, `-`, `*`, `**`) in both the AST VM and bytecode VM uses Rust's `checked_*` methods as of v0.4, returning a `RuntimeError` on overflow instead of wrapping or panicking.
+Integer arithmetic uses Rust `i64`. All arithmetic (`+`, `-`, `*`, `**`) in both the AST VM and bytecode VM uses Rust's `checked_*` methods, returning a `RuntimeError` on overflow instead of wrapping or panicking.
 
 ### 6.6 Float Semantics
 
@@ -1246,13 +1420,13 @@ r?   ;; RuntimeError [E0034]: ? operator used outside of a function body
 | Circular import | `"Circular import detected: a -> b -> a"` |
 | Assert failure | `"Assertion failed"` or custom message |
 | Capability / forbidden violation | `"Capability [cap] is forbidden in function [fn]"` |
-| Permission not granted | `"Permission not granted: wifi.scan"` |
+| Permission not granted | `"Permission not granted: net.connect"` |
 | Permission explicitly denied | `"Permission denied: fs.write"` |
 | Intent violation | `"intent.violation.net.connect logged in audit trail"` |
 | Timeout exceeded | `"Maximum execution time exceeded"` |
 | Call depth exceeded | `"Maximum call depth exceeded (500)"` |
 | File too large | `"File 'path' is too large"` |
-| Stack overflow (OS) | Process abort — not catchable in v0.4 |
+| Stack overflow (OS) | Process abort — not catchable |
 
 ### 7.6 Assert
 
@@ -1268,7 +1442,7 @@ if → not (x > 0)
 end
 ```
 
-Assert is always evaluated — there is no release-mode stripping in v0.4.
+Assert is always evaluated — there is no release-mode stripping 
 
 ### 7.7 Result Pattern (Idiomatic)
 
@@ -1322,12 +1496,12 @@ store → value → unwrap(__tmp)
 
 ---
 
-## Appendix F — Security Guarantees (v0.5)
+## Appendix F — Security Guarantees
 
-This section documents what the v0.5 runtime does and does not enforce, so users can make
+This section documents what the runtime does and does not enforce, so users can make
 informed decisions about running Txt-code scripts.
 
-### F.1 Enforced in v0.5
+### F.1 Enforced
 
 | Guarantee | Mechanism | Notes |
 |-----------|-----------|-------|
@@ -1341,18 +1515,18 @@ informed decisions about running Txt-code scripts.
 | **Source file size limit** | 10 MB max, rejected before parsing | Prevents resource exhaustion |
 | **Permission checking in stdlib** | `call_function_with_combined_traits` checks net/IO/sys/exec | Before call via PermissionChecker trait |
 
-### F.2 Not Yet Enforced (v0.5 status)
+### F.2 Not Yet Enforced
 
 | Gap | Impact | Status |
 |-----|--------|--------|
-| **Memory limits** | No explicit heap limit; bounded by host OS only | v0.6 |
-| **`?()` optional call on non-null non-function** | Raises RuntimeError in bytecode VM | v0.6 |
-| **Source comments in migrate** | `#` comments are not preserved through AST printer | v0.6 |
-| **`return →` inside nested blocks** | Does not propagate through `match`, `if`, or `for` to caller | v0.6 |
+| **Memory limits** | No explicit heap limit; bounded by host OS only | 
+| **`?()` optional call on non-null non-function** | Raises RuntimeError in bytecode VM | 
+| **Source comments in migrate** | `#` comments are not preserved through AST printer | 
+| **`return →` inside nested blocks** | Does not propagate through `match`, `if`, or `for` to caller | 
 
 ### F.2a Known Runtime Limitation — `return →` in Nested Blocks
 
-In v0.4, `return →` only propagates to the caller when it appears **at the top level of the
+`return →` only propagates to the caller when it appears **at the top level of the
 function body**. A `return →` inside a `match` case, `if` branch, `for` loop, or `try` block
 is silently swallowed — execution continues after the enclosing block, and the function returns
 whatever its final top-level expression evaluates to (`null` if nothing else).
@@ -1395,7 +1569,7 @@ Safe mode **does not** restrict:
 
 ### F.4 Capability Declaration vs Permission Checker
 
-Two independent mechanisms enforce permissions in v0.4:
+Two independent mechanisms enforce permissions:
 
 1. **Capability declarations** (`allowed`/`forbidden`) — declared in function bodies, enforced
    by the AST VM at runtime when the function executes.
@@ -1413,14 +1587,14 @@ sufficient to block a call. The bytecode VM does not implement either mechanism.
 
 `txtcode migrate` assists with updating Txt-code source files when syntax or semantics change between versions.
 
-### E.2 Supported Transformations (v0.1 → v0.2)
+### E.2 Supported Transformations
 
-| Change | From (v0.1) | To (v0.2) | Auto-migrated? |
+| Change | Before | After | Auto-migrated? |
 |--------|-------------|-----------|----------------|
 | Deprecated space syntax | `define name (params)` | `define → name → (params)` | Warning emitted |
 | Module version header | `## @version 0.1.0` | `## @version 0.2.0` | Reported |
 
-No breaking syntax changes were introduced between v0.1 and v0.2. Migration is advisory.
+No breaking syntax changes were introduced between early versions. Migration is advisory.
 
 ### E.3 Usage
 
@@ -1434,11 +1608,11 @@ txtcode migrate --directory src/
 # Specify versions explicitly
 txtcode migrate --files main.tc --from 0.1.0 --to 0.2.0
 
-# Write migrated source back to file (v0.4+)
+# Write migrated source back to file
 txtcode migrate --files main.tc --dry-run=false
 ```
 
-### E.4 Current Limitations (v0.4)
+### E.4 Current Limitations
 
 - **Source code regeneration** is now implemented via the AST printer. Files are written when
   `--dry-run=false`. The written source uses canonical syntax (`store →`, `define →`, etc.)
@@ -1449,13 +1623,13 @@ txtcode migrate --files main.tc --dry-run=false
 - **Source comments** (lines starting with `#`) are not preserved through the AST printer,
   as the AST does not store comment nodes. Back up your files before migrating.
 
-The AST-to-source printer is implemented as of v0.4, enabling actual file transformation via `--dry-run=false`.
+The AST-to-source printer is implemented, enabling actual file transformation via `--dry-run=false`.
 
 ---
 
 ## Appendix D — Execution Engine Reference
 
-### D.1 Engine Overview (v0.4)
+### D.1 Engine Overview
 
 Txt-code has two execution engines. Understanding which one is active is important for security and
 compatibility guarantees.
@@ -1475,15 +1649,15 @@ compatibility guarantees.
 - Policy constraints (rate limits, timeouts) are applied by the policy engine.
 - Intent and AI-hint annotations are visible to the audit log.
 
-This engine is the **only** execution path with production security guarantees in v0.4.
+This engine is the **only** execution path with production security guarantees 
 
 ### D.3 Bytecode VM — Experimental Engine
 
 `BytecodeVM` (in `src/runtime/bytecode_vm.rs`) is a stack-based interpreter for compiled `.txtc` files.
 
-**v0.4 status:** Full feature and security parity with the AST VM. Implemented:
+Full feature and security parity with the AST VM. Implemented:
 `break`/`continue`, `for x in arr`, `repeat N`, `match`, `++`/`--`, string interpolation,
-user-defined functions, `ImportModule`, and as of v0.4.2, the complete 6-layer security pipeline:
+user-defined functions, `ImportModule`, and.2, the complete 6-layer security pipeline:
 
 - Permission enforcement — all stdlib calls pass through `PermissionChecker` (grant/deny).
 - Audit logging — all permission checks logged with AI metadata via `AuditTrail`.
@@ -1492,7 +1666,7 @@ user-defined functions, `ImportModule`, and as of v0.4.2, the complete 6-layer s
 - Policy engine — rate limiting, AI control, and max execution time via `PolicyEngine`.
 - Runtime security — anti-debug, bytecode integrity hash, platform detection via `RuntimeSecurity`.
 
-**Recommended use in v0.4:** all execution paths, including production. Both `txtcode run <file>`
+Recommendation: all execution paths, including production. Both `txtcode run <file>`
 (AST VM) and `txtcode run <file.txtc>` (bytecode VM) enforce the same security guarantees.
 
 ### D.4 Choosing an Engine
@@ -1555,3 +1729,122 @@ tool:*                   Execute any tool
 *.*                      Unrestricted
 resource.action:scope    Scoped (e.g. fs.read:/tmp/*)
 ```
+
+---
+
+## Appendix G — Stdlib Function Reference
+
+### Named Functions (always available)
+
+**Type / conversion:**
+`len`, `type`, `string`, `int`, `float`, `bool`, `str`
+
+**I/O:**
+`print`, `input`, `log`
+
+**Math:**
+`max`, `min`, `abs`, `floor`, `ceil`, `round`, `sqrt`, `pow`, `log` (math variant), `sin`, `cos`, `tan`
+
+**Collections:**
+`map`, `filter`, `reduce`, `find`, `sort`, `reverse`, `concat`, `range`, `enumerate`, `zip`, `chain`
+
+**Result type:**
+`ok(v)`, `err(v)`, `is_ok(r)`, `is_err(r)`, `unwrap(r)`, `unwrap_or(r, default)`
+
+**Encoding:**
+`base64_encode`, `base64_decode`, `base32_encode`, `base32_decode`, `html_escape`
+
+**Crypto:**
+`md5`, `encrypt`, `decrypt`, `hmac_sha256`, `uuid_v4`, `secure_compare`, `pbkdf2`,
+`bcrypt_hash`, `bcrypt_verify`, `ed25519_sign`, `ed25519_verify`,
+`rsa_generate`, `rsa_sign`, `rsa_verify`, `jwt_sign`, `jwt_verify`, `jwt_decode`
+
+**Async / concurrency:**
+`async_run(fn)`, `async_run_scoped(fn)`, `async_run_timeout(ms, fn)`,
+`await_all(futures)`, `await_any(futures)`,
+`async_cancel_token()`, `async_cancel(id)`, `is_cancelled(id)`,
+`async_sleep(ms)`, `async_read_file(path)`, `async_write_file(path, data)`
+
+**Process:**
+`exec(cmd)`, `exec_json(cmd)`, `exec_lines(cmd)`, `exec_status(cmd)`, `exec_pipe(cmds)`,
+`spawn(cmd)`, `kill(pid)`, `signal_send(pid, sig)`, `wait(pid)`
+
+**System info:**
+`cpu_count()`, `memory_available()`, `disk_space(path)`, `platform()`, `arch()`,
+`os_name()`, `os_version()`, `pid()`, `user()`, `home()`, `uid()`, `gid()`, `is_root()`
+
+**Environment:**
+`getenv(key)`, `setenv(key, val)`, `env_list()`, `args()`, `cwd()`, `chdir(path)`
+
+**Time / date:**
+`now()`, `now_utc()`, `now_local()`, `sleep(ms)`,
+`format_datetime(ts, fmt, tz)`, `datetime_add(ts, n, unit)`, `datetime_diff(a, b, unit)`,
+`parse_datetime(s, fmt)`
+
+**Compression:**
+`gzip_compress(data)`, `gzip_decompress(bytes)`,
+`gzip_compress_string(s)`, `gzip_decompress_string(bytes)`
+
+**Error constructors (return `Result::Err`):**
+`FileNotFoundError(msg)`, `PermissionError(msg)`, `NetworkError(msg)`, `ParseError(msg)`,
+`TypeError(msg)`, `ValueError(msg)`, `IndexError(msg)`, `TimeoutError(msg)`
+
+**Capability tokens:**
+`grant_capability(resource, action, scope?, expires_in?)` — issue a token (`expires_in`: `"30s"`, `"5m"`, `"1h"`, integer seconds, or `null`/omit for no TTL),
+`use_capability(token_id)`, `revoke_capability(token_id)`, `capability_valid(token_id) → bool`
+
+**Test assertions:**
+`assert(cond)`, `assert_eq(a, b)`, `assert_ne(a, b)`,
+`assert_error(fn)`, `assert_type(v, type_str)`,
+`assert_contains(haystack, needle)`, `assert_approx(a, b, delta)`, `expect_error(fn, msg)`
+
+**Plugin / FFI / WASM:**
+`plugin_load(path)`, `plugin_functions(handle)`, `plugin_call(handle, fn, args)`,
+`ffi_load(path)`, `ffi_call(handle, fn, args)`, `ffi_close(handle)`,
+`wasm_load(path)`, `wasm_call(handle, fn, args)`, `wasm_close(handle)`
+
+---
+
+### Prefix-Routed Functions
+
+Functions whose names begin with any of these prefixes are routed to the corresponding stdlib module. Exact function lists are in `packages/README.md`.
+
+| Prefix | Module | Examples |
+|--------|--------|---------|
+| `str_` | String operations | `str_pad_left`, `str_truncate`, `str_to_upper`, `str_split_lines` |
+| `math_` | Math | `math_random`, `math_random_float`, `math_clamp`, `math_lerp` |
+| `array_` | Array operations | `array_flatten`, `array_unique`, `array_chunk`, `array_slice` |
+| `set_` | Set operations | `set_union`, `set_intersection`, `set_difference` |
+| `http_` | HTTP client | `http_get`, `http_post`, `http_put`, `http_delete`, `http_request` |
+| `ws_` | WebSocket | `ws_connect`, `ws_send`, `ws_recv`, `ws_close`, `ws_serve` |
+| `tcp_` / `udp_` | Raw sockets | `tcp_connect`, `tcp_send`, `tcp_recv`, `udp_send` |
+| `db_` | Database | `db_connect`, `db_query`, `db_execute`, `db_commit`, `db_rollback`, `db_transaction` |
+| `json_` | JSON | `json_parse`, `json_stringify`, `json_validate`, `json_path` |
+| `xml_` | XML | `xml_parse`, `xml_stringify`, `xml_encode` |
+| `yaml_` | YAML | `yaml_parse`, `yaml_stringify` |
+| `toml_` | TOML | `toml_parse`, `toml_stringify` |
+| `csv_` | CSV | `csv_read`, `csv_write`, `csv_stream_reader`, `csv_read_row` |
+| `path_` | File paths | `path_join`, `path_dirname`, `path_basename`, `path_exists` |
+| `regex_` | Regex | `regex_match`, `regex_find_all`, `regex_replace`, `regex_compile` |
+| `url_` | URL encoding | `url_encode`, `url_decode`, `url_parse` |
+| `sha_` / `crypto_` | Hashing | `sha256`, `sha512`, `crypto_random_bytes` |
+| `async_` | Async helpers | `async_run`, `async_sleep`, `async_cancel_token` |
+| `log_` | Logging | `log_info`, `log_warn`, `log_error`, `log_debug` |
+| `test_` | Test helpers | `test_run`, `test_suite`, `test_case` |
+| `time_` | Time utilities | `time_parse`, `time_format`, `time_unix` |
+
+> Unknown prefix functions raise `RuntimeError: unknown function 'xyz'`. All prefix-routed functions are subject to the same permission checks as named functions.
+
+---
+
+## Appendix H — Error Code Reference
+
+Error codes appear in diagnostic messages to uniquely identify the error class. They are informational and intended for tooling (linters, LSP, CI).
+
+| Code | Category | Message / Condition |
+|------|----------|---------------------|
+| E0012 | Runtime | Division or modulo by zero |
+| E0016 | Type | Struct field type mismatch: `'Point.x' expected Int, got string` |
+| E0034 | Runtime | `?` operator used outside of a function body |
+| E0051 | Advisory | `async` function executes synchronously (shown as `[WARNING]`) |
+| E0060 | Type (planned) | Annotated assignment type violation (`store → x: int → "hello"`) — not yet enforced at runtime; see `docs/dev-plan.md` §4.6 |

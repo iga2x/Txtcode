@@ -71,7 +71,7 @@ a single function call.
 
 ```txtcode
 # Acquire a short-lived capability token for network access
-store → tok → grant_capability("net.connect", "*.corp.lan")
+store → tok → grant_capability("net", "connect", "*.corp.lan")
 
 # Activate — valid until explicitly revoked
 use_capability(tok)
@@ -221,7 +221,7 @@ check reports a mismatch in the audit trail under `security.startup`.
 | macOS anti-debug (kinfo_proc) | Stub | Approach documented in `protector.rs`; needs `libc::sysctl` wiring. |
 | Windows anti-debug (IsDebuggerPresent) | Stub | Approach documented in `protector.rs`; needs `winapi` linkage. |
 
-Do not rely on the obfuscator for IP protection — it has no effect in v0.5.
+Do not rely on the obfuscator for IP protection — it provides no IP protection in the current release.
 
 ---
 

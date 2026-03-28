@@ -27,8 +27,34 @@ The `PermissionResource` type identifies what is being accessed.
 
 Aliases: `filesystem` = `fs`, `network` = `net`, `system` = `sys`, `proc` = `process`.
 
-> **Removed in v0.4.1**: `wifi.*` and `ble.*` permission resources have been removed.
-> Attempting to use `wifi.*` or `ble.*` strings now returns a clear error.
+### Architecture boundary
+
+The built-in permission namespaces (`fs`, `net`, `sys`, `process`) cover OS-portable operations only. They do **not** include hardware-specific capabilities such as WiFi, BLE, USB, or raw radio access, because:
+
+- Those features are OS/driver-dependent and not portable
+- They belong in the plugin/FFI layer or in external packages, not the language core
+- Including them in core would tie the language spec to specific hardware
+
+**To access hardware features:**
+
+```txtcode
+# Option 1: call a system tool via sys.exec (requires sys.exec permission)
+grant_permission("sys.exec", null)
+store → result → exec_json(["iwlist", "wlan0", "scan"])
+
+# Option 2: load a native plugin (requires sys.ffi permission)
+store → wifi → plugin_load("libwifi_plugin.so")
+store → networks → plugin_call(wifi, "scan", [])
+
+# Option 3: shell out to a specialized CLI tool
+store → out → exec_lines(["nmcli", "-t", "-f", "SSID,SIGNAL", "dev", "wifi"])
+```
+
+Passing `wifi.*` or `ble.*` strings to `grant_permission` raises:
+```
+RuntimeError: Permission resource 'wifi' is not a built-in namespace.
+Hardware access requires the plugin/FFI system or sys.exec.
+```
 
 ---
 
@@ -108,14 +134,17 @@ Capability tokens are short-lived, explicitly revocable grants backed by the
 needs a permission that should not persist for the whole script.
 
 ```txtcode
-# Acquire token
-store → tok → grant_capability("wifi.capture", null)
+# Acquire token scoped to a specific path (no TTL — revoke manually)
+store → tok → grant_capability("fs", "read", "/var/log/*")
+
+# Acquire a time-limited token (expires after 30 seconds automatically)
+store → tok2 → grant_capability("net", "connect", "*.corp.lan", "30s")
 
 # Activate token for the current scope
 use_capability(tok)
 
-# All wifi_capture() calls here check against the token
-store → frames → wifi_capture("wlan0")
+# All read_file() calls here check against the token
+store → data → read_file("/var/log/syslog")
 
 # Revoke when done — subsequent calls fail even within the same scope
 revoke_capability(tok)
@@ -125,7 +154,7 @@ Capability functions:
 
 | Function | Description |
 |---|---|
-| `grant_capability(cap, scope)` | Issue a new capability token |
+| `grant_capability(resource, action, scope?, expires_in?)` | Issue a new capability token (`expires_in`: `"30s"`, `"5m"`, `"1h"`, or integer seconds; omit or `null` for no TTL) |
 | `use_capability(token_id)` | Activate a token as the current capability |
 | `revoke_capability(token_id)` | Revoke a token immediately |
 | `capability_valid(token_id)` | Returns `true` if the token is active and not expired |
@@ -211,7 +240,7 @@ the runtime runs these steps in order:
 | Capability token not found | `Capability denied: capability token not found` |
 | Capability token revoked | `Capability denied: capability token 'cap_abc' has been revoked` |
 | Capability token expired | `Capability denied: capability token 'cap_abc' has expired` |
-| Unknown resource string | `Permission resource 'wifi.scan' is not supported. WiFi/Bluetooth capabilities were removed in v0.4.1.` |
+| Unknown resource string | `Permission resource 'wifi.scan' is not supported. WiFi/Bluetooth capabilities have been removed.` |
 | Intent violation | `intent.violation.net.connect` (audit trail; not a hard error) |
 | Rate limit exceeded | `Rate limit exceeded for net.connect: 100 per 3600s` |
 | Struct field type mismatch | `Struct field type mismatch: 'Point.x' expected Int, got string` (E0016) |

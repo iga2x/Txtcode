@@ -77,7 +77,7 @@ store → bounds → minmax([3, 1, 4, 1, 5])
 
 ### Async Functions
 ```txtcode
-# async define spawns an OS thread in v0.5; await blocks until the result is ready.
+# async define spawns an OS thread; await blocks until the result is ready.
 async → define → fetch → (url: string)
   store → body → await → http_get(url)
   return → body
@@ -181,8 +181,30 @@ match → score
 end
 ```
 
-Or-patterns and range patterns can appear together in the same match expression.
-Both work in the AST VM and the bytecode VM.
+### Literal Patterns
+
+Match against exact literal values (int, float, string, bool):
+```txtcode
+match → command
+  case → "quit"
+    print → "Goodbye"
+  case → "help"
+    print → "Commands: ..."
+  case → _
+    print → "Unknown command"
+end
+```
+
+### Rest Pattern
+
+In array destructuring, `...rest` captures remaining elements:
+```txtcode
+store → [first, ...rest] → [1, 2, 3, 4]
+# first == 1, rest == [2, 3, 4]
+```
+
+Or-patterns, range patterns, and literal patterns can appear together in the same match expression.
+All patterns work in both the AST VM and the bytecode VM.
 
 ## Operators
 
@@ -367,23 +389,23 @@ Rules:
 ```txtcode
 grant_permission("fs.read",    "/tmp/*")
 grant_permission("net.connect", "*.example.com")
-grant_permission("wifi.scan",  null)
-grant_permission("ble.scan",   null)
+grant_permission("sys.exec",   null)
+deny_permission("fs.delete",   null)
 ```
 
 ### Capability tokens (short-lived, revocable)
 ```txtcode
-store → tok → grant_capability("wifi.capture", null)
+store → tok → grant_capability("fs", "read", "/var/log/*")
 use_capability(tok)
-store → frames → wifi_capture("wlan0")
-revoke_capability(tok)
+store → data → read_file("/var/log/syslog")
+revoke_capability(tok)    # subsequent calls fail immediately
 ```
 
 ### Function-level declarations
 ```txtcode
 define → probe → (host: string)
-  intent   → "network probe only"
-  allowed  → ["net.connect", "wifi.scan"]
+  intent    → "network reachability probe only"
+  allowed   → ["net.connect"]
   forbidden → ["sys.exec", "fs.write"]
 
   store → result → tcp_connect(f"{host}:80")
@@ -391,27 +413,101 @@ define → probe → (host: string)
 end
 ```
 
-`forbidden` is enforced at validation time (before execution).
-`allowed` and `intent` are logged to the audit trail.
+`forbidden` is enforced at **validation time** (before execution).
+`allowed` and `intent` are logged to the audit trail at runtime.
 
-## WiFi / Bluetooth Functions
+## Generators (yield)
 
-All `wifi_*` and `ble_*` functions require the corresponding permission grant.
+A function containing `yield` is a generator. Calling it returns an array of all yielded values.
 
 ```txtcode
-# WiFi — requires wifi.<action>
-wifi_scan()                     # passive scan
-wifi_capture("wlan0")           # raw frame capture (monitor mode)
-wifi_deauth("wlan0", "AA:BB:CC:DD:EE:FF")  # deauth (auth required)
-wifi_inject("wlan0", frame_bytes)           # inject (auth required)
+define → squares → (n)
+  store → i → 1
+  while → i <= n
+    yield → i * i
+    store → i → i + 1
+  end
+end
 
-# Bluetooth LE — requires ble.<action>
-ble_scan()                               # device discovery
-store → h → ble_connect("AA:BB:CC:DD:EE:FF")  # GATT connect
-store → v → ble_read(h, "0x2A37")             # read characteristic
-ble_write(h, "0x2A06", 0x01)                  # write characteristic
-ble_fuzz(h, "0x2A06", 32)                     # fuzz (auth required)
+print → squares(4)    # [1, 4, 9, 16]
 ```
+
+## Protocols
+
+Declare an interface; enforce it with `implements` on a struct.
+
+```txtcode
+protocol → Printable
+  to_string() → string
+end
+
+struct Point(x: int, y: int) implements Printable
+
+impl → Point
+  define → to_string → (self) → string
+    return → f"({self.x}, {self.y})"
+  end
+end
+```
+
+## Type Aliases and Named Errors
+
+```txtcode
+type → UserId → int
+type → Hostname → string
+
+error → NotFound → "Resource not found"
+error → Unauthorized → "Access denied"
+
+# Use in function signatures:
+define → find_user → (id: UserId) → User?
+  # returns User or null
+end
+
+# Raise a named error:
+return → err(NotFound)
+```
+
+## Nullable Types
+
+Append `?` to a type to allow `null` as a valid value:
+
+```txtcode
+store → name: string? → null
+define → find → (id: int) → User?
+  # may return User or null
+end
+
+# Safe access with ??:
+store → display → name ?? "anonymous"
+```
+
+## Structured Concurrency (nursery)
+
+```txtcode
+async → nursery
+  nursery_spawn(() → fetch("https://api.example.com/a"))
+  nursery_spawn(() → fetch("https://api.example.com/b"))
+end
+# both complete (or one fails and all are cancelled) before continuing
+```
+
+## Keyword Aliases
+
+These are canonicalized at lex time — both forms are identical:
+
+| Canonical | Alias(es) |
+|-----------|----------|
+| `store` | `let` |
+| `define` | `def` |
+| `return` | `ret` |
+| `print` | `out` |
+| `import` | `use` |
+| `elseif` | `elif` |
+| `match` | `switch` |
+| `for` | `foreach` |
+| `intent` | `doc` |
+| `hint` | `ai_hint` |
 
 ## Examples
 

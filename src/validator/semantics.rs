@@ -93,7 +93,7 @@ impl SemanticsValidator {
         let stdlib = Self::stdlib_names();
         match stmt {
             Statement::Assignment { pattern, value, .. } => {
-                Self::scan_expr(value, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(value, scope_stack, fn_arity, stdlib, warnings);
                 // Bring assigned name(s) into scope.
                 if let crate::parser::ast::common::Pattern::Identifier(name) = pattern {
                     if let Some(top) = scope_stack.last_mut() {
@@ -102,9 +102,9 @@ impl SemanticsValidator {
                 }
             }
             Statement::IndexAssignment { target, index, value, .. } => {
-                Self::scan_expr(target, scope_stack, fn_arity, &stdlib, warnings);
-                Self::scan_expr(index, scope_stack, fn_arity, &stdlib, warnings);
-                Self::scan_expr(value, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(target, scope_stack, fn_arity, stdlib, warnings);
+                Self::scan_expr(index, scope_stack, fn_arity, stdlib, warnings);
+                Self::scan_expr(value, scope_stack, fn_arity, stdlib, warnings);
             }
             Statement::CompoundAssignment { name, value, .. } => {
                 if !Self::in_scope(name, scope_stack)
@@ -113,7 +113,7 @@ impl SemanticsValidator {
                 {
                     warnings.push(format!("Possible undefined variable '{}'.", name));
                 }
-                Self::scan_expr(value, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(value, scope_stack, fn_arity, stdlib, warnings);
             }
             Statement::FunctionDef { name, params, body, .. } => {
                 // Add function name to current scope before scanning body so
@@ -130,24 +130,22 @@ impl SemanticsValidator {
                 Self::scan_stmts(body, scope_stack, fn_arity, warnings);
                 scope_stack.pop();
             }
-            Statement::Return { value, .. } => {
-                if let Some(e) = value {
-                    Self::scan_expr(e, scope_stack, fn_arity, &stdlib, warnings);
-                }
+            Statement::Return { value: Some(e), .. } => {
+                Self::scan_expr(e, scope_stack, fn_arity, stdlib, warnings);
             }
             Statement::Yield { value, .. } => {
-                Self::scan_expr(value, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(value, scope_stack, fn_arity, stdlib, warnings);
             }
             Statement::Expression(e) => {
-                Self::scan_expr(e, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(e, scope_stack, fn_arity, stdlib, warnings);
             }
             Statement::If { condition, then_branch, else_if_branches, else_branch, .. } => {
-                Self::scan_expr(condition, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(condition, scope_stack, fn_arity, stdlib, warnings);
                 scope_stack.push(HashSet::new());
                 Self::scan_stmts(then_branch, scope_stack, fn_arity, warnings);
                 scope_stack.pop();
                 for (cond, branch) in else_if_branches {
-                    Self::scan_expr(cond, scope_stack, fn_arity, &stdlib, warnings);
+                    Self::scan_expr(cond, scope_stack, fn_arity, stdlib, warnings);
                     scope_stack.push(HashSet::new());
                     Self::scan_stmts(branch, scope_stack, fn_arity, warnings);
                     scope_stack.pop();
@@ -160,13 +158,13 @@ impl SemanticsValidator {
             }
             Statement::While { condition, body, .. }
             | Statement::DoWhile { condition, body, .. } => {
-                Self::scan_expr(condition, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(condition, scope_stack, fn_arity, stdlib, warnings);
                 scope_stack.push(HashSet::new());
                 Self::scan_stmts(body, scope_stack, fn_arity, warnings);
                 scope_stack.pop();
             }
             Statement::For { variable, iterable, body, .. } => {
-                Self::scan_expr(iterable, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(iterable, scope_stack, fn_arity, stdlib, warnings);
                 scope_stack.push(HashSet::new());
                 if let Some(top) = scope_stack.last_mut() {
                     top.insert(variable.clone());
@@ -175,7 +173,7 @@ impl SemanticsValidator {
                 scope_stack.pop();
             }
             Statement::Repeat { count, body, .. } => {
-                Self::scan_expr(count, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(count, scope_stack, fn_arity, stdlib, warnings);
                 scope_stack.push(HashSet::new());
                 Self::scan_stmts(body, scope_stack, fn_arity, warnings);
                 scope_stack.pop();
@@ -199,7 +197,7 @@ impl SemanticsValidator {
                 }
             }
             Statement::Match { value, cases, default, .. } => {
-                Self::scan_expr(value, scope_stack, fn_arity, &stdlib, warnings);
+                Self::scan_expr(value, scope_stack, fn_arity, stdlib, warnings);
                 for (_, _, body) in cases {
                     scope_stack.push(HashSet::new());
                     Self::scan_stmts(body, scope_stack, fn_arity, warnings);

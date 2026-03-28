@@ -12,14 +12,14 @@ use std::collections::HashMap;
 // When Some(vec), yield statements push to the vec instead of raising a signal.
 // This allows `yield` inside nested for/if/while to work correctly.
 thread_local! {
-    pub(crate) static GENERATOR_COLLECTOR: RefCell<Option<Vec<Value>>> = RefCell::new(None);
+    pub(crate) static GENERATOR_COLLECTOR: RefCell<Option<Vec<Value>>> = const { RefCell::new(None) };
 }
 
 // Task 15.1: Thread-local nursery handle collector for structured concurrency.
 // When Some(vec), `nursery_spawn` pushes FutureHandles here instead of returning them.
 // The nursery block awaits all collected handles on exit.
 thread_local! {
-    pub(crate) static NURSERY_HANDLES: RefCell<Option<Vec<crate::runtime::core::value::FutureHandle>>> = RefCell::new(None);
+    pub(crate) static NURSERY_HANDLES: RefCell<Option<Vec<crate::runtime::core::value::FutureHandle>>> = const { RefCell::new(None) };
 }
 
 pub fn param_type_matches(value: &Value, expected: &Type) -> bool {
@@ -96,12 +96,58 @@ fn type_annotation_name(t: &Type) -> String {
     }
 }
 
+/// Extract the source span (line, col) from any Statement variant.
+/// Returns None for statement types that don't carry a span.
+fn stmt_span(stmt: &Statement) -> Option<(usize, usize)> {
+    let span = match stmt {
+        Statement::Assignment { span, .. } => span,
+        Statement::IndexAssignment { span, .. } => span,
+        Statement::CompoundAssignment { span, .. } => span,
+        Statement::Const { span, .. } => span,
+        Statement::Expression(_) => return None,
+        Statement::Return { span, .. } => span,
+        Statement::If { span, .. } => span,
+        Statement::While { span, .. } => span,
+        Statement::For { span, .. } => span,
+        Statement::Repeat { span, .. } => span,
+        Statement::DoWhile { span, .. } => span,
+        Statement::Match { span, .. } => span,
+        Statement::Try { span, .. } => span,
+        Statement::FunctionDef { span, .. } => span,
+        Statement::Import { span, .. } => span,
+        Statement::Export { span, .. } => span,
+        Statement::Struct { span, .. } => span,
+        Statement::Enum { span, .. } => span,
+        Statement::Impl { span, .. } => span,
+        Statement::TypeAlias { span, .. } => span,
+        Statement::NamedError { span, .. } => span,
+        Statement::Protocol { span, .. } => span,
+        _ => return None,
+    };
+    if span.line > 0 {
+        Some((span.line, span.column))
+    } else {
+        None
+    }
+}
+
 /// Statement execution (non-control-flow statements)
 pub struct StatementExecutor;
 
 impl StatementExecutor {
-    /// Execute a statement
+    /// Execute a statement, attaching source span to any error raised.
     pub fn execute(vm: &mut impl StatementVM, stmt: &Statement) -> Result<Value, RuntimeError> {
+        let loc = stmt_span(stmt);
+        Self::execute_inner(vm, stmt).map_err(|e| {
+            if let Some((line, col)) = loc {
+                e.with_span(line, col)
+            } else {
+                e
+            }
+        })
+    }
+
+    fn execute_inner(vm: &mut impl StatementVM, stmt: &Statement) -> Result<Value, RuntimeError> {
         match stmt {
             Statement::Assignment { pattern, type_annotation, value, .. } => {
                 let val = vm.evaluate_expression(value)?;
@@ -157,6 +203,10 @@ impl StatementExecutor {
                                 "Array index {} out of bounds (len={})",
                                 i,
                                 arr.len()
+                            ))
+                            .with_code(crate::runtime::errors::ErrorCode::E0013)
+                            .with_hint(format!(
+                                "valid indices are 0..{}", arr.len().saturating_sub(1)
                             )));
                         }
                         Value::Array(arr)

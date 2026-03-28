@@ -41,6 +41,12 @@ pub struct WorkspaceIndex {
     pub symbols_by_file: HashMap<String, Vec<SymbolInfo>>,
 }
 
+impl Default for WorkspaceIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkspaceIndex {
     pub fn new() -> Self {
         Self {
@@ -158,7 +164,7 @@ fn index_source(source: &str, uri: &str) -> Vec<SymbolInfo> {
         let trimmed = line.trim();
         // `define → name → (params)` or `define name`
         if trimmed.starts_with("define") {
-            let after = trimmed["define".len()..].trim().trim_start_matches('→').trim();
+            let after = trimmed.strip_prefix("define").unwrap_or("").trim().trim_start_matches('→').trim();
             let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
             if !name.is_empty() {
                 let col = line.find(&name).unwrap_or(0);
@@ -175,7 +181,7 @@ fn index_source(source: &str, uri: &str) -> Vec<SymbolInfo> {
         }
         // `store → name → ...` — kind 13 (Variable), only top-level (indent = 0)
         else if trimmed.starts_with("store") && line.starts_with("store") {
-            let after = trimmed["store".len()..].trim().trim_start_matches('→').trim();
+            let after = trimmed.strip_prefix("store").unwrap_or("").trim().trim_start_matches('→').trim();
             let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
             if !name.is_empty() {
                 let col = line.find(&name).unwrap_or(0);
@@ -287,7 +293,7 @@ fn read_message(stdin: &mut dyn BufRead) -> io::Result<Value> {
     loop {
         let mut line = String::new();
         stdin.read_line(&mut line)?;
-        let line = line.trim_end_matches(|c| c == '\r' || c == '\n');
+        let line = line.trim_end_matches(['\r', '\n']);
         if line.is_empty() {
             break;
         }
@@ -372,6 +378,7 @@ pub struct LspDiagnostic {
     pub message: String,
     pub severity: u8,
     pub line: usize,
+    pub col: usize,
 }
 
 /// Public test helper — returns typed diagnostics for the given source.
@@ -382,7 +389,8 @@ pub fn diagnostics_for_test(source: &str) -> Vec<LspDiagnostic> {
             let message = d["message"].as_str()?.to_string();
             let severity = d["severity"].as_u64()? as u8;
             let line = d["range"]["start"]["line"].as_u64().unwrap_or(0) as usize;
-            Some(LspDiagnostic { message, severity, line })
+            let col = d["range"]["start"]["character"].as_u64().unwrap_or(0) as usize;
+            Some(LspDiagnostic { message, severity, line, col })
         })
         .collect()
 }
@@ -406,9 +414,30 @@ fn make_diagnostic(
     })
 }
 
-/// Extract `(line, col)` from error strings like "1:5: ..." or "line 1, col 5".
+/// Extract `(line, col)` — both 0-based — from error strings.
+///
+/// Handles:
+///   "Parse error at line 3, column 5: ..."   ← Parser / Lexer format
+///   "line 3, column 5: ..."
+///   "3:5: ..."                                ← legacy N:M format
 fn extract_position(msg: &str) -> (usize, usize) {
-    // Try "N:M:" format
+    // "... at line N, column M ..." or "line N, column M ..."
+    if let Some(after_line) = msg.find("line ") {
+        let rest = &msg[after_line + 5..];
+        let line_digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(line_1based) = line_digits.parse::<usize>() {
+            if let Some(after_col) = rest.find("column ") {
+                let col_rest = &rest[after_col + 7..];
+                let col_digits: String =
+                    col_rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                if let Ok(col_1based) = col_digits.parse::<usize>() {
+                    return (line_1based.saturating_sub(1), col_1based.saturating_sub(1));
+                }
+            }
+            return (line_1based.saturating_sub(1), 0);
+        }
+    }
+    // Legacy "N:M:" format
     if let Some(rest) = msg.split_once(':') {
         if let Ok(line) = rest.0.trim().parse::<usize>() {
             if let Some(rest2) = rest.1.split_once(':') {
@@ -416,6 +445,7 @@ fn extract_position(msg: &str) -> (usize, usize) {
                     return (line.saturating_sub(1), col.saturating_sub(1));
                 }
             }
+            return (line.saturating_sub(1), 0);
         }
     }
     (0, 0)
@@ -613,8 +643,8 @@ pub fn run() -> Result<(), String> {
                             "uri": &uri,
                             "range": lsp_range(def_line, def_char, def_line, def_char)
                         }));
-                    if same_file.is_some() {
-                        same_file.unwrap()
+                    if let Some(sf) = same_file {
+                        sf
                     } else if let Some(name) = sym {
                         // Fall back to workspace index (cross-file)
                         let defs = workspace_index.find_definition(&name);
@@ -1036,7 +1066,7 @@ pub fn build_scope_at_position(source: &str, line: usize) -> Vec<(String, String
 
         // Function definition: `define → name → (params)` or `define name`
         if trimmed.starts_with("define") {
-            let after = trimmed["define".len()..].trim().trim_start_matches('→').trim();
+            let after = trimmed.strip_prefix("define").unwrap_or("").trim().trim_start_matches('→').trim();
             let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
             if !name.is_empty() && !seen.contains(&name) {
                 scope.push((name.clone(), "function".to_string()));
@@ -1045,7 +1075,7 @@ pub fn build_scope_at_position(source: &str, line: usize) -> Vec<(String, String
         }
         // Variable assignment: `store → name → ...`
         else if trimmed.starts_with("store") {
-            let after = trimmed["store".len()..].trim().trim_start_matches('→').trim();
+            let after = trimmed.strip_prefix("store").unwrap_or("").trim().trim_start_matches('→').trim();
             let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
             if !name.is_empty() && !seen.contains(&name) {
                 scope.push((name.clone(), "variable".to_string()));
@@ -1054,7 +1084,7 @@ pub fn build_scope_at_position(source: &str, line: usize) -> Vec<(String, String
         }
         // For loop variable: `for → var in ...`
         else if trimmed.starts_with("for") {
-            let after = trimmed["for".len()..].trim().trim_start_matches('→').trim();
+            let after = trimmed.strip_prefix("for").unwrap_or("").trim().trim_start_matches('→').trim();
             let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
             if !name.is_empty() && !seen.contains(&name) {
                 scope.push((name.clone(), "variable".to_string()));
@@ -1113,7 +1143,7 @@ fn extract_function_params(source: &str, fn_name: &str) -> Option<Vec<String>> {
     for line in source.lines() {
         let trimmed = line.trim();
         if !trimmed.starts_with("define") { continue; }
-        let after = trimmed["define".len()..].trim().trim_start_matches('→').trim();
+        let after = trimmed.strip_prefix("define").unwrap_or("").trim().trim_start_matches('→').trim();
         let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
         if name != fn_name { continue; }
         // Find `(params)`
@@ -1364,5 +1394,38 @@ mod tests {
             assert!(d["severity"].is_number(), "diagnostic must have 'severity'");
             assert!(d["message"].is_string(), "diagnostic must have 'message'");
         }
+    }
+
+    // T.1.6: extract_position handles "Parse error at line N, column M" format
+    #[test]
+    fn test_t1_extract_position_parse_error_format() {
+        let msg = "Parse error at line 3, column 7: Unexpected start of statement (found LeftBrace)";
+        let (line, col) = extract_position(msg);
+        assert_eq!(line, 2, "line should be 0-based (3 → 2)");
+        assert_eq!(col, 6, "col should be 0-based (7 → 6)");
+    }
+
+    // T.1.7: parse error on line 3 produces a diagnostic with line == 2 (0-based)
+    #[test]
+    fn test_t1_parse_error_correct_line() {
+        // Lines 1-2 valid; line 3 has a syntax error (missing `end`)
+        let src = "store → x → 1\nstore → y → 2\nif → x > 0\n";
+        let diags = diagnostics_for_test(src);
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == 1).collect();
+        assert!(!errors.is_empty(), "expected a parse error");
+        // The parser should report a problem at or after line 3 (0-based >= 2)
+        assert!(
+            errors[0].line >= 2,
+            "parse error should be on line >= 2 (0-based), got {}",
+            errors[0].line
+        );
+    }
+
+    // T.1.8: extract_position handles legacy "N:M:" format
+    #[test]
+    fn test_t1_extract_position_legacy_format() {
+        let (line, col) = extract_position("5:10: some error");
+        assert_eq!(line, 4);
+        assert_eq!(col, 9);
     }
 }

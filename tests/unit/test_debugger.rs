@@ -1,13 +1,8 @@
-#[cfg(feature = "bytecode")]
 use txtcode::compiler::bytecode::BytecodeCompiler;
-#[cfg(feature = "bytecode")]
 use txtcode::lexer::Lexer;
-#[cfg(feature = "bytecode")]
 use txtcode::parser::Parser;
-#[cfg(feature = "bytecode")]
 use txtcode::tools::debugger::Debugger;
 
-#[cfg(feature = "bytecode")]
 fn compile_src(source: &str) -> txtcode::compiler::bytecode::Bytecode {
     let mut lexer = Lexer::new(source.to_string());
     let tokens = lexer.tokenize().unwrap();
@@ -18,7 +13,6 @@ fn compile_src(source: &str) -> txtcode::compiler::bytecode::Bytecode {
 }
 
 // Task 11.2 — debug_info is populated with (ip, line) entries
-#[cfg(feature = "bytecode")]
 #[test]
 fn test_debug_info_is_populated() {
     // Three assignments on separate lines → at least 3 debug_info entries
@@ -36,7 +30,6 @@ fn test_debug_info_is_populated() {
 }
 
 // Task 11.2 — add_breakpoint_at_line resolves to an instruction index
-#[cfg(feature = "bytecode")]
 #[test]
 fn test_add_breakpoint_at_line() {
     let src = "store → a → 1\nstore → b → 2\nstore → c → 3";
@@ -54,7 +47,6 @@ fn test_add_breakpoint_at_line() {
 }
 
 // Task 11.2 — source_line_for_ip returns the correct line
-#[cfg(feature = "bytecode")]
 #[test]
 fn test_source_line_for_ip() {
     let src = "store → a → 1\nstore → b → 2\nstore → c → 3";
@@ -68,7 +60,6 @@ fn test_source_line_for_ip() {
 }
 
 // Task 11.2 — step advances one instruction at a time
-#[cfg(feature = "bytecode")]
 #[test]
 fn test_step_advances() {
     let src = "store → x → 42";
@@ -79,4 +70,20 @@ fn test_step_advances() {
     let state = debugger.step().expect("step should succeed");
     assert_eq!(state.ip, 0, "first step should be at ip=0");
     assert!(!state.done, "should not be done after first step");
+}
+
+// M5.2 — step_over advances to the next source line
+#[test]
+fn test_step_over_advances_to_next_line() {
+    // Two statements on separate lines — step_over from line 1 should land on line 2
+    let src = "store → x → 1\nstore → y → 2";
+    let bytecode = compile_src(src);
+    let mut debugger = Debugger::new();
+    debugger.load(bytecode);
+
+    let state = debugger.step_over().expect("step_over should succeed");
+    assert!(!state.done, "should not be done after step_over");
+    // After stepping over line 1, current ip should map to line 2
+    let line = debugger.source_line_for_ip(debugger.current_ip());
+    assert_eq!(line, Some(2), "should be on line 2 after stepping over line 1");
 }

@@ -649,7 +649,7 @@ pub fn main() {
                                 let mut lexer = Lexer::new(source);
                                 match lexer.tokenize().and_then(|tokens| {
                                     let mut p = Parser::new(tokens);
-                                    p.parse().map_err(|e| e)
+                                    p.parse()
                                 }) {
                                     Err(e) => { eprintln!("Parse error: {}", e); std::process::exit(1); }
                                     Ok(program) => {

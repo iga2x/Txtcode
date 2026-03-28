@@ -14,7 +14,6 @@
 /// txtcode run --experimental-event-loop script.tc
 /// txtcode run --experimental-event-loop --event-loop-workers 8 script.tc
 /// ```
-
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;

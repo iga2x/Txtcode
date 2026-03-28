@@ -1222,6 +1222,59 @@ fn test_wasm_compile_produces_func_export() {
     assert!(wat.contains("(memory"), "WAT should include memory declaration");
 }
 
+#[test]
+fn test_wasm_compile_if_emits_structured_control_flow() {
+    use txtcode::compiler::wasm::WasmCompiler;
+    use txtcode::compiler::bytecode::BytecodeCompiler;
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+
+    // if-then: should produce (if (then ...)) not ;; Jump comments
+    let source = "store → x → 1\nif → x > 0\n  store → y → 42\nend\nreturn → x";
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut bc_compiler = BytecodeCompiler::new();
+    let bytecode = bc_compiler.compile(&program);
+    let mut wasm_compiler = WasmCompiler::new();
+    let wat = wasm_compiler.compile(&bytecode);
+
+    assert!(
+        !wat.contains(";; JumpIfFalse") && !wat.contains(";; Jump to"),
+        "WAT should not contain ;; jump comments — got:\n{}", wat
+    );
+    assert!(wat.contains("(if (then"), "WAT should contain structured (if (then ...");
+}
+
+#[test]
+fn test_wasm_compile_while_emits_structured_control_flow() {
+    use txtcode::compiler::wasm::WasmCompiler;
+    use txtcode::compiler::bytecode::BytecodeCompiler;
+    use txtcode::lexer::Lexer;
+    use txtcode::parser::Parser;
+
+    // while loop: should produce (block $break (loop $loop ...)) not ;; Jump comments
+    let source = "store → i → 0\nwhile → i < 3\n  store → i → i + 1\nend\nreturn → i";
+    let mut lexer = Lexer::new(source.to_string());
+    let tokens = lexer.tokenize().unwrap();
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse().unwrap();
+    let mut bc_compiler = BytecodeCompiler::new();
+    let bytecode = bc_compiler.compile(&program);
+    let mut wasm_compiler = WasmCompiler::new();
+    let wat = wasm_compiler.compile(&bytecode);
+
+    assert!(
+        !wat.contains(";; JumpIfFalse") && !wat.contains(";; Jump to"),
+        "WAT should not contain ;; jump comments — got:\n{}", wat
+    );
+    assert!(wat.contains("(block $break_"), "WAT should contain (block $break_N");
+    assert!(wat.contains("(loop $loop_"), "WAT should contain (loop $loop_N");
+    assert!(wat.contains("br_if $break_"), "WAT should contain br_if $break_N");
+    assert!(wat.contains("br $loop_"), "WAT should contain br $loop_N");
+}
+
 // ── Task 21.1 — Bytecode VM Parity Tests ─────────────────────────────────────
 // These tests run the same programs through the AST VM and Bytecode VM and
 // assert they produce the same result. Divergences are recorded as bugs.
@@ -1479,12 +1532,12 @@ fn test_parity_integer_division_and_modulo() {
     assert_parity("return → 17 % 3");
 }
 
-// Float literal arithmetic is a known bytecode VM gap: the bytecode compiler
-// does not yet emit Float constants, so this test is ignored until fixed.
 #[test]
-#[ignore]
 fn test_parity_float_arithmetic() {
     assert_parity("return → 1.5 + 2.5");
+    assert_parity("return → 3.0 - 1.5");
+    assert_parity("return → 2.0 * 1.5");
+    assert_parity("return → 5.0 / 2.0");
 }
 
 #[test]
